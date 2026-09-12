@@ -1,0 +1,13 @@
+node_modules/
+*.log
+out/
+.venv/
+.browser-profile/
+.browser-profile-ai-*/
+.DS_Store
+__pycache__/
+*.pyc
+.env
+.coverage-scan-cache.json
+.coverage-plans.json
+.test-browser-profile/

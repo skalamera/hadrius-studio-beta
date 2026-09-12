@@ -1,0 +1,11 @@
+{
+  "name": "hadrius-studio-beta",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live Hadrius walkthrough recorder with source-grounded plans and automatic AI narration.",
+  "scripts": {
+    "start": "node tools/ai-bridge.mjs",
+    "check": "node --check extension/background.js && node --check extension/content.js && node --check extension/sidepanel.js && node --check tools/ai-bridge.mjs && node --check tools/coverage-scan.mjs && node --check tools/pylon.mjs"
+  }
+}

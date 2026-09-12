@@ -1,0 +1,826 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-08T00:00:00.000Z",
+  "source": "Staged Studio design workflow reader pass (rethink-result.json readers[0].findings, \"Full per-item classification\"), committed here per the Phase 0 backlog item \"Commit the taxonomy as tools/coverage-taxonomy.json\"",
+  "classes": {
+    "A": "read-only / idempotent \u2014 replays from the recording forever, no contract needed",
+    "B": "create / accumulate \u2014 needs a mutation gate + {{unique}} value substitution + best-effort archive teardown",
+    "C": "consume-a-precondition \u2014 needs a hand-written arrange/act/assert/teardown contract",
+    "D": "configure / toggle \u2014 needs generic ensure-to-state semantics (flip to X, skip if already there) \u2014 GENERIC MECHANISM BUILT 2026-09-10 in renderer/replay.mjs + renderer/ensure-to-state.mjs (unit-tested, 19/19 passing): covers (a) label-flip buttons (Activate<->Deactivate etc \u2014 skip if the opposite-state control now resolves instead), (b) status radio/checkbox/switch groups (skip if already selected), (c) field-value edits (skip retyping if the field already holds the recorded value). State-setting steps bypass the mutation gate entirely (KBS_ALLOW_MUTATIONS not required) since the live-state check makes them safe by construction. NOT yet covered: list-membership/append shapes (#57 tag-with-'Already added'-guard, #62 appends a question) \u2014 a 4th strategy (skip-if-already-in-the-list) is still needed. No live-browser end-to-end verification yet \u2014 replay.mjs needs a working browser profile (blocked on item 4, the auth/staging decision).",
+    "E": "data-gated wizard \u2014 arrange must first rebuild the gate (e.g. an entity without a manual); often external/regulatory, sometimes pinned instead of automated",
+    "F": "other \u2014 doesn't fit the step shape at all (e.g. a drag-and-drop graph edit)"
+  },
+  "items": [
+    {
+      "n": 1,
+      "key": "account-surveillance-how-to-bulk-close-escalate-archive-or-reassign-multiple-alerts-at-once",
+      "class": "C",
+      "recipe": "tools/recipe-bulk-alert-actions.mjs",
+      "status": "done",
+      "tags": [
+        "person"
+      ],
+      "note": "inverse: bulk Reopen \u2014 fires with no dialog at all, unlike single-alert Reopen which needs a filled reason"
+    },
+    {
+      "n": 2,
+      "key": "account-surveillance-how-to-close-a-surveillance-alert-with-a-resolution-determination",
+      "class": "C",
+      "recipe": "tools/recipe-close-alert-resolution.mjs",
+      "status": "done",
+      "tags": [
+        "record"
+      ],
+      "note": "inverse: Reopen; both Close and Reopen dialogs require filled fields before their confirm button enables (no visible required-marker)"
+    },
+    {
+      "n": 3,
+      "key": "account-surveillance-how-to-create-a-manual-exception-from-selected-trades",
+      "class": "B",
+      "tags": [
+        "dataGate:trades",
+        "person"
+      ],
+      "note": "no delete path found"
+    },
+    {
+      "n": 4,
+      "key": "account-surveillance-how-to-create-a-new-surveillance-rule-from-a-template",
+      "class": "B",
+      "note": "cleanup = deactivate only"
+    },
+    {
+      "n": 5,
+      "key": "account-surveillance-how-to-import-trade-and-holdings-data-from-a-custodian-file",
+      "class": "B",
+      "tags": [
+        "dataGate:custodianConfig",
+        "file"
+      ],
+      "note": "re-import conflict"
+    },
+    {
+      "n": 6,
+      "key": "account-surveillance-how-to-investigate-a-failed-or-incomplete-data-feed-sync",
+      "class": "A",
+      "note": "needs a failed row to show"
+    },
+    {
+      "n": 7,
+      "key": "account-surveillance-how-to-search-for-an-account-client-or-representative-by-name-or-status",
+      "class": "A",
+      "dismissed": true
+    },
+    {
+      "n": 8,
+      "key": "account-surveillance-how-to-activate-sandbox-or-deactivate-a-surveillance-rule",
+      "class": "D",
+      "note": "label flips"
+    },
+    {
+      "n": 9,
+      "key": "account-surveillance-how-to-build-and-edit-the-client-representative-account-relationship-graph",
+      "class": "F",
+      "note": "drag interaction; duplicate edge not allowed"
+    },
+    {
+      "n": 10,
+      "key": "account-surveillance-how-to-edit-an-existing-surveillance-rule-s-configuration",
+      "class": "D",
+      "tags": [
+        "record"
+      ]
+    },
+    {
+      "n": 11,
+      "key": "account-surveillance-how-to-escalate-or-reopen-a-surveillance-alert",
+      "class": "C",
+      "recipe": "tools/recipe-escalate-reopen-alert.mjs",
+      "status": "done",
+      "note": "self-resetting pair; both Escalate and Reopen dialogs require a filled reason before their confirm button enables (no visible required-marker \u2014 confirmed empirically)"
+    },
+    {
+      "n": 12,
+      "key": "account-surveillance-how-to-export-trade-data-with-applied-filters",
+      "class": "A"
+    },
+    {
+      "n": 13,
+      "key": "account-surveillance-how-to-filter-trades-by-date-range-side-or-security",
+      "class": "A",
+      "tags": [
+        "date"
+      ]
+    },
+    {
+      "n": 14,
+      "key": "account-surveillance-how-to-manually-run-a-surveillance-rule-on-demand",
+      "class": "A",
+      "note": "generator for alerts"
+    },
+    {
+      "n": 15,
+      "key": "branches-how-to-add-a-new-branch-location",
+      "class": "B",
+      "tags": [
+        "dataGate:FINRA",
+        "date"
+      ],
+      "note": "no delete path found",
+      "ai_record": "ok",
+      "ai_note": "Recorded end to end by the agent (14 steps) and rendered."
+    },
+    {
+      "n": 16,
+      "key": "branches-how-to-add-an-employee-to-a-branch",
+      "class": "D",
+      "tags": [
+        "person"
+      ],
+      "note": "inverse: #22. TRIAL RUN (unresolved, not blocked): agent queued a real employee (CRD-holding, active) with a valid FINRA role and start date (selected via the actual calendar widget, twice), then clicking \"Add 1 employee\" produced no toast, no error, and no visible state change \u2014 reproduced twice. The agent's own diagnosis blamed an unguarded startDate.toISOString() on a non-Date value, but that is NOT corroborated: packages/ui/src/v3/date_picker.tsx's onSelect receives a real Date from react-day-picker, and useAddBranchPersonnel's .catch() should surface any backend error as a toast regardless. Root cause unconfirmed \u2014 could be a genuine backend/silent-exception bug, or a lingering popover overlay intercepting the automated click. Needs a human with devtools/network tab open to pin down; not marked ai_record:blocked since a real user's click may behave differently than Playwright's coordinate click."
+    },
+    {
+      "n": 17,
+      "key": "branches-how-to-close-out-a-branch-exam-and-generate-the-exit-letter",
+      "class": "C",
+      "tags": [
+        "record"
+      ],
+      "note": "Chain #21 -> #18 -> this; blocked transitively by #18. ROOT CAUSE FOUND (real bug, no UI workaround): the Pre-Audit \"Manage people\" picker calls GET company/1013/employees/?branch_ids=3234&branch_membership_scope=located_at&status=ACTIVE because company_company.finra_api_enabled=ACTIVE for 1013; with scope located_at the backend (__get_located_at_branch_member_ids, views_employees.py) reads ONLY finra_branchmembership (U4 \"Located At\", filing IS NULL, end_date IS NULL) and never consults branches_branchindividual or the branch employee group \u2014 and 1013 has 0 finra_branchmembership rows company-wide. The seeded employees live in branches_branchindividual/group 17662 (what the Branches UI writes), so they are invisible to the FINRA-scoped picker. Branches > People > \"Add employee\" on a CRD-registered branch only drafts U4/BR amendments (rows carry filing != NULL, still excluded) and only offers employees with a CRD (Stephen has none). Either a U4 data sync for 1013 or a backend fix to fall back to branch personnel when no U4 data exists would unblock #18 and then #17."
+    },
+    {
+      "n": 18,
+      "key": "branches-how-to-complete-a-branch-exam-questionnaire",
+      "class": "C",
+      "tags": [
+        "file"
+      ],
+      "note": "ROOT CAUSE FOUND (real bug, no UI workaround): the Pre-Audit \"Manage people\" picker calls GET company/1013/employees/?branch_ids=3234&branch_membership_scope=located_at&status=ACTIVE because company_company.finra_api_enabled=ACTIVE for 1013; with scope located_at the backend (__get_located_at_branch_member_ids, views_employees.py) reads ONLY finra_branchmembership (U4 \"Located At\", filing IS NULL, end_date IS NULL) and never consults branches_branchindividual or the branch employee group \u2014 and 1013 has 0 finra_branchmembership rows company-wide. The seeded employees live in branches_branchindividual/group 17662 (what the Branches UI writes), so they are invisible to the FINRA-scoped picker. Branches > People > \"Add employee\" on a CRD-registered branch only drafts U4/BR amendments (rows carry filing != NULL, still excluded) and only offers employees with a CRD (Stephen has none). Either a U4 data sync for 1013 or a backend fix to fall back to branch personnel when no U4 data exists would unblock #18 and then #17."
+    },
+    {
+      "n": 19,
+      "key": "branches-how-to-file-a-new-form-br-to-register-a-branch-office",
+      "class": "B",
+      "tags": [
+        "external:FINRA"
+      ]
+    },
+    {
+      "n": 20,
+      "key": "branches-how-to-log-a-finding-during-a-branch-exam-review",
+      "class": "B",
+      "tags": [
+        "dataGate:examUnderReview"
+      ]
+    },
+    {
+      "n": 21,
+      "key": "branches-how-to-schedule-a-new-branch-exam",
+      "class": "B",
+      "recipe": "tools/recipe-schedule-branch-exam.mjs",
+      "status": "done",
+      "tags": [
+        "dataGate",
+        "person",
+        "date"
+      ],
+      "note": "generator for #17/#18/#23/#24/#25/#28 \u2014 exports arrange/checkPreconditions for reuse. Branch tree checkboxes are [role=checkbox], not plain buttons; match by nearest ancestor whose OWN text includes the branch name AND is short (<100 chars) to avoid over-matching 'Select all'. The Trigger-reason dropdown's options render in a portal outside [role=dialog] unlike everything else in the wizard."
+    },
+    {
+      "n": 22,
+      "key": "branches-how-to-bulk-remove-employees-from-a-branch",
+      "class": "D",
+      "tags": [
+        "person"
+      ],
+      "note": "inverse: #16"
+    },
+    {
+      "n": 23,
+      "key": "branches-how-to-cancel-a-branch-exam",
+      "class": "C",
+      "recipe": "tools/recipe-cancel-branch-exam.mjs",
+      "status": "done",
+      "note": "no un-cancel (confirmed by the dialog's own copy) \u2014 Cancelled is a terminal, desired end state, no teardown needed. Debugging note: document.querySelectorAll('*')-based leaf-text scans intermittently mis-evaluated on this page (probably walking into <head>/<style> content) even though document.body.innerText.includes(...) checking the exact same text was reliable \u2014 prefer innerText for presence checks generally."
+    },
+    {
+      "n": 24,
+      "key": "branches-how-to-change-the-inspector-assigned-to-a-branch-exam",
+      "class": "D",
+      "tags": [
+        "person"
+      ],
+      "ai_record": "ok",
+      "ai_note": "Recorded end to end by the agent (10 steps) and linked; it had been falsely showing \"covered\" against an unrelated script (How-to-cancel-a-branch-exam) before this."
+    },
+    {
+      "n": 25,
+      "key": "branches-how-to-bulk-transfer-employees-between-branches",
+      "class": "D",
+      "tags": [
+        "person",
+        "record:branches"
+      ]
+    },
+    {
+      "n": 26,
+      "key": "branches-how-to-change-a-branch-s-operational-status",
+      "class": "D",
+      "note": "flip; FINRA side-effect filing"
+    },
+    {
+      "n": 27,
+      "key": "branches-how-to-close-a-branch-office-with-finra",
+      "class": "C",
+      "tags": [
+        "external"
+      ],
+      "note": "2/2 clean, self-resetting, SAFE: Branch Oversight > Boston Branch (CRD 412048, the only registered branch with no outstanding exams \u2014 Miami/Chicago carry exams from the branch-exam recipes and their \"Closed\" option is disabled) > \"Branch actions\" > \"Change operational status\" > Closed + reason > \"Initiate Form BR filing\". Verified in the live DB + audit trail that this only PATCHes branches/<id>/status/ (ACTV -> CLOSUREPENDING, BRANCH_STATUS_CHANGED event) \u2014 no branches_brfiling row is created (0 for 1013 after 4 round trips) and no navigation to a filing workflow happens despite the dialog copy; the real FINRA Form BR submission is a separate flow (POST br-closure, then br-filing/<id>/submit/ -> api.finra.org) that the recipe never touches. Teardown = same modal -> Active (\"Reopening\") -> Initiate. Gotchas: the modal's radios are \"Select a NEW status\" and pre-check the proposed target (Closed comes checked while Active), so current status must be read from the helper copy (\"Closing a FINRA-registered branch...\" = Active, \"Reopening a FINRA-registered branch...\" = closed); the branch header badge is stale and never reflects the change; \"Closed\" is disabled for ~1s while the outstanding-exams query loads (poll); the Branches list is a card hierarchy, not a table (open the branch by URL).",
+      "recipe": "tools/recipe-close-branch-finra.mjs",
+      "status": "done"
+    },
+    {
+      "n": 28,
+      "key": "branches-how-to-escalate-a-branch-exam",
+      "class": "C",
+      "recipe": "tools/recipe-escalate-branch-exam.mjs",
+      "status": "done",
+      "tags": [
+        "person"
+      ],
+      "note": "repeatability confirmed: additive action (like #36/#83), exam stays In progress and remains re-escalatable; no teardown needed"
+    },
+    {
+      "n": 29,
+      "key": "branches-how-to-file-a-form-br-amendment-for-a-branch",
+      "class": "B",
+      "tags": [
+        "dataGate",
+        "external"
+      ],
+      "note": "repeatable"
+    },
+    {
+      "n": 30,
+      "key": "branches-how-to-reschedule-or-self-schedule-a-branch-exam",
+      "class": "D",
+      "tags": [
+        "date"
+      ]
+    },
+    {
+      "n": 31,
+      "key": "communications-how-to-add-a-dataset-to-a-case",
+      "class": "B",
+      "tags": [
+        "dataGate:case"
+      ],
+      "ai_record": "blocked",
+      "ai_note": "Add datasets requires a per-case CaseMembership at EDITOR/MANAGER. The agent signs in as a superadmin, which can see and open every case but is a member of none, so the button is disabled on all of them. No admin bypass exists in the check."
+    },
+    {
+      "n": 32,
+      "key": "communications-how-to-add-an-instant-messaging-provider",
+      "class": "B",
+      "tags": [
+        "person",
+        "date",
+        "external:OAuth?"
+      ],
+      "ai_record": "blocked",
+      "ai_note": "POST is staff-only (is_hadrius_employee: @hadrius.com AND INTERNAL company) and Slack is rejected unconditionally (\"must be connected through OAuth\"). The rejection surfaces via window.alert(), which automation auto-dismisses \u2014 invisible to the agent, so it loops until it gives up."
+    },
+    {
+      "n": 33,
+      "key": "communications-how-to-add-and-archive-a-social-media-account",
+      "class": "B",
+      "tags": [
+        "person"
+      ],
+      "note": "URL conflict; billing"
+    },
+    {
+      "n": 34,
+      "key": "communications-how-to-connect-your-firm-s-email-system-to-hadrius",
+      "class": "D",
+      "tags": [
+        "external"
+      ],
+      "note": "one-shot"
+    },
+    {
+      "n": 35,
+      "key": "communications-how-to-create-a-new-compliance-case",
+      "class": "B",
+      "tags": [
+        "person",
+        "date"
+      ],
+      "note": "inverse: Archive case"
+    },
+    {
+      "n": 36,
+      "key": "communications-how-to-escalate-a-flagged-communication-to-an-admin",
+      "class": "C",
+      "tags": [
+        "person"
+      ],
+      "note": "2/2 clean \u2014 un-abandoned. The earlier attempt assumed an already-escalated conversation could not be escalated again and burned effort walking list positions for \"the next not-yet-escalated one\". Wrong: the header button merely relabels from \"Escalate\" to \"Escalated to <name>\" and clicking it re-opens the identical dialog (admin Radix Select combobox -> notes textarea -> priority [role=radio] High/Medium/Low -> Escalate), toast \"Success / Escalated to Stephen Skalamera\". So the recipe pins a FIXED target \u2014 the first Flagged conversation in Communications > Email (high-priority sort, index=0) \u2014 and is idempotent; no position walking, no teardown (additive, no un-escalate).",
+      "recipe": "tools/recipe-escalate-flagged-email.mjs",
+      "status": "done"
+    },
+    {
+      "n": 37,
+      "key": "communications-how-to-export-email-or-instant-messages-matching-a-search",
+      "class": "A"
+    },
+    {
+      "n": 38,
+      "key": "communications-how-to-review-and-act-on-a-flagged-email-or-im-conversation",
+      "class": "C",
+      "recipe": "tools/recipe-review-flagged-email.mjs",
+      "status": "done",
+      "note": "inverse: Reopen (single click, no confirm dialog); list occasionally needs one reload after an in-app nav to clear a stale cache"
+    },
+    {
+      "n": 39,
+      "key": "communications-how-to-set-up-an-email-routing-rule-for-review-assignment",
+      "class": "B",
+      "tags": [
+        "person"
+      ]
+    },
+    {
+      "n": 40,
+      "key": "communications-how-to-approve-or-reject-pending-social-media-account-requests",
+      "class": "C",
+      "tags": [
+        "secondPersona"
+      ],
+      "note": "2/2 clean, self-resetting, no second login needed (was tagged secondPersona): arrange creates the request from the EMPLOYEE side using Stephen's own 1013 employee record \u2014 /employee/dashboard > \"Social media accounts\" card > \"Edit accounts\" modal (Add Account, platform Radix Select -> LinkedIn, input[name=url], input[name=description], Submit; no toast, card then shows the URL as \"Pending approval\"); act on the ADMIN side \u2014 Communications > Social media archive settings ?tab=accounts: tick the pending row checkbox (real <input type=checkbox>) which reveals header \"Approve\"/\"Reject\" buttons, click Reject; no dialog, no toast, the row vanishes and the counter drops to \"[ 0 accounts ]\". Reject (DELETE of the change request, unique on company+employee+url) leaves zero residue, so arrange recreates the same request next run. Approve was deliberately avoided: it creates a SocialMediaArchiveSetting with no delete path (only Edit -> Deactivate -> PAUSED) and no uniqueness, so it would accumulate residue every run.",
+      "recipe": "tools/recipe-reject-social-account-request.mjs",
+      "status": "done"
+    },
+    {
+      "n": 41,
+      "key": "communications-how-to-bulk-assign-or-unassign-conversations-to-a-reviewer",
+      "class": "D",
+      "tags": [
+        "person"
+      ]
+    },
+    {
+      "n": 42,
+      "key": "communications-how-to-bulk-update-review-status-across-conversations",
+      "class": "C",
+      "recipe": "tools/recipe-bulk-review-status.mjs",
+      "status": "done",
+      "note": "inverse: Reopen; a bulk-closed conversation drops out of Needs review, found again via Advanced search > Status > Closed as compliant"
+    },
+    {
+      "n": 43,
+      "key": "communications-how-to-create-and-test-a-custom-email-compliance-subrule",
+      "class": "B"
+    },
+    {
+      "n": 44,
+      "key": "communications-how-to-deactivate-or-reactivate-a-social-media-account-from-archiving",
+      "class": "D",
+      "note": "flip"
+    },
+    {
+      "n": 45,
+      "key": "communications-how-to-export-a-website-archive-snapshot",
+      "class": "A",
+      "tags": [
+        "date"
+      ],
+      "note": "needs archive data"
+    },
+    {
+      "n": 46,
+      "key": "communications-how-to-manage-who-has-access-to-a-case",
+      "class": "D",
+      "tags": [
+        "person",
+        "dataGate:case"
+      ]
+    },
+    {
+      "n": 47,
+      "key": "communications-how-to-save-and-reuse-a-communications-search",
+      "class": "B",
+      "note": "name"
+    },
+    {
+      "n": 48,
+      "key": "communications-how-to-share-a-case-export-with-an-external-recipient",
+      "class": "B",
+      "tags": [
+        "dataGate:completedExport",
+        "external:email"
+      ]
+    },
+    {
+      "n": 49,
+      "key": "marketing-how-to-build-a-new-approval-workflow",
+      "class": "B",
+      "tags": [
+        "person"
+      ]
+    },
+    {
+      "n": 50,
+      "key": "marketing-how-to-create-a-new-disclosure",
+      "class": "B",
+      "note": "inverse: archive"
+    },
+    {
+      "n": 51,
+      "key": "marketing-how-to-export-marketing-review-data-to-csv",
+      "class": "A"
+    },
+    {
+      "n": 52,
+      "key": "marketing-how-to-reject-a-document-and-send-it-back-to-the-submitter",
+      "class": "C",
+      "recipe": "tools/recipe-reject-marketing-document.mjs",
+      "status": "done",
+      "tags": [
+        "record"
+      ],
+      "note": "reuses recipe-submit-marketing-document.mjs's exports as its own arrange; inverse: Review actions > Re-open for submitter review"
+    },
+    {
+      "n": 53,
+      "key": "marketing-how-to-review-and-approve-a-submitted-document",
+      "class": "C",
+      "recipe": "tools/recipe-approve-marketing-document.mjs",
+      "status": "done",
+      "tags": [
+        "record"
+      ],
+      "note": "needed a real permission grant (MR_DOCUMENTS_APPROVER_WRITE_ALL/SCOPED via the Admins group) \u2014 SUPERADMIN alone was not enough; inverse: Review actions > Submit for approver review, available even from Approved"
+    },
+    {
+      "n": 54,
+      "key": "marketing-how-to-set-up-a-routing-rule-for-new-submissions",
+      "class": "B",
+      "tags": [
+        "dataGate:questionnaireFeature"
+      ]
+    },
+    {
+      "n": 55,
+      "key": "marketing-how-to-submit-a-new-marketing-document-for-review",
+      "class": "B",
+      "recipe": "tools/recipe-submit-marketing-document.mjs",
+      "status": "done",
+      "tags": [
+        "file",
+        "date",
+        "dataGate:workflow/docTypes"
+      ],
+      "note": "generator for #52/#53/#56/#59/#63 \u2014 exports arrange/checkPreconditions/act/assertOutcome for reuse; no real file needed (in-app document builder avoids the file-upload limitation entirely); async FIRM_INTELLIGENCE processing takes 60-90s"
+    },
+    {
+      "n": 56,
+      "key": "marketing-how-to-restore-an-archived-project",
+      "class": "C",
+      "note": "2/2 clean. NOT time-gated (earlier note misread the rule): the 30 days is the nightly AUTO-archive trigger (archive_resolved_projects, RESOLVED_LEEWAY_DAYS=30); manual archive is available as soon as every document in a project is resolved and restore is allowed any time. Recipe: arrange archives the tenant's one fully-resolved seed project \"Waitlist Nurture Email Sequence\" from the Projects board (card \"...\" popover \u2014 aria-haspopup=dialog with plain <span> items, no menuitems \u2014 -> Archive -> \"Confirm project archive\" -> Archive), idempotent if a previous run left it archived; act = Marketing > Archive > Projects row \"Restore project\" icon -> Radix [role=switch] \"Restore this project\" (real click) -> Restore; assert = gone from archive list AND card back on the board; no teardown (restored = original). Toast: \"Project restored\".",
+      "recipe": "tools/recipe-restore-archived-project.mjs",
+      "status": "done"
+    },
+    {
+      "n": 57,
+      "key": "marketing-how-to-tag-and-organize-disclosures",
+      "class": "D",
+      "note": "'Already added' guard"
+    },
+    {
+      "n": 58,
+      "key": "marketing-how-to-bulk-reassign-projects-to-a-different-workflow",
+      "class": "D",
+      "tags": [
+        "record"
+      ],
+      "note": "resets approvals"
+    },
+    {
+      "n": 59,
+      "key": "marketing-how-to-claim-an-unassigned-document-for-review",
+      "class": "C",
+      "recipe": "tools/recipe-claim-marketing-document.mjs",
+      "status": "done",
+      "note": "was blocked until the #53 permission fix (Admins group grants MR_DOCUMENTS_APPROVER_WRITE_ALL/SCOPED) \u2014 without it the Approver Dashboard shows zero documents at all, not zero unclaimed; inverse: Unclaim document, same row menu"
+    },
+    {
+      "n": 60,
+      "key": "marketing-how-to-configure-document-type-expiration-settings",
+      "class": "D",
+      "note": "override once per type"
+    },
+    {
+      "n": 61,
+      "key": "marketing-how-to-create-a-disclosure-rule",
+      "class": "B",
+      "tags": [
+        "dataGate"
+      ],
+      "note": "clear Draft first"
+    },
+    {
+      "n": 62,
+      "key": "marketing-how-to-customize-submission-questions-for-new-projects",
+      "class": "D",
+      "note": "appends question"
+    },
+    {
+      "n": 63,
+      "key": "marketing-how-to-withdraw-a-submitted-document",
+      "class": "C",
+      "recipe": "tools/recipe-withdraw-marketing-document.mjs",
+      "status": "done",
+      "note": "reuses recipe-submit-marketing-document.mjs's exports as its own arrange; inverse is 2-step: Review actions > Re-open for submitter review, then Send to approver review again"
+    },
+    {
+      "n": 64,
+      "key": "people-oversight-how-to-add-a-new-employee",
+      "class": "B",
+      "tags": [
+        "date"
+      ],
+      "dismissed": true,
+      "note": "unique email verified"
+    },
+    {
+      "n": 65,
+      "key": "people-oversight-how-to-assign-disclosures-to-employees",
+      "class": "B",
+      "tags": [
+        "person"
+      ],
+      "note": "B-class generator, 2/2 clean, self-resetting: assigns \"Gifts & entertainment\" to a fixed recipient (Bertram Gilfoyle) via the 4-step Assign disclosures wizard, asserts the \"Awaiting submission\" row, teardown = row \"More actions\" -> \"Cancel disclosure request\" (recipient x template is unique, so without the cancel the recipe would deplete after one run). CORRECTION of an earlier note: the \"checkbox never drives Next\" finding was NOT a product bug \u2014 the wizard is not [role=dialog] (root is section.relative.z-10) and the Disclosures list behind it stays in the DOM with rows carrying the same template names, so an unscoped text lookup was toggling a background row's checkbox. Scoped to the wizard, both real and synthetic clicks work. Also exports logOnBehalfAndSubmit(): admin \"Log on behalf\" (row menu -> confirm -> fill G&E questionnaire -> Submit) moves a disclosure to Pending review with no second login persona (backend: origin ASSIGNED->FILL_ON_BEHALF, POST /<id>/log-on-behalf/start|submit).",
+      "recipe": "tools/recipe-assign-disclosure.mjs",
+      "status": "done"
+    },
+    {
+      "n": 66,
+      "key": "people-oversight-how-to-create-a-certification-campaign",
+      "class": "B",
+      "tags": [
+        "person",
+        "date"
+      ],
+      "note": "sends real emails",
+      "ai_record": "ok",
+      "ai_note": "Recorded end to end by the agent (10 steps)."
+    },
+    {
+      "n": 67,
+      "key": "people-oversight-how-to-file-a-new-form-u4",
+      "class": "E",
+      "tags": [
+        "person",
+        "date",
+        "external:FINRA"
+      ]
+    },
+    {
+      "n": 68,
+      "key": "people-oversight-how-to-log-a-check-manually",
+      "class": "B",
+      "tags": [
+        "person",
+        "date"
+      ],
+      "note": "check_number dup preflight"
+    },
+    {
+      "n": 69,
+      "key": "people-oversight-how-to-resolve-a-flagged-check",
+      "class": "C",
+      "tags": [
+        "record:checkNumber",
+        "person"
+      ],
+      "note": "BLOCKED by feature flag: Check Blotter is HIDDEN for company 1013 (company_company.check_blotter='HIDDEN'; page renders a marketing placeholder unless ACTIVE), and check_blotter_record has 0 rows for 1013. Even once enabled there is NO unresolve: resolution_status only accepts COMPLIANT/NON_COMPLIANT (dto_check_blotter.py) and resolved records never re-flag \u2014 so the recipe shape would be fresh-instance-per-run via the \"Log check\" dialog (permission check_blotter.checks.log_on_behalf; create_check_record auto-FLAGS when forwarding_date is late vs receipt_date), then resolve. Needs the flag flipped by Hadrius ops first."
+    },
+    {
+      "n": 70,
+      "key": "people-oversight-how-to-review-a-submitted-disclosure",
+      "class": "C",
+      "note": "2/2 clean on the standing Pending-review pool (Action required filter), self-resetting: act = review modal footer \"...\" -> \"Reject disclosure\" (optional reason) -> confirm; assert = Resolved row shows Rejected; teardown = row \"More actions\" -> \"Reopen disclosure\" -> Reopen (backend reopen_disclosure: APPROVED/REJECTED -> PENDING_REVIEW, employee not notified). Reject (not approve) is the reversible decision here: an approved disclosure becomes an ACTIVE firm record whose menu offers only Request amendment / Close disclosure, and Close is terminal (no reopen) \u2014 confirmed by hand on Aisha Khan's G&E, now permanently Closed. Gotchas: after a decision the modal closes and re-opens on the next pending item ~1s later, and the decision toast (fixed top-right) covers the modal's header X, so closing needs a synthetic click / Escape, not a real mouse click. A fresh pending item can be manufactured via #65's logOnBehalfAndSubmit if the pool ever empties.",
+      "recipe": "tools/recipe-review-disclosure.mjs",
+      "status": "done"
+    },
+    {
+      "n": 71,
+      "key": "people-oversight-how-to-review-and-approve-a-certification-submission",
+      "class": "C",
+      "tags": [
+        "secondPersona"
+      ],
+      "note": "2/2 clean on the standing pool of submitted-but-unreviewed certification tasks (People oversight > Certifications > Submissions, default view = Needs review: Lucas Romano, Hermione Granger, Brian O'Sullivan, Daniel Kim in the ACTIVE round \"Quarterly Compliance Certification\"). act = row kebab (aria-haspopup=menu, no label) -> \"Quick approve\" -> \"Approve anyway\" (unreviewed-flags confirm) -> toast \"Submission approved\"; assert = fresh navigation to ?statuses=approved lists the row; teardown = row menu -> \"Re-open submission\" -> \"Re-open\" -> toast \"Submission reopened\" (POST tasks/<id>/reopen, APPROVED/REJECTED -> UNREVIEWED). No second persona needed after all (was tagged secondPersona): pool is pre-submitted, and admin \"Submit on behalf of...\" exists on /employee/certifications if it ever runs dry. Gotchas: the filter chips are TOGGLES (clicking the active \"Needs review\" chip switches to the unfiltered list, URL statuses=), and the list right after a decision is a stale cached query (the approved row is missing) \u2014 re-navigate with an explicit statuses= URL instead of clicking chips. Round gates: everything refuses when the round is COMPLETED/CANCELLED.",
+      "recipe": "tools/recipe-approve-certification.mjs",
+      "status": "done"
+    },
+    {
+      "n": 72,
+      "key": "people-oversight-how-to-review-and-resolve-flagged-trades",
+      "class": "C",
+      "recipe": "tools/recipe-resolve-flagged-trade.mjs",
+      "status": "done",
+      "note": "fixed 5-trade seed pool; teardown reverses the status change"
+    },
+    {
+      "n": 73,
+      "key": "people-oversight-how-to-bulk-upload-checks-via-csv",
+      "class": "B",
+      "tags": [
+        "file"
+      ],
+      "note": "duplicate errors on re-upload"
+    },
+    {
+      "n": 74,
+      "key": "people-oversight-how-to-file-a-new-form-u5-termination-filing",
+      "class": "E",
+      "tags": [
+        "person",
+        "date",
+        "external"
+      ]
+    },
+    {
+      "n": 75,
+      "key": "people-oversight-how-to-match-an-unclaimed-account-to-an-employee",
+      "class": "C",
+      "tags": [
+        "person",
+        "record"
+      ],
+      "note": "STRUCTURALLY BLOCKED (not a selector issue). UnclaimedExternalAccount rows are created only by direct broker-feed syncs (Schwab/Pershing/etc., direct_feed/base.py bulk_create); the only HTTP routes are GET accounts/unclaimed/ and POST accounts/unclaimed/<id>/claim/ (SUPERADMIN-only) \u2014 no create, no CSV upload, no Django admin, and no unclaim/unmatch route (claim_account refuses already-claimed rows; reverts are ad-hoc data_ops commands). Live DB for company 1013: 0 rows total. The UI's \"Include claimed\" toggle only shows a Claimed badge and disables Match. Needs a broker feed or a backend seed to ever have an instance; nothing UI-driven can arrange one."
+    },
+    {
+      "n": 76,
+      "key": "people-oversight-how-to-notify-employees-with-expired-account-connections",
+      "class": "A",
+      "note": "needs expired rows"
+    },
+    {
+      "n": 77,
+      "key": "people-oversight-how-to-send-continuing-education-reminders",
+      "class": "A",
+      "note": "needs overdue CE"
+    },
+    {
+      "n": 78,
+      "key": "people-oversight-how-to-send-reminders-for-outstanding-certifications",
+      "class": "A",
+      "note": "needs pending tasks"
+    },
+    {
+      "n": 79,
+      "key": "testing-program-how-to-add-a-new-entity-and-generate-its-compliance-manual",
+      "class": "B",
+      "tags": [
+        "file"
+      ]
+    },
+    {
+      "n": 80,
+      "key": "testing-program-how-to-assign-tests-or-categories-to-an-entity",
+      "class": "D",
+      "tags": [
+        "record:entity/category"
+      ]
+    },
+    {
+      "n": 81,
+      "key": "testing-program-how-to-complete-a-test-run-questionnaire-as-the-owner",
+      "class": "C",
+      "tags": [
+        "file"
+      ],
+      "note": "owner answers Q1 and submits -> Pending review; teardown (inverse) discovered live: reviewer per-question outcome control (\"Change outcome\" under each answered question, only visible after bulk \"No objection to all\") -> \"Requires attention\" -> \"Corrective action\" -> fills required description -> \"Send corrections to owner\", which returns the run to CORRECTIVE_ACTION and notifies the owner. Backend: _return_to_owner in service_test_lifecycle.py, POST /firm_oversight_v2/test_runs/<id>/return/ \u2014 a real endpoint with no control in the header \"...\" actions menu; only reachable via this per-question outcome path.",
+      "recipe": "tools/recipe-complete-test-questionnaire.mjs",
+      "status": "done"
+    },
+    {
+      "n": 82,
+      "key": "testing-program-how-to-create-a-new-test-with-the-test-builder-wizard",
+      "class": "B",
+      "tags": [
+        "person",
+        "date"
+      ],
+      "recipe": "tools/recipe-approve-run.mjs (arrange step)",
+      "note": "inverse: Archive test; generator for #81/#83/#84"
+    },
+    {
+      "n": 83,
+      "key": "testing-program-how-to-resolve-a-finding-raised-during-a-test-review",
+      "class": "C",
+      "recipe": "tools/recipe-resolve-finding.mjs",
+      "status": "done",
+      "tags": [
+        "record",
+        "date"
+      ],
+      "note": "inverse: Reopen"
+    },
+    {
+      "n": 84,
+      "key": "testing-program-how-to-review-and-approve-a-submitted-test-run",
+      "class": "C",
+      "recipe": "tools/recipe-approve-run.mjs",
+      "status": "done",
+      "tags": [
+        "person"
+      ],
+      "note": "via #81"
+    },
+    {
+      "n": 85,
+      "key": "testing-program-how-to-upload-a-firm-s-wsp-to-auto-generate-its-compliance-manual",
+      "class": "E",
+      "tags": [
+        "file"
+      ],
+      "note": "needs an entity without a manual",
+      "ai_record": "blocked",
+      "ai_note": "Ingestion cannot run on staging at all: is_prod_env() is false so the backend asks Prefect for ingest-policies-and-procedures/local, and only the production deployment is registered \u2014 the document goes QUEUED->FAILED instantly and Retry repeats it. Blocks humans too. Also needs a Document Library file the agent cannot upload."
+    },
+    {
+      "n": 86,
+      "key": "testing-program-how-to-connect-a-document-library-folder-to-a-test-or-manual",
+      "class": "E",
+      "tags": [
+        "external"
+      ]
+    },
+    {
+      "n": 87,
+      "key": "testing-program-how-to-edit-a-control-s-description-policy-and-procedures-inline",
+      "class": "D",
+      "tags": [
+        "record"
+      ]
+    },
+    {
+      "n": 88,
+      "key": "testing-program-how-to-add-a-new-control-and-link-it-to-risks-and-tests",
+      "class": "B",
+      "tags": [
+        "dataGate:risksAndTests"
+      ]
+    },
+    {
+      "n": 89,
+      "key": "testing-program-how-to-add-a-new-risk-to-the-risk-register",
+      "class": "B",
+      "tags": [
+        "dataGate:control"
+      ]
+    },
+    {
+      "n": 90,
+      "key": "testing-program-how-to-bulk-assign-owners-or-reviewers-to-multiple-tests",
+      "class": "D",
+      "tags": [
+        "person"
+      ]
+    },
+    {
+      "n": 91,
+      "key": "testing-program-how-to-export-a-full-compliance-record-package-for-an-entity",
+      "class": "A",
+      "tags": [
+        "record:entity"
+      ]
+    },
+    {
+      "n": 92,
+      "key": "testing-program-how-to-link-an-existing-test-to-another-entity",
+      "class": "D",
+      "tags": [
+        "record"
+      ]
+    },
+    {
+      "n": 93,
+      "key": "testing-program-how-to-manage-test-categories-rename-re-file-or-delete",
+      "class": "D",
+      "tags": [
+        "record"
+      ],
+      "note": "rename breaks the name it renamed"
+    },
+    {
+      "n": 94,
+      "key": "testing-program-how-to-subscribe-to-the-compliance-calendar-from-an-external-calendar-app",
+      "class": "A"
+    }
+  ]
+}

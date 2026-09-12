@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hadrius Studio Lite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header><img src="icons/wordmark.png" class="wordmark" alt="Hadrius Studio"><span class="lite">LITE</span><span id="bridgeDot" class="dot"></span></header>
+  <nav><button class="tab active" data-view="workflows">Workflows</button><button class="tab" data-view="recording">Recording <span id="stepCount">0</span></button></nav>
+
+  <main id="workflowsView">
+    <section class="toolbar">
+      <input id="search" type="search" placeholder="Search workflows and articles…">
+      <button id="scanBtn" class="secondary">Scan codebase</button>
+    </section>
+    <p id="syncStatus" class="muted">Loading workflows and Pylon articles…</p>
+    <div id="modules"></div>
+  </main>
+
+  <main id="recordingView" hidden>
+    <section id="selectedWorkflow" class="selected" hidden></section>
+    <section class="record-controls">
+      <input id="scriptName" placeholder="Walkthrough name">
+      <div class="environment"><label><input type="radio" name="environment" value="prod" checked> PROD</label><label><input type="radio" name="environment" value="staging"> Staging</label></div>
+      <button id="recordBtn" class="primary">● Record</button>
+      <button id="stopBtn" class="danger" hidden>■ Stop & draft narration</button>
+      <button id="clearBtn" class="secondary">Clear</button>
+    </section>
+    <div id="narrationStatus" class="notice" hidden></div>
+    <section id="steps" class="steps"></section>
+    <section class="footer-actions">
+      <button id="renderBtn" class="primary">Render MP4</button>
+      <button id="downloadBtn" class="secondary">Export script</button>
+      <span id="renderStatus" class="muted"></span>
+    </section>
+  </main>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
