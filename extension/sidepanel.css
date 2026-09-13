@@ -36,4 +36,10 @@
 .manual-links-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;font-size:11px;background:#fbfaff;border-top:1px dashed var(--line)}
 .link-btn{background:none;border:none;color:var(--purple);font-size:11px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
 .link-btn:hover{color:var(--purple2)}
+.workflows-footer{margin-top:16px;padding:12px 4px 6px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sync-timestamp{font-size:11px;color:var(--muted);font-weight:500}
+.refresh-btn{background:transparent;border:1px solid transparent;border-radius:6px;padding:4px;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;transition:color .15s,background-color .15s}
+.refresh-btn:hover{color:var(--purple);background-color:var(--purple-tint)}
+.refresh-btn.refreshing .refresh-icon{animation:spinSync .75s linear infinite}
+@keyframes spinSync{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}
