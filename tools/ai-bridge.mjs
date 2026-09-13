@@ -1459,6 +1459,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && u.pathname === '/workflows/enhance') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { module: modName, workflow } = JSON.parse(body || '{}');
+        if (!workflow?.title) throw new Error('workflow title required');
+        const targetModule = canonicalModule(modName || workflow.module) || modName || 'Testing program';
+
+        const enhancedPlan = await generatePlanFromIdea({
+          userPrompt: `${workflow.title} in ${targetModule}`,
+          previousPlan: {
+            title: workflow.title,
+            module: targetModule,
+            startRoute: workflow.startRoute || workflow.start_route,
+            summary: workflow.purpose || workflow.description,
+            steps: Array.isArray(workflow.steps) ? workflow.steps : []
+          },
+          clarification: 'Inspect the codebase for this specific workflow and formulate an exhaustive, granular step-by-step walkthrough plan referencing exact visible button labels, fields, and dialog controls.'
+        });
+
+        return sendJson(res, 200, { ok: true, plan: enhancedPlan });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && u.pathname === '/workflows/opportunity') {
     let body = '';
     req.on('data', (c) => (body += c));

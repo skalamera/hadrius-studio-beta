@@ -643,6 +643,83 @@
       "module": "People oversight",
       "workflows": [
         {
+          "title": "How to notify an employee about an expired account connection",
+          "purpose": "Send a one-off email reminder prompting an employee to reconnect a broken or expired brokerage account connection from their employee detail page.",
+          "startRoute": "/coreloop/crm/employees",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to People oversight > Employees",
+            "Click on the employee's name to open their employee detail page.",
+            "Select the \"Accounts\" tab to view the employee's connected brokerage accounts.",
+            "Locate the account showing an \"Expired connection\" or \"Connection expired\" status pill.",
+            "Click \"Actions\" to open the actions menu.",
+            "Click \"Send email reminder\" in the dropdown.",
+            "Review the \"Send reminder email?\" confirmation dialog, which explains the employee will be emailed to connect or reconnect their investment accounts.",
+            "Click \"Send\" to dispatch the reminder email.",
+            "Confirm the \"Email sent\" toast confirmation appears, indicating the reminder was delivered to the employee."
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/src/pages/employees/connections/components/component_fix_connections_email_button.tsx",
+            "apps/hadrius-app/src/pages/employees/connections/page_employee_connections.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/details/tab_employee_accounts.tsx",
+            "apps/hadrius-app/src/pages/employees/connections/component_connection_status_pill.tsx"
+          ],
+          "status": "missing"
+        },
+        {
+          "title": "How to send continuing education reminder emails",
+          "purpose": "Send bulk or per-course reminder emails to employees with incomplete continuing education courses from the Continuing education tab.",
+          "startRoute": "/people-oversight/continuing-education",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to People oversight > Continuing education",
+            "Click the \"Courses\" tab to view courses with enrolled employees.",
+            "Either select one or more courses using the row checkboxes, or click the row actions menu (⋮) on a single course and choose \"Send reminder\".",
+            "If courses are selected, click \"Send reminders\" in the bulk actions bar that appears above the table.",
+            "Review the pre-filled reminder email in the modal, including course name(s), overdue course count, and assigned course count.",
+            "Optionally select a different template using the email template selector, or edit the subject and body directly.",
+            "Click \"Send\" (or the modal's send action) to dispatch the reminder emails to all employees with incomplete assignments for the selected course(s)."
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/pages/people-oversight/continuing-education/index.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/tab_continuing_education.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/component_bulk_employee_email_modal.tsx"
+          ],
+          "status": "missing"
+        },
+        {
+          "title": "How an employee completes and signs a certification",
+          "purpose": "An employee opens an assigned certification task, answers all required questions, reviews the Final disclaimer, and submits their electronic signature for review.",
+          "startRoute": "/employee/certifications",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to People oversight > Certifications (employee view: /employee/certifications)",
+            "Click a pending certification task in the list to open it, loading the task detail page at /employee/certification/[taskId]",
+            "Answer each required question in the questionnaire, using the progress sidebar or the footer Previous/Next navigation to move between questions",
+            "Optionally click \"Save as draft\" at any point to save progress and return later",
+            "Scroll to the \"Final disclaimer\" section at the end of the questionnaire",
+            "Check the first attestation checkbox confirming the certification responses are accurate",
+            "Check the second attestation checkbox confirming the electronic signature, with \"Legal first name\" and \"Legal last name\" shown read-only",
+            "Click \"Submit\" (button is disabled until all required questions and both attestation checkboxes are complete)",
+            "Confirm the \"Certification submitted\" toast confirmation appears, or \"Certification auto-approved\" if auto-approval applies",
+            "The page returns to /employee/certifications, where the task now shows as pending review (or approved)"
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/pages/employee/certification/[taskId].tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/index.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/employee_task_header.tsx",
+            "apps/hadrius-app/src/pages/template_library/submission/components/signature_section.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx"
+          ],
+          "status": "missing"
+        },
+        {
           "title": "How to add a new employee manually",
           "purpose": "Add a single employee to the People Directory by entering their name, email, groups, and permissions, then optionally send them an email invite.",
           "startRoute": "/people-oversight/people-directory",
@@ -1208,47 +1285,6 @@
           ]
         },
         {
-          "title": "How to notify employees with expired account connections",
-          "purpose": "On the Accounts page, compliance can bulk-notify every employee whose brokerage connection is broken/expired, or notify one employee individually from the table, prompting them to reconnect.",
-          "startRoute": "/people-oversight/accounts",
-          "trigger": "button \"Notify all expired accounts\"",
-          "priority": "high",
-          "steps": [
-            "Navigate to People oversight > Accounts",
-            "Click \"Notify all expired accounts\" to email every employee with a broken connection.",
-            "Alternatively, for a single account with status \"Connection expired\", click the send icon in that row's Status cell to notify just that employee."
-          ],
-          "evidence": [
-            {
-              "instruction": "Navigate to People oversight > Accounts",
-              "route": "/people-oversight/accounts",
-              "controlLabel": "Accounts",
-              "file": null,
-              "symbol": "SidebarNav",
-              "quote": "Navigate to People oversight > Accounts"
-            },
-            {
-              "instruction": "From the Accounts page header, click \"Notify all expired accounts\" to email every employee with a broken connection.",
-              "route": "/people-oversight/accounts",
-              "controlLabel": "Notify all expired accounts",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_accounts_dashboard.tsx",
-              "symbol": "EmployeeAccountsDashboardTab",
-              "quote": "<PantheonButton variant=\"link\" disabled={brokenCount === 0} onClick={onNotifyBulk} loading={notifyLoading} leftIcon={<Send />}>Notify all expired accounts"
-            },
-            {
-              "instruction": "Alternatively, for a single account with status \"Connection expired\", click the send icon in that row's Status cell to notify just that employee.",
-              "route": "/people-oversight/accounts",
-              "controlLabel": "Notify employee (send icon)",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_accounts_dashboard.tsx",
-              "symbol": "StatusCell",
-              "quote": "<Send className=\"h-4 w-4\" />"
-            }
-          ],
-          "sources": [
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_accounts_dashboard.tsx"
-          ]
-        },
-        {
           "title": "How to log a check manually in the Check Blotter",
           "purpose": "Log a single client check received and forwarded, with automatic duplicate detection before it's recorded.",
           "startRoute": "/people-oversight/check-blotter",
@@ -1350,57 +1386,6 @@
             "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
             "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/dialog_close_compliant.tsx",
             "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/dialog_close_non_compliant.tsx"
-          ]
-        },
-        {
-          "title": "How to send continuing education reminder emails",
-          "purpose": "Bulk-email employees a reminder about overdue or in-progress continuing education courses, using a default or custom template.",
-          "startRoute": "/people-oversight/continuing-education",
-          "trigger": "button \"Send reminders\"",
-          "priority": "high",
-          "steps": [
-            "Navigate to People oversight > Continuing education",
-            "On the Continuing education page's Courses tab, select one or more courses using row checkboxes.",
-            "Click \"Send reminders\" in the bulk actions bar (or \"Send reminder\" from a single course row's action menu).",
-            "In the \"Choose an Email Template\" modal, pick a template or keep the default, then click \"Send Default Reminder\" to email all affected employees."
-          ],
-          "evidence": [
-            {
-              "instruction": "Navigate to People oversight > Continuing education",
-              "route": "/people-oversight/continuing-education",
-              "controlLabel": "Continuing education",
-              "file": null,
-              "symbol": "SidebarNav",
-              "quote": "Navigate to People oversight > Continuing education"
-            },
-            {
-              "instruction": "On the Continuing education page's Courses tab, select one or more courses using row checkboxes.",
-              "route": "/people-oversight/continuing-education",
-              "controlLabel": "Courses",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/tab_continuing_education.tsx",
-              "symbol": "ContinuingEducationTab",
-              "quote": "const TABS = [\"Employees\", \"Courses\"] as const;"
-            },
-            {
-              "instruction": "Click \"Send reminders\" in the bulk actions bar (or \"Send reminder\" from a single course row's action menu).",
-              "route": "/people-oversight/continuing-education",
-              "controlLabel": "Send reminders",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/tab_continuing_education.tsx",
-              "symbol": "BulkCourseActionsBar",
-              "quote": "<Button onClick={onSendReminders} disabled={bulkSelectedCourses.length === 0}><Send className=\"size-4\" />Send reminders</Button>"
-            },
-            {
-              "instruction": "In the \"Choose an Email Template\" modal, pick a template or keep the default, then click \"Send Default Reminder\" to email all affected employees.",
-              "route": "/people-oversight/continuing-education",
-              "controlLabel": "Send Default Reminder",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/component_bulk_employee_email_modal.tsx",
-              "symbol": "BulkEmployeeEmailModal",
-              "quote": "<DialogTitle>Choose an Email Template</DialogTitle> ... <Button onClick={handleSendDefault} loading={loading || isSendingEmail}><Text variant=\"button_text\">Send Default Reminder</Text></Button>"
-            }
-          ],
-          "sources": [
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/tab_continuing_education.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/component_bulk_employee_email_modal.tsx"
           ]
         },
         {

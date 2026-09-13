@@ -164,4 +164,15 @@ button.secondary:disabled{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
 button.dismissWf{color:#991b1b;border-color:#fee2e2;background:#fffafa}
 button.dismissWf:hover{background:#fef2f2;border-color:#fca5a5;color:#7f1d1d}
 
+button.enhancePlan{color:var(--purple2);border-color:#ddd6fe;background:#fcfbfe}
+button.enhancePlan:hover{background:#f5f3ff;border-color:#c4b5fd;color:var(--purple)}
+
+/* ── Enhance Plan Modal ── */
+.enhance-modal-card{max-width:440px;max-height:85vh;display:flex;flex-direction:column}
+.enhance-modal-badge{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.enhance-content-state{display:flex;flex-direction:column;overflow:hidden;flex:1}
+.enhance-steps-container{overflow-y:auto;max-height:48vh;padding:4px 2px 8px}
+.enhance-modal-footer{display:flex;align-items:center;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.enhance-modal-footer button{flex:1}
+
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}

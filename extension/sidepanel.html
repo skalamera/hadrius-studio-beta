@@ -181,6 +181,42 @@
     </div>
   </div>
 
+  <!-- Enhance Plan Modal -->
+  <div id="enhancePlanModal" class="modal-backdrop" hidden>
+    <div class="modal-card enhance-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="enhance-modal-badge">
+            <span class="ai-sparkle">✨</span>
+            <strong id="enhanceModalModule" class="plan-module-name"></strong>
+            <span class="plan-pill">Enhanced Plan Preview</span>
+          </div>
+          <h3 id="enhanceModalTitle" class="plan-card-title"></h3>
+        </div>
+        <button id="closeEnhanceModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
+      </div>
+
+      <div id="enhanceLoadingState" class="ai-plan-loading-view" style="padding: 24px 16px;">
+        <span class="ai-spinner">⏳</span>
+        <div class="ai-loading-text">
+          <strong>Generating detailed, grounded plan with AI…</strong>
+          <span class="muted small">Inspecting routes, forms, and page components via MCP</span>
+        </div>
+      </div>
+
+      <div id="enhanceContentState" class="enhance-content-state" hidden>
+        <p id="enhanceModalSummary" class="plan-card-subtitle" style="margin: 8px 0 12px;"></p>
+        <div class="enhance-steps-container">
+          <ul id="enhanceModalStepsList" class="plan-steps-list"></ul>
+        </div>
+        <div class="enhance-modal-footer">
+          <button id="enhanceAcceptBtn" class="primary" type="button">✓ Accept & Replace Plan</button>
+          <button id="enhanceDenyBtn" class="secondary" type="button">✕ Deny</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Floating camera button for capturing UI screenshot -->
   <button id="floatingCameraBtn" class="floating-camera-btn" type="button" title="Capture screenshot of extension UI (Copies to clipboard & downloads) — Alt+S">
     <svg viewBox="0 0 24 24">

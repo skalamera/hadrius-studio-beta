@@ -322,9 +322,10 @@ function renderModules() {
 
     for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary enhancePlan" title="Use AI to generate a more detailed, grounded step-by-step plan">✨ Enhance plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
       item.querySelector('.plan').onclick = () => chooseWorkflow(group.module, workflow, false);
+      item.querySelector('.enhancePlan').onclick = () => openEnhancePlan(group.module, workflow);
       item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
       item.querySelector('.dismissWf').onclick = () => dismissWorkflow(workflow.title, group.module);
       body.appendChild(item);
@@ -417,6 +418,79 @@ async function chooseWorkflow(module, workflow, start=true) {
   await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:workflow.title,module,workflowPlan:steps,sourceFiles:workflow.sources || []}});
   switchView('recording');
   if (start) await startRecording();
+}
+
+let activeEnhancingWorkflow = null; // { module, originalWorkflow, enhancedPlan }
+
+async function openEnhancePlan(moduleName, workflow) {
+  activeEnhancingWorkflow = { module: moduleName, originalWorkflow: workflow, enhancedPlan: null };
+
+  const modal = $('#enhancePlanModal');
+  modal.hidden = false;
+  $('#enhanceModalModule').textContent = moduleName;
+  $('#enhanceModalTitle').textContent = workflow.title;
+  $('#enhanceModalSummary').textContent = workflow.purpose || '';
+  $('#enhanceLoadingState').hidden = false;
+  $('#enhanceContentState').hidden = true;
+
+  try {
+    const res = await api('/workflows/enhance', {
+      method: 'POST',
+      body: JSON.stringify({ module: moduleName, workflow })
+    });
+    if (!res?.ok || !res.plan) throw new Error(res?.error || 'Enhance plan failed');
+
+    activeEnhancingWorkflow.enhancedPlan = res.plan;
+    $('#enhanceLoadingState').hidden = true;
+    $('#enhanceContentState').hidden = false;
+
+    $('#enhanceModalStepsList').innerHTML = (res.plan.steps || []).map((s, i) => `
+      <li class="plan-step-item">
+        <span class="plan-step-num">${i + 1}.</span>
+        <span class="plan-step-desc">${formatPlanStep(s)}</span>
+      </li>
+    `).join('');
+  } catch (err) {
+    alert(`Could not enhance plan: ${err.message}`);
+    closeEnhancePlanModal();
+  }
+}
+
+function closeEnhancePlanModal() {
+  $('#enhancePlanModal').hidden = true;
+  activeEnhancingWorkflow = null;
+}
+
+async function acceptEnhancePlan() {
+  if (!activeEnhancingWorkflow?.enhancedPlan) return;
+  const { module: modName, originalWorkflow, enhancedPlan } = activeEnhancingWorkflow;
+
+  try {
+    const res = await api('/workflows/opportunity', {
+      method: 'POST',
+      body: JSON.stringify({ module: modName, workflow: enhancedPlan })
+    });
+    if (!res?.ok) throw new Error(res?.error || 'Failed to update workflow plan');
+
+    originalWorkflow.steps = enhancedPlan.steps;
+    if (enhancedPlan.summary) originalWorkflow.purpose = enhancedPlan.summary;
+    if (enhancedPlan.sources) originalWorkflow.sources = enhancedPlan.sources;
+
+    if (selected && selected.title === originalWorkflow.title) {
+      selected.steps = enhancedPlan.steps;
+      renderPlanCard(modName, originalWorkflow, enhancedPlan.steps);
+      send({
+        type: 'PANEL_UPDATE_SCRIPT',
+        patch: { workflowPlan: enhancedPlan.steps, sourceFiles: enhancedPlan.sources || [] }
+      });
+    }
+
+    closeEnhancePlanModal();
+    alert(`✓ Plan for "${originalWorkflow.title}" has been enhanced and saved!`);
+    renderModules();
+  } catch (err) {
+    alert(`Failed to save enhanced plan: ${err.message}`);
+  }
 }
 
 let activeAiPlan = null; // { userPrompt, plan, previousPlan }
@@ -1240,6 +1314,14 @@ document.addEventListener('click', (e) => {
     toggleAiAcceptMenu(false);
   }
 });
+
+// Enhance Plan Modal
+$('#closeEnhanceModalBtn').onclick = closeEnhancePlanModal;
+$('#enhanceDenyBtn').onclick = closeEnhancePlanModal;
+$('#enhanceAcceptBtn').onclick = acceptEnhancePlan;
+$('#enhancePlanModal').onclick = (e) => {
+  if (e.target.id === 'enhancePlanModal') closeEnhancePlanModal();
+};
 
 const fileInput = $('#scriptFileInput');
 if (fileInput) {
