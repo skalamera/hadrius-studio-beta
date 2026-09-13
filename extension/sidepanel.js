@@ -409,19 +409,106 @@ async function stopAndNarrate() {
   await loadState();
 }
 
+function describe(step) {
+  const t = step.target;
+  if (step.action === 'navigate') {
+    try { return new URL(step.value || step.url).pathname; } catch { return step.value || step.url || 'navigate'; }
+  }
+  if (step.action === 'press') return step.key || 'key press';
+  const isDate = t?.datePicker || (t?.role === 'button' && t?.label && /\b(date|due|deadline)\b/i.test(t.label));
+  const name = (isDate && t?.label) ? `${t.label} (date picker)` : (t?.label || t?.name || t?.placeholder || t?.text || t?.css || step.value || '');
+  if (step.action === 'type') return `"${step.value || ''}" → ${t?.label || t?.placeholder || name || 'input'}`;
+  return `${t?.role ? t.role + ' ' : ''}"${name || step.action}"${t?.inDialog ? ' (in dialog)' : ''}`;
+}
+
+let openStepIndex = null;
+
 function renderSteps() {
   const root = $('#steps'); root.innerHTML = '';
-  if (!state.steps.length) { root.innerHTML = '<div class="selected muted">Choose a workflow, click Record, and perform it in Hadrius. Clicks, typing, navigation, and screenshots are captured live.</div>'; return; }
-  state.steps.forEach((step,i) => {
-    const target = step.target?.label || step.target?.name || step.target?.text || step.target?.placeholder || step.key || '';
-    const card = document.createElement('article'); card.className='step';
-    card.innerHTML = `<div class="step-head"><span class="step-no">${i+1}</span><span class="step-action">${esc(step.action)} ${esc(target)}</span><span class="step-route">${esc(step.route || '')}</span></div><div class="step-grid"><textarea class="narration" placeholder="Narration">${esc(step.narration || '')}</textarea><input class="caption" value="${esc(step.caption || '')}" placeholder="On-screen caption"></div><div class="step-tools"><button class="secondary up" ${i===0?'disabled':''}>↑</button><button class="secondary down" ${i===state.steps.length-1?'disabled':''}>↓</button><button class="secondary del">Delete</button></div>`;
-    const update = (patch) => { Object.assign(step,patch); send({type:'PANEL_UPDATE_STEP',index:step.index,patch}); };
-    card.querySelector('.narration').onchange = (e) => update({narration:e.target.value});
-    card.querySelector('.caption').onchange = (e) => update({caption:e.target.value});
-    card.querySelector('.up').onclick = async()=>{await send({type:'PANEL_MOVE_STEP',index:step.index,dir:-1});await loadState();};
-    card.querySelector('.down').onclick = async()=>{await send({type:'PANEL_MOVE_STEP',index:step.index,dir:1});await loadState();};
-    card.querySelector('.del').onclick = async()=>{await send({type:'PANEL_DELETE_STEP',index:step.index});await loadState();};
+  if (!state.steps.length) {
+    root.innerHTML = '<div class="selected muted">Choose a workflow, click Record, or load a saved script to view and edit steps. Clicks, typing, navigation, and screenshots are captured live.</div>';
+    return;
+  }
+
+  const recId = state.recordingId || state.script?.recording?.id || null;
+
+  state.steps.forEach((step, i) => {
+    const card = document.createElement('article');
+    const isOpen = openStepIndex === i;
+    card.className = 'step' + (isOpen ? ' open' : '') + (step.narration ? ' has-narration' : '');
+
+    const targetDesc = describe(step);
+    const actionClass = (step.action || 'click').toLowerCase();
+
+    let thumbUrl = step.thumb || null;
+    if (!thumbUrl && recId && step.media?.pre) {
+      thumbUrl = `http://127.0.0.1:8787/capture/${recId}/slide/${step.media.pre}`;
+    }
+
+    card.innerHTML = `
+      <div class="row">
+        <span class="idx">${i + 1}</span>
+        <span class="action ${actionClass}">${esc(step.action)}</span>
+        <span class="target" title="${esc(targetDesc)}">${esc(targetDesc)}</span>
+        ${step.narration ? '<span class="step-narration-icon" title="Has narration">🗣</span>' : ''}
+        <span class="tools">
+          <button class="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="down" title="Move down" ${i === state.steps.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="del" title="Delete step">✕</button>
+        </span>
+      </div>
+      <div class="detail" ${isOpen ? '' : 'hidden'}>
+        ${step.route ? `<div class="step-route-badge">Route: ${esc(step.route)}</div>` : ''}
+        ${thumbUrl ? `<img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" />` : ''}
+        <label class="step-field-label">
+          <span>Narration</span>
+          <textarea class="narration" placeholder="What the voice says while this step happens">${esc(step.narration || '')}</textarea>
+        </label>
+        <label class="step-field-label">
+          <span>Caption</span>
+          <input class="caption" value="${esc(step.caption || '')}" placeholder="Defaults to narration" />
+        </label>
+      </div>
+    `;
+
+    card.querySelector('.row').onclick = (e) => {
+      if (e.target.closest('.tools')) return;
+      openStepIndex = (openStepIndex === i) ? null : i;
+      renderSteps();
+    };
+
+    const update = (patch) => {
+      Object.assign(step, patch);
+      send({ type: 'PANEL_UPDATE_STEP', index: step.index, patch });
+    };
+
+    card.querySelector('.narration').onchange = (e) => update({ narration: e.target.value });
+    card.querySelector('.caption').onchange = (e) => update({ caption: e.target.value });
+
+    card.querySelector('.up').onclick = async (e) => {
+      e.stopPropagation();
+      await send({ type: 'PANEL_MOVE_STEP', index: step.index, dir: -1 });
+      if (openStepIndex === i) openStepIndex = i - 1;
+      else if (openStepIndex === i - 1) openStepIndex = i;
+      await loadState();
+    };
+
+    card.querySelector('.down').onclick = async (e) => {
+      e.stopPropagation();
+      await send({ type: 'PANEL_MOVE_STEP', index: step.index, dir: 1 });
+      if (openStepIndex === i) openStepIndex = i + 1;
+      else if (openStepIndex === i + 1) openStepIndex = i;
+      await loadState();
+    };
+
+    card.querySelector('.del').onclick = async (e) => {
+      e.stopPropagation();
+      await send({ type: 'PANEL_DELETE_STEP', index: step.index });
+      if (openStepIndex === i) openStepIndex = null;
+      else if (openStepIndex > i) openStepIndex--;
+      await loadState();
+    };
+
     root.appendChild(card);
   });
 }

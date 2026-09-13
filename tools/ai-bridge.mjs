@@ -935,6 +935,18 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return sendJson(res, 400, { ok: false, error: String(e?.message || e) }); }
   }
 
+  const getCaptureMatch = req.method === 'GET' && u.pathname.match(/^\/capture\/([^/]+)\/slide\/([^/]+)$/);
+  if (getCaptureMatch) {
+    const recordingId = getCaptureMatch[1].replace(/[^\w-]+/g, '');
+    const filename = path.basename(getCaptureMatch[2]);
+    const filePath = path.join(REPO_ROOT, 'out', '_recordings', recordingId, filename);
+    if (fs.existsSync(filePath)) {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
+      return fs.createReadStream(filePath).pipe(res);
+    }
+    return sendJson(res, 404, { ok: false, error: 'slide not found' });
+  }
+
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
