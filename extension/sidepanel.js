@@ -593,8 +593,7 @@ function formatHumanTitle(str) {
 }
 
 let savedScripts = [];
-let savedOpenModules = new Set();
-let savedModulesInitialized = false;
+let savedOpenModules = new Set(); // Collapsed by default
 
 const SAVED_MODULE_ORDER = [
   'Testing program',
@@ -672,14 +671,6 @@ function renderSavedScripts() {
     const mod = resolveScriptModule(it);
     if (!byModule.has(mod)) byModule.set(mod, []);
     byModule.get(mod).push(it);
-  }
-
-  // Initialize all modules as open on first load
-  if (!savedModulesInitialized && savedScripts.length) {
-    for (const it of savedScripts) {
-      savedOpenModules.add(resolveScriptModule(it));
-    }
-    savedModulesInitialized = true;
   }
 
   // Sort modules by canonical order
