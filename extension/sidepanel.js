@@ -702,8 +702,8 @@ function renderSavedScripts() {
     const isKnownModule = SAVED_MODULE_ORDER.includes(mod);
     const iconHtml = isKnownModule ? `<img class="module-icon" src="${moduleIconPath(mod)}" alt="" />` : '';
 
-    const header = document.createElement('header');
-    header.className = 'saved-module-header';
+    const header = document.createElement('div');
+    header.className = 'saved-module-header' + (isOpen ? '' : ' collapsed');
     header.innerHTML = `
       <span class="saved-caret">${isOpen ? '▾' : '▸'}</span>
       ${iconHtml}
