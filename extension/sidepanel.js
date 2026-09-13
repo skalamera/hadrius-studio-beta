@@ -153,6 +153,7 @@ function renderModules() {
       body.appendChild(item);
     }
     const moduleBody = section.querySelector('.module-body');
+    moduleBody.hidden = !q;
     section.querySelector('.module-head').onclick = () => moduleBody.hidden = !moduleBody.hidden;
     $('#modules').appendChild(section);
   }

@@ -32,16 +32,22 @@ chrome.runtime.onInstalled.addListener(() => chrome.sidePanel.setPanelBehavior({
 // no second staging visit. One capture per step, reused for both the panel's thumbnail (existing
 // behavior) and the full-res slide asset (new), so recording stays within Chrome's ~2/s
 // captureVisibleTab rate limit.
-async function captureStep(step) {
+async function captureStep(step, attempt = 0) {
   try {
     const tab = await chrome.tabs.get(state.tabId);
-    if (!tab?.active) return; // captureVisibleTab only works for the active tab of a window
+    if (!tab) return;
     const png = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
     step.thumb = png;
-    if (!state.recordingId) state.recordingId = crypto.randomUUID(); // defensive: covers a recording started before this existed
-    bridge('POST', `/capture/${encodeURIComponent(state.recordingId)}/slide`, { captureId: step.captureId, dataUrl: png })
-      .catch((e) => { step.captureError = String(e?.message || e); });
-  } catch (e) { step.thumbError = String(e?.message || e); }
+    if (!state.recordingId) state.recordingId = crypto.randomUUID();
+    await bridge('POST', `/capture/${encodeURIComponent(state.recordingId)}/slide`, { captureId: step.captureId, dataUrl: png });
+  } catch (e) {
+    step.thumbError = String(e?.message || e);
+    // Retry up to 3 times to handle Chrome capture rate limit and page transitions
+    if (attempt < 3 && state.recording) {
+      await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+      return captureStep(step, attempt + 1);
+    }
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {

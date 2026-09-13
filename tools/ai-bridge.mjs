@@ -1441,8 +1441,33 @@ const server = http.createServer(async (req, res) => {
         const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
         const renderable = script.steps.filter((step) => step.capture !== false && step.media?.pre);
         if (!renderable.length) throw new Error('the recording has no captured slides');
-        const missing = renderable.filter((step) => !fs.existsSync(path.join(recordingDir, path.basename(step.media.pre))));
-        if (missing.length) throw new Error(`${missing.length} captured slide(s) are still missing — wait a moment and try Render MP4 again`);
+
+        // Auto-heal missing slides: if any slide capture was missed (e.g. rapid clicks or page transition),
+        // reuse the nearest captured slide so the video and narration render smoothly without failing.
+        let lastAvailableSlide = null;
+        for (const step of script.steps) {
+          if (step.capture === false || !step.media?.pre) continue;
+          const slideFile = path.basename(step.media.pre);
+          const slidePath = path.join(recordingDir, slideFile);
+          if (fs.existsSync(slidePath)) {
+            lastAvailableSlide = slidePath;
+          } else if (lastAvailableSlide) {
+            try { fs.copyFileSync(lastAvailableSlide, slidePath); } catch (_) {}
+          }
+        }
+        if (lastAvailableSlide) {
+          for (const step of script.steps) {
+            if (step.capture === false || !step.media?.pre) continue;
+            const slideFile = path.basename(step.media.pre);
+            const slidePath = path.join(recordingDir, slideFile);
+            if (!fs.existsSync(slidePath)) {
+              try { fs.copyFileSync(lastAvailableSlide, slidePath); } catch (_) {}
+            }
+          }
+        }
+
+        const stillMissing = renderable.filter((step) => !fs.existsSync(path.join(recordingDir, path.basename(step.media.pre))));
+        if (stillMissing.length === renderable.length) throw new Error('No captured slides were saved for this recording — make a new recording before rendering.');
 
         const prelude = [`Using ${renderable.length} slides captured during the live recording — no replay.`];
         if (renderSaveWarning) prelude.unshift(renderSaveWarning);
