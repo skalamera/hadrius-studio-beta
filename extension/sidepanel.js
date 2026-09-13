@@ -355,6 +355,17 @@ async function chooseWorkflow(module, workflow, start=true) {
   if (start) await startRecording();
 }
 
+let isRenderingActive = false;
+
+function updateRenderButtons() {
+  const hasSteps = (state.steps?.length || 0) > 0;
+  const disableRender = !hasSteps || isRenderingActive;
+  $('#renderBtn').disabled = disableRender;
+  $('#renderBothBtn').disabled = disableRender;
+  $('#downloadBtn').disabled = !hasSteps;
+  if ($('#clearBtn')) $('#clearBtn').disabled = !hasSteps && !($('#scriptName').value || '').trim();
+}
+
 function updateRecordingButtons() {
   const isRec = !!state.recording;
   $('#recordBtn').hidden = isRec;
@@ -362,6 +373,7 @@ function updateRecordingButtons() {
   $('#cancelRecordBtn').hidden = !isRec;
   $('#clearBtn').hidden = isRec;
   updateRecordingBanner();
+  updateRenderButtons();
 }
 
 function updateRecordingBanner() {
@@ -646,18 +658,18 @@ function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,
 
 async function renderVideo(mode = 'video') {
   if (!state.steps.length) return alert('Record at least one step first.');
+  isRenderingActive = true;
+  updateRenderButtons();
   $('#renderStatusRow').hidden = false;
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
   $('#renderStatus').classList.remove('ready');
   $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : 'Starting render…';
-  $('#renderBtn').disabled = true;
-  $('#renderBothBtn').disabled = true;
 
   const result = await send({ type: 'PANEL_RENDER', script: toScript(), mode });
   if (!result?.ok) {
-    $('#renderBtn').disabled = false;
-    $('#renderBothBtn').disabled = false;
+    isRenderingActive = false;
+    updateRenderButtons();
     $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = result?.error || 'Render failed';
     return;
@@ -675,6 +687,8 @@ async function checkRender() {
     $('#pylonArticleLink').hidden = true;
     $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = '';
+    isRenderingActive = false;
+    updateRenderButtons();
     return;
   }
 
@@ -688,17 +702,18 @@ async function checkRender() {
     $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = phaseNames[result.phase] || result.phase || 'Rendering…';
     $('#renderLinks').hidden = true;
-    $('#renderBtn').disabled = true;
-    $('#renderBothBtn').disabled = true;
+    isRenderingActive = true;
+    updateRenderButtons();
     return;
   }
 
   // Not running
+  isRenderingActive = false;
+  updateRenderButtons();
+
   if (result.error) {
     $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = `Failed: ${result.error}`;
-    $('#renderBtn').disabled = false;
-    $('#renderBothBtn').disabled = false;
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
     clearInterval(renderTimer);
@@ -713,14 +728,14 @@ async function checkRender() {
     $('#renderStatus').textContent = '✓ MP4 ready · Drafting Pylon KB article…';
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
-    $('#renderBtn').disabled = true;
-    $('#renderBothBtn').disabled = true;
+    isRenderingActive = true;
+    updateRenderButtons();
     return;
   }
 
   clearInterval(renderTimer);
-  $('#renderBtn').disabled = false;
-  $('#renderBothBtn').disabled = false;
+  isRenderingActive = false;
+  updateRenderButtons();
   $('#renderLinks').hidden = false;
 
   if (mode === 'both' && pylon?.status === 'done') {
@@ -746,6 +761,7 @@ function exportScript(){const a=document.createElement('a');a.href=URL.createObj
 async function resetRecordingSession() {
   clearInterval(renderTimer);
   renderTimer = null;
+  isRenderingActive = false;
   selected = null;
   $('#selectedWorkflow').hidden = true;
   $('#selectedWorkflow').innerHTML = '';
@@ -757,8 +773,6 @@ async function resetRecordingSession() {
   $('#pylonArticleLink').hidden = true;
   $('#renderStatus').classList.remove('ready');
   $('#renderStatus').textContent = '';
-  $('#renderBtn').disabled = false;
-  $('#renderBothBtn').disabled = false;
   await send({ type: 'PANEL_CLEAR' });
   await send({ type: 'PANEL_RENDER_CLEAR' });
   await loadState();
