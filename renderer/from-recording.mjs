@@ -24,6 +24,7 @@ fs.mkdirSync(path.join(outDir, 'slides'), { recursive: true });
 
 const report = {
   name: script.name,
+  title: script.title || script.name,
   startedAt: script.recording.recordedAt || script.createdAt || new Date().toISOString(),
   slides: [],
   healed: [],

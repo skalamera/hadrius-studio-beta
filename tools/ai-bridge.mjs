@@ -719,8 +719,19 @@ Format your response in this EXACT structure (the first line must be a JSON arra
   return text.trim();
 }
 
+function formatHumanTitle(str) {
+  if (!str) return 'Walkthrough';
+  let t = String(str).trim();
+  if (t.includes('-') && (!t.includes(' ') || t.startsWith('How-to-') || t.startsWith('how-to-'))) {
+    t = t.replace(/^How-to-/i, 'How to ').replace(/-/g, ' ');
+  } else {
+    t = t.replace(/^How-to-/i, 'How to ');
+  }
+  return t.replace(/\s+/g, ' ').trim();
+}
+
 function titleCaseFromScriptName(name) {
-  return String(name).replace(/^How-to-/i, 'How to ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+  return formatHumanTitle(name);
 }
 
 async function publishRenderToPylon(name, outDir) {
@@ -737,7 +748,8 @@ async function publishRenderToPylon(name, outDir) {
   if (fs.existsSync(scriptPath)) {
     try { scriptObj = JSON.parse(fs.readFileSync(scriptPath, 'utf8')); } catch (_) {}
   }
-  const title = scriptObj?.name || coverageTitle || titleCaseFromScriptName(name);
+  const rawTitle = scriptObj?.title || scriptObj?.name || coverageTitle || name;
+  const title = formatHumanTitle(rawTitle);
   const module = scriptObj?.module || coverageModule;
   const sourceFile = scriptObj?.sourceFiles?.[0] || coverageSource;
   const narratedSlides = slides.filter((s) => (s.narration || s.caption || '').trim()).map((s) => ({ slide: s.slide, text: (s.narration || s.caption).trim() }));
@@ -1381,7 +1393,10 @@ const server = http.createServer(async (req, res) => {
         if (!script.environment.startUrl && recipe) await backfillRecipeStartUrl(script);
         if (!script.environment.startUrl && !recipe) throw new Error('script has no start URL — re-record so the first step captures the page it was on');
         if (render.running) throw new Error('a render is already running');
-        const name = safeName(script.name);
+        const rawTitle = (script.title || script.name || 'Untitled walkthrough').trim();
+        const humanTitle = formatHumanTitle(rawTitle);
+        const name = safeName(humanTitle);
+        script.title = humanTitle;
         script.name = name;
         const scriptPath = path.join(REPO_ROOT, 'scripts', `${name}.script.json`);
         const outDir = path.join(REPO_ROOT, 'out', name);

@@ -165,7 +165,7 @@ subprocess.run(['ffmpeg', '-y', *inputs, '-filter_complex', ';'.join(filt), '-ma
 # ---------- 5. stitch intro + title card + content + outro clips ----------
 title_clip = tmp / 'title_card.mp4'
 try:
-    generate_title_video(rep['name'], title_clip, music_path=MUSIC if MUSIC.exists() else None)
+    generate_title_video(rep.get('title') or rep['name'], title_clip, music_path=MUSIC if MUSIC.exists() else None)
 except Exception as e:
     print(f"warning: could not generate title card: {e}")
 
@@ -229,7 +229,7 @@ full_duration = sum(dur(str(p)) for p in parts)
 web = out / 'interactive'; (web / 'slides').mkdir(parents=True, exist_ok=True)
 for s in slides: shutil.copy(out / 'slides' / s['file'], web / 'slides' / s['file'])
 data = [{'file': f"slides/{s['file']}", 'caption': s.get('caption') or s.get('narration') or '', 'target': s.get('target'), 'vw': s['viewport']['width'], 'vh': s['viewport']['height']} for s in slides]
-(web / 'index.html').write_text(f"""<!doctype html><meta charset=utf-8><title>{html.escape(rep['name'])}</title>
+(web / 'index.html').write_text(f"""<!doctype html><meta charset=utf-8><title>{html.escape(rep.get('title') or rep['name'])}</title>
 <style>body{{margin:0;background:#fafafa;color:#18181b;font:14px/1.4 "Satoshi",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}}#stage{{position:relative;max-width:1200px;margin:18px auto 14px;aspect-ratio:16/9;background:#18181b;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.12);border:1px solid #e4e4e7}}
 #stage img{{width:100%;height:100%;display:block}}.hot{{position:absolute;border:3px solid #4c3dab;border-radius:8px;box-shadow:0 0 0 9999px rgba(39,30,90,.3),0 0 16px rgba(76,61,171,.85);cursor:pointer;animation:p 1.3s infinite}}
 @keyframes p{{50%{{box-shadow:0 0 0 9999px rgba(39,30,90,.3),0 0 28px rgba(76,61,171,1)}}}}#cap{{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(39,30,90,.92);backdrop-filter:blur(6px);color:#fff;padding:10px 20px;border-radius:12px;max-width:80%;font-size:16px;box-shadow:0 4px 16px rgba(0,0,0,.2);border:1px solid rgba(223,219,249,.25)}}
