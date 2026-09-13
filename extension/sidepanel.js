@@ -219,9 +219,16 @@ async function cancelRecording() {
 
 async function loadState() {
   state = await send({type:'PANEL_GET_STATE'});
-  $('#stepCount').textContent = state.steps?.length || 0;
+  const count = state.steps?.length || 0;
+  if (count > 0) {
+    $('#stepCount').textContent = count;
+    $('#stepCount').hidden = false;
+  } else {
+    $('#stepCount').textContent = '';
+    $('#stepCount').hidden = true;
+  }
   updateRecordingButtons();
-  if (!state.steps?.length) {
+  if (!count) {
     $('#narrationStatus').hidden = true;
     $('#narrationStatus').textContent = '';
   }
