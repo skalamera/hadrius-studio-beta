@@ -1472,6 +1472,26 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ ok: true, ...render, log: render.log.slice(-40) }));
   }
 
+  if (req.method === 'POST' && (req.url === '/render/clear' || req.url === '/render/dismiss')) {
+    Object.assign(render, {
+      running: false,
+      name: null,
+      mode: 'both',
+      phase: 'idle',
+      log: [],
+      outDir: null,
+      video: null,
+      interactive: null,
+      report: null,
+      error: null,
+      startedAt: null,
+      finishedAt: null,
+      pylon: null,
+    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ ok: true }));
+  }
+
   if (req.method === 'POST' && req.url === '/render/open') {
     // Reveal the finished output in Finder / file manager.
     const target = render.outDir && fs.existsSync(render.outDir) ? render.outDir : null;

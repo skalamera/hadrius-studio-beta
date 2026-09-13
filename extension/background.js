@@ -91,7 +91,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         await persist(); broadcast({ type: 'KB_STEPS_UPDATED', steps: state.steps }); return reply({ ok: true });
       }
       case 'PANEL_UPDATE_SCRIPT': Object.assign(state.script, msg.patch); await persist(); return reply({ ok: true });
-      case 'PANEL_CLEAR': state.steps = []; state.pendingNote = null; await persist(); broadcast({ type: 'KB_STEPS_UPDATED', steps: [] }); return reply({ ok: true });
+      case 'PANEL_CLEAR': {
+        state.steps = [];
+        state.pendingNote = null;
+        state.script = { name: '' };
+        state.recordingId = null;
+        await persist();
+        broadcast({ type: 'KB_STEPS_UPDATED', steps: [] });
+        return reply({ ok: true });
+      }
       case 'PANEL_GET_SETTINGS': return reply(await getSettings());
       case 'PANEL_SET_SETTINGS': await chrome.storage.local.set({ kbSettings: { ...(await getSettings()), ...msg.patch } }); return reply({ ok: true });
       case 'PANEL_AI_NARRATE': {
@@ -108,6 +116,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       case 'PANEL_RENDER_OPEN': {
         try { return reply(await bridge('POST', '/render/open')); }
+        catch (e) { return reply({ ok: false, error: String(e?.message || e) }); }
+      }
+      case 'PANEL_RENDER_CLEAR': {
+        try { return reply(await bridge('POST', '/render/clear')); }
         catch (e) { return reply({ ok: false, error: String(e?.message || e) }); }
       }
       case 'PANEL_HIGHLIGHT': {

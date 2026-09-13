@@ -114,7 +114,11 @@ async function loadState() {
   $('#stepCount').textContent = state.steps.length;
   $('#recordBtn').hidden = state.recording;
   $('#stopBtn').hidden = !state.recording;
-  if (!$('#scriptName').value) $('#scriptName').value = state.script?.name || '';
+  if (!state.steps.length) {
+    $('#narrationStatus').hidden = true;
+    $('#narrationStatus').textContent = '';
+  }
+  $('#scriptName').value = state.script?.name || '';
   renderSteps();
 }
 
@@ -221,7 +225,13 @@ async function renderVideo(mode = 'video') {
 
 async function checkRender() {
   const result = await send({ type: 'PANEL_RENDER_STATUS' });
-  if (!result?.ok || result.phase === 'idle') return;
+  if (!result?.ok || result.phase === 'idle') {
+    $('#renderStatusRow').hidden = true;
+    $('#renderLinks').hidden = true;
+    $('#pylonArticleLink').hidden = true;
+    $('#renderStatus').textContent = '';
+    return;
+  }
 
   $('#renderStatusRow').hidden = false;
 
@@ -282,11 +292,31 @@ async function checkRender() {
 
 function exportScript(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(toScript(),null,2)],{type:'application/json'}));a.download=`${slug(toScript().name)||'walkthrough'}.script.json`;a.click();URL.revokeObjectURL(a.href);}
 
+async function resetRecordingSession() {
+  clearInterval(renderTimer);
+  renderTimer = null;
+  selected = null;
+  $('#selectedWorkflow').hidden = true;
+  $('#selectedWorkflow').innerHTML = '';
+  $('#scriptName').value = '';
+  $('#narrationStatus').hidden = true;
+  $('#narrationStatus').textContent = '';
+  $('#renderStatusRow').hidden = true;
+  $('#renderLinks').hidden = true;
+  $('#pylonArticleLink').hidden = true;
+  $('#renderStatus').textContent = '';
+  $('#renderBtn').disabled = false;
+  $('#renderBothBtn').disabled = false;
+  await send({ type: 'PANEL_CLEAR' });
+  await send({ type: 'PANEL_RENDER_CLEAR' });
+  await loadState();
+}
+
 $('#search').oninput=renderModules;
 $('#scanBtn').onclick=async()=>{if(!confirm('Run a new Gemini codebase scan through the Hadrius MCP? This can take several minutes.'))return;$('#scanBtn').disabled=true;try{await api('/workflows',{method:'POST'});$('#syncStatus').textContent='Gemini is scanning the Hadrius codebase through the MCP. Only source-evidenced plans will be saved.';pollScan();}catch(e){alert(e.message);$('#scanBtn').disabled=false;}};
 async function pollScan(){try{const result=await api('/workflows');catalog=result;if(result.scan?.running)return setTimeout(pollScan,2500);$('#scanBtn').disabled=false;await refreshAll();if(result.scan?.error)alert(result.scan.error);}catch(e){$('#scanBtn').disabled=false;}}
 $('#recordBtn').onclick=startRecording;$('#stopBtn').onclick=stopAndNarrate;
-$('#clearBtn').onclick=async()=>{if(confirm('Clear this recording?')){await send({type:'PANEL_CLEAR'});selected=null;$('#selectedWorkflow').hidden=true;await loadState();}};
+$('#clearBtn').onclick=async()=>{if(confirm('Clear this recording?')){await resetRecordingSession();}};
 $('#scriptName').onchange=(e)=>send({type:'PANEL_UPDATE_SCRIPT',patch:{name:e.target.value}});
 $('#renderBtn').onclick = () => renderVideo('video');
 $('#renderBothBtn').onclick = () => renderVideo('both');
@@ -303,18 +333,7 @@ $('#pylonArticleLink').onclick = (e) => {
   if (url) chrome.tabs.create({ url });
 };
 
-$('#dismissResetBtn').onclick = async () => {
-  await send({ type: 'PANEL_CLEAR' });
-  selected = null;
-  $('#selectedWorkflow').hidden = true;
-  $('#selectedWorkflow').innerHTML = '';
-  $('#scriptName').value = '';
-  $('#renderStatusRow').hidden = true;
-  $('#renderLinks').hidden = true;
-  $('#pylonArticleLink').hidden = true;
-  clearInterval(renderTimer);
-  await loadState();
-};
+$('#dismissResetBtn').onclick = resetRecordingSession;
 
 chrome.runtime.onMessage.addListener((message)=>{if(message.type==='KB_STEPS_UPDATED')loadState();});
 
