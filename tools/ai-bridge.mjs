@@ -719,8 +719,15 @@ async function publishRenderToPylon(name, outDir) {
   const slides = report.slides || [];
   if (!slides.length) throw new Error('no slides to build an article from');
 
-  const { title: coverageTitle, sourceFile, module } = await findCoverageInfo(name);
-  const title = coverageTitle || titleCaseFromScriptName(name);
+  const { title: coverageTitle, sourceFile: coverageSource, module: coverageModule } = await findCoverageInfo(name);
+  let scriptObj = null;
+  const scriptPath = path.join(REPO_ROOT, 'scripts', `${name}.script.json`);
+  if (fs.existsSync(scriptPath)) {
+    try { scriptObj = JSON.parse(fs.readFileSync(scriptPath, 'utf8')); } catch (_) {}
+  }
+  const title = scriptObj?.name || coverageTitle || titleCaseFromScriptName(name);
+  const module = scriptObj?.module || coverageModule;
+  const sourceFile = scriptObj?.sourceFiles?.[0] || coverageSource;
   const narratedSlides = slides.filter((s) => (s.narration || s.caption || '').trim()).map((s) => ({ slide: s.slide, text: (s.narration || s.caption).trim() }));
   if (!narratedSlides.length) throw new Error('no narrated slides to write from');
 
@@ -1433,10 +1440,11 @@ const server = http.createServer(async (req, res) => {
 
         const prelude = [`Using ${renderable.length} slides captured during the live recording — no replay.`];
         if (renderSaveWarning) prelude.unshift(renderSaveWarning);
+        const renderMode = mode || 'video';
         Object.assign(render, {
           running: true,
           name,
-          mode: 'video',
+          mode: renderMode,
           phase: 'assembling',
           log: prelude,
           outDir,
@@ -1446,11 +1454,11 @@ const server = http.createServer(async (req, res) => {
           error: null,
           startedAt: Date.now(),
           finishedAt: null,
-          pylon: null,
+          pylon: renderMode !== 'video' ? { status: 'pending' } : null,
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, name, scriptPath }));
-        startRender(scriptPath, name, render.log, 'video');
+        startRender(scriptPath, name, render.log, renderMode);
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));

@@ -198,14 +198,88 @@ function toScript() {
 }
 function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,hint:{bbox,viewport}};}
 
-async function renderVideo() {
+async function renderVideo(mode = 'video') {
   if (!state.steps.length) return alert('Record at least one step first.');
-  $('#renderStatus').textContent='Starting render…';
-  const result=await send({type:'PANEL_RENDER',script:toScript(),mode:'video'});
-  if (!result?.ok) return $('#renderStatus').textContent=result?.error || 'Render failed';
-  clearInterval(renderTimer); renderTimer=setInterval(checkRender,1500); checkRender();
+  $('#renderStatusRow').hidden = false;
+  $('#renderLinks').hidden = true;
+  $('#pylonArticleLink').hidden = true;
+  $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : 'Starting render…';
+  $('#renderBtn').disabled = true;
+  $('#renderBothBtn').disabled = true;
+
+  const result = await send({ type: 'PANEL_RENDER', script: toScript(), mode });
+  if (!result?.ok) {
+    $('#renderBtn').disabled = false;
+    $('#renderBothBtn').disabled = false;
+    $('#renderStatus').textContent = result?.error || 'Render failed';
+    return;
+  }
+  clearInterval(renderTimer);
+  renderTimer = setInterval(checkRender, 1500);
+  checkRender();
 }
-async function checkRender(){const result=await send({type:'PANEL_RENDER_STATUS'});if(!result?.ok)return;$('#renderStatus').textContent=result.running?(result.phase||'Rendering…'):(result.error?`Failed: ${result.error}`:'MP4 ready');if(!result.running)clearInterval(renderTimer);}
+
+async function checkRender() {
+  const result = await send({ type: 'PANEL_RENDER_STATUS' });
+  if (!result?.ok || result.phase === 'idle') return;
+
+  $('#renderStatusRow').hidden = false;
+
+  if (result.running) {
+    const phaseNames = {
+      replaying: 'Assembling slides…',
+      assembling: 'Generating narration, captions and video…'
+    };
+    $('#renderStatus').textContent = phaseNames[result.phase] || result.phase || 'Rendering…';
+    $('#renderLinks').hidden = true;
+    $('#renderBtn').disabled = true;
+    $('#renderBothBtn').disabled = true;
+    return;
+  }
+
+  // Not running
+  if (result.error) {
+    $('#renderStatus').textContent = `Failed: ${result.error}`;
+    $('#renderBtn').disabled = false;
+    $('#renderBothBtn').disabled = false;
+    $('#renderLinks').hidden = false;
+    $('#pylonArticleLink').hidden = true;
+    clearInterval(renderTimer);
+    return;
+  }
+
+  const mode = result.mode || 'video';
+  const pylon = result.pylon;
+
+  if (mode === 'both' && pylon?.status === 'pending') {
+    $('#renderStatus').textContent = '✓ MP4 ready · Drafting Pylon KB article…';
+    $('#renderLinks').hidden = false;
+    $('#pylonArticleLink').hidden = true;
+    $('#renderBtn').disabled = true;
+    $('#renderBothBtn').disabled = true;
+    return;
+  }
+
+  clearInterval(renderTimer);
+  $('#renderBtn').disabled = false;
+  $('#renderBothBtn').disabled = false;
+  $('#renderLinks').hidden = false;
+
+  if (mode === 'both' && pylon?.status === 'done') {
+    $('#renderStatus').textContent = '✓ MP4 & Pylon article ready';
+    if (pylon.url) {
+      $('#pylonArticleLink').href = pylon.url;
+      $('#pylonArticleLink').hidden = false;
+    }
+  } else if (mode === 'both' && pylon?.status === 'failed') {
+    $('#renderStatus').textContent = `✓ MP4 ready (Pylon article failed: ${pylon.error || 'error'})`;
+    $('#pylonArticleLink').hidden = true;
+  } else {
+    $('#renderStatus').textContent = '✓ MP4 ready';
+    $('#pylonArticleLink').hidden = true;
+  }
+}
+
 function exportScript(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(toScript(),null,2)],{type:'application/json'}));a.download=`${slug(toScript().name)||'walkthrough'}.script.json`;a.click();URL.revokeObjectURL(a.href);}
 
 $('#search').oninput=renderModules;
@@ -214,7 +288,34 @@ async function pollScan(){try{const result=await api('/workflows');catalog=resul
 $('#recordBtn').onclick=startRecording;$('#stopBtn').onclick=stopAndNarrate;
 $('#clearBtn').onclick=async()=>{if(confirm('Clear this recording?')){await send({type:'PANEL_CLEAR'});selected=null;$('#selectedWorkflow').hidden=true;await loadState();}};
 $('#scriptName').onchange=(e)=>send({type:'PANEL_UPDATE_SCRIPT',patch:{name:e.target.value}});
-$('#renderBtn').onclick=renderVideo;$('#downloadBtn').onclick=exportScript;
+$('#renderBtn').onclick = () => renderVideo('video');
+$('#renderBothBtn').onclick = () => renderVideo('both');
+$('#downloadBtn').onclick = exportScript;
+
+$('#viewFinderLink').onclick = async (e) => {
+  e.preventDefault();
+  await send({ type: 'PANEL_RENDER_OPEN' });
+};
+
+$('#pylonArticleLink').onclick = (e) => {
+  e.preventDefault();
+  const url = $('#pylonArticleLink').href;
+  if (url) chrome.tabs.create({ url });
+};
+
+$('#dismissResetBtn').onclick = async () => {
+  await send({ type: 'PANEL_CLEAR' });
+  selected = null;
+  $('#selectedWorkflow').hidden = true;
+  $('#selectedWorkflow').innerHTML = '';
+  $('#scriptName').value = '';
+  $('#renderStatusRow').hidden = true;
+  $('#renderLinks').hidden = true;
+  $('#pylonArticleLink').hidden = true;
+  clearInterval(renderTimer);
+  await loadState();
+};
+
 chrome.runtime.onMessage.addListener((message)=>{if(message.type==='KB_STEPS_UPDATED')loadState();});
 
 (async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await loadState();await refreshAll();checkRender();setInterval(refreshAll,60000);})();
