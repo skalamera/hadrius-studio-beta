@@ -41,13 +41,15 @@ function loadDotEnv() {
   if (home) parseEnv(path.join(home, '.hermes/.env'));
 }
 loadDotEnv();
-const LIBRARY_URL = process.env.STUDIO_LIBRARY_URL || 'https://pylon-webhook-service.vercel.app/api/studio-scripts';
+const LIBRARY_URL = process.env.STUDIO_LIBRARY_URL || 'https://pylon-webhook-service.vercel.app/api/studio-beta-scripts';
 const LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const WHOAMI = process.env.STUDIO_USER || process.env.USER || process.env.USERNAME || 'unknown';
-// Sibling endpoints on the same Vercel service, derived once from LIBRARY_URL.
-const COVERAGE_URL = LIBRARY_URL.replace(/\/api\/studio-scripts.*/, '/api/studio-coverage');
-const HEALTH_CHECK_URL = LIBRARY_URL.replace(/\/api\/studio-scripts.*/, '/api/studio-health-check');
+// Dedicated beta endpoints in Neon so beta workflows never overlap with the original studio tables.
+const COVERAGE_URL = LIBRARY_URL.includes('studio-beta-scripts')
+  ? LIBRARY_URL.replace('studio-beta-scripts', 'studio-beta-coverage')
+  : LIBRARY_URL.replace(/\/api\/studio-scripts.*/, '/api/studio-beta-coverage');
+const HEALTH_CHECK_URL = LIBRARY_URL.replace(/\/api\/studio.*/, '/api/studio-health-check');
 let coverageScan = { running: false, startedAt: null, finishedAt: null, log: [], result: null, error: null };
 let liteScan = { running: false, startedAt: null, finishedAt: null, log: [], error: null };
 const WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'workflows.json');

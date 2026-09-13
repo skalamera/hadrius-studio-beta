@@ -59,7 +59,7 @@ else
 fi
 
 if ! grep -qs '^STUDIO_LIBRARY_URL=.\+' .env 2>/dev/null; then
-  echo "STUDIO_LIBRARY_URL=https://pylon-webhook-service.vercel.app/api/studio-scripts" >> .env
+  echo "STUDIO_LIBRARY_URL=https://pylon-webhook-service.vercel.app/api/studio-beta-scripts" >> .env
 fi
 
 if ! claude mcp list 2>/dev/null | grep -q '^hadrius-codebase:'; then
