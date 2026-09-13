@@ -947,14 +947,20 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && u.pathname === '/pylon/articles') {
     try {
       const articles = await pylonListArticles();
-      const modules = Object.fromEntries(Object.entries(PYLON_MODULE_COLLECTION_MAP).map(([module, collectionId]) => [module, {
-        collectionId,
-        collectionUrl: `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/collections/${collectionId}`,
-        articles: articles.filter((article) => article.collection_id === collectionId).map((article) => ({
-          id: article.id, title: article.title, url: pylonArticleUrl(article), isPublished: !!article.is_published,
-          visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at
-        }))
-      }]));
+      const modules = {};
+      for (const [module, collectionId] of Object.entries(PYLON_MODULE_COLLECTION_MAP)) {
+        const entry = {
+          collectionId,
+          collectionUrl: `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/collections/${collectionId}`,
+          articles: articles.filter((article) => article.collection_id === collectionId).map((article) => ({
+            id: article.id, title: article.title, url: pylonArticleUrl(article), isPublished: !!article.is_published,
+            visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at
+          }))
+        };
+        modules[module] = entry;
+        const canon = ALLOWED_MODULES.find((m) => m.toLowerCase() === module.toLowerCase());
+        if (canon) modules[canon] = entry;
+      }
       return sendJson(res, 200, { ok: true, modules, syncedAt: new Date().toISOString() });
     } catch (e) { return sendJson(res, 502, { ok: false, error: String(e?.message || e) }); }
   }

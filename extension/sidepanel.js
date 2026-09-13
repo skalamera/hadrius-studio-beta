@@ -113,11 +113,21 @@ function articleMatches(workflow, article) {
   return a === w || a.includes(w) || w.includes(a);
 }
 
+function getModuleArticles(moduleName) {
+  if (!pylon?.modules) return [];
+  if (pylon.modules[moduleName]) return pylon.modules[moduleName].articles || [];
+  const target = String(moduleName || '').trim().toLowerCase();
+  for (const [k, v] of Object.entries(pylon.modules)) {
+    if (k.toLowerCase() === target) return v.articles || [];
+  }
+  return [];
+}
+
 function renderModules() {
   const q = $('#search').value.trim().toLowerCase();
   $('#modules').innerHTML = '';
   for (const group of catalog.modules || []) {
-    const articles = pylon.modules?.[group.module]?.articles || [];
+    const articles = getModuleArticles(group.module);
     const workflows = (group.workflows || []).filter((w) => !q || `${w.title} ${w.purpose}`.toLowerCase().includes(q));
     const visibleArticles = articles.filter((a) => !q || a.title.toLowerCase().includes(q));
     if (q && !workflows.length && !visibleArticles.length) continue;
