@@ -84,10 +84,39 @@ async function pollScan() {
   }
 }
 
+let manualLinks = new Set();
+
+async function initManualLinks() {
+  try {
+    const res = await chrome.storage.local.get('manualLinks');
+    if (Array.isArray(res.manualLinks)) {
+      for (const t of res.manualLinks) manualLinks.add(t);
+    }
+  } catch (_) {}
+}
+
+async function markWorkflowLinked(title, moduleName) {
+  manualLinks.add(title);
+  await chrome.storage.local.set({ manualLinks: [...manualLinks] });
+  api('/workflows/link', { method: 'POST', body: JSON.stringify({ title, module: moduleName }) }).catch(() => {});
+  renderModules();
+}
+
+async function unmarkWorkflowLinked(title) {
+  manualLinks.delete(title);
+  await chrome.storage.local.set({ manualLinks: [...manualLinks] });
+  api('/workflows/link', { method: 'POST', body: JSON.stringify({ title, unmark: true }) }).catch(() => {});
+  renderModules();
+}
+
 async function refreshAll() {
   const [workflowResult, pylonResult] = await Promise.allSettled([api('/workflows'), api('/pylon/articles')]);
   if (workflowResult.status === 'fulfilled') {
     catalog = workflowResult.value;
+    if (Array.isArray(catalog.manualLinks)) {
+      for (const t of catalog.manualLinks) manualLinks.add(t);
+      chrome.storage.local.set({ manualLinks: [...manualLinks] });
+    }
     updateScanStatus(catalog.scan);
   }
   if (pylonResult.status === 'fulfilled') pylon = pylonResult.value;
@@ -128,22 +157,49 @@ function renderModules() {
   $('#modules').innerHTML = '';
   for (const group of catalog.modules || []) {
     const articles = getModuleArticles(group.module);
-    const workflows = (group.workflows || []).filter((w) => !q || `${w.title} ${w.purpose}`.toLowerCase().includes(q));
+
+    // Only display recording opportunities that do NOT have a linked article
+    const unlinkedWorkflows = (group.workflows || []).filter((w) => {
+      const isAutoLinked = articles.some((article) => articleMatches(w, article));
+      const isManuallyLinked = manualLinks.has(w.title);
+      return !isAutoLinked && !isManuallyLinked;
+    });
+
+    const matchingWorkflows = unlinkedWorkflows.filter((w) => !q || `${w.title} ${w.purpose}`.toLowerCase().includes(q));
     const visibleArticles = articles.filter((a) => !q || a.title.toLowerCase().includes(q));
-    if (q && !workflows.length && !visibleArticles.length) continue;
+    if (q && !matchingWorkflows.length && !visibleArticles.length) continue;
+
     const section = document.createElement('section'); section.className = 'module';
-    section.innerHTML = `<div class="module-head"><h2>${esc(group.module)}</h2><span class="counts">${workflows.length} workflows · ${visibleArticles.length} articles</span></div><div class="module-body"></div>`;
+    section.innerHTML = `<div class="module-head"><h2>${esc(group.module)}</h2><span class="counts">${unlinkedWorkflows.length} opportunities · ${visibleArticles.length} articles</span></div><div class="module-body"></div>`;
     const body = section.querySelector('.module-body');
     body.innerHTML = '<div class="subhead">Recording opportunities</div>';
-    for (const workflow of workflows) {
-      const match = articles.find((article) => articleMatches(workflow, article));
+
+    if (!matchingWorkflows.length) {
+      body.insertAdjacentHTML('beforeend', '<div class="item muted">All workflows in this module have linked articles ✓</div>');
+    }
+
+    for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}${match ? '<span class="badge published">Article linked</span>' : '<span class="badge">Needs article</span>'}</div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button>${match ? `<button class="secondary articleLink">Open article ↗</button>` : ''}</div>`;
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as already having an article in Pylon">Mark as linked</button></div>`;
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
       item.querySelector('.plan').onclick = () => chooseWorkflow(group.module, workflow, false);
-      if (match) item.querySelector('.articleLink').onclick = () => chrome.tabs.create({url:match.url});
+      item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
       body.appendChild(item);
     }
+
+    const manuallyLinkedInModule = (group.workflows || []).filter((w) => manualLinks.has(w.title));
+    if (manuallyLinkedInModule.length > 0) {
+      const manualFoot = document.createElement('div');
+      manualFoot.className = 'item manual-links-bar muted';
+      manualFoot.innerHTML = `<span>${manuallyLinkedInModule.length} manually marked as linked</span> <button class="link-btn undoLinks" type="button">Reset manual links</button>`;
+      manualFoot.querySelector('.undoLinks').onclick = async () => {
+        for (const w of manuallyLinkedInModule) manualLinks.delete(w.title);
+        await chrome.storage.local.set({ manualLinks: [...manualLinks] });
+        renderModules();
+      };
+      body.appendChild(manualFoot);
+    }
+
     body.insertAdjacentHTML('beforeend','<div class="subhead">Pylon articles</div>');
     if (!visibleArticles.length) body.insertAdjacentHTML('beforeend','<div class="item muted">No articles currently in this collection.</div>');
     for (const article of visibleArticles) {
@@ -512,4 +568,4 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await loadState();await refreshAll();checkRender();setInterval(refreshAll,60000);})();
+(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await initManualLinks();await loadState();await refreshAll();checkRender();setInterval(refreshAll,60000);})();

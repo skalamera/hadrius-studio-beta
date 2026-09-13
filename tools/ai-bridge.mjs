@@ -51,6 +51,18 @@ const HEALTH_CHECK_URL = LIBRARY_URL.replace(/\/api\/studio-scripts.*/, '/api/st
 let coverageScan = { running: false, startedAt: null, finishedAt: null, log: [], result: null, error: null };
 let liteScan = { running: false, startedAt: null, finishedAt: null, log: [], error: null };
 const WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'workflows.json');
+const MANUAL_LINKS_FILE = path.join(REPO_ROOT, 'data', 'manual-links.json');
+
+function readManualLinks() {
+  try { return fs.existsSync(MANUAL_LINKS_FILE) ? JSON.parse(fs.readFileSync(MANUAL_LINKS_FILE, 'utf8')) : []; }
+  catch (_) { return []; }
+}
+function writeManualLinks(links) {
+  try {
+    fs.mkdirSync(path.dirname(MANUAL_LINKS_FILE), { recursive: true });
+    fs.writeFileSync(MANUAL_LINKS_FILE, JSON.stringify(links, null, 2));
+  } catch (_) {}
+}
 
 // ---- Claude CLI login state. Every AI feature shells out to `claude`, whose OAuth login is separate
 // from the desktop app's and expires silently. Check it cheaply (~0.2s) and cache, so the panel can
@@ -907,7 +919,7 @@ const server = http.createServer(async (req, res) => {
   // ---- Studio Lite: source-grounded workflows and live Pylon collection contents ----
   if (u.pathname === '/workflows') {
     if (req.method === 'GET') {
-      try { return sendJson(res, 200, { ok: true, ...JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')), scan: liteScan }); }
+      try { return sendJson(res, 200, { ok: true, ...JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')), manualLinks: readManualLinks(), scan: liteScan }); }
       catch (e) { return sendJson(res, 500, { ok: false, error: String(e?.message || e) }); }
     }
     if (req.method === 'POST') {
@@ -942,6 +954,26 @@ const server = http.createServer(async (req, res) => {
       })();
       return sendJson(res, 202, { ok: true, scan: liteScan });
     }
+  }
+
+  if (req.method === 'POST' && u.pathname === '/workflows/link') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try {
+        const { title, unmark = false } = JSON.parse(body);
+        if (!title) throw new Error('title required');
+        const links = new Set(readManualLinks());
+        if (unmark) links.delete(title);
+        else links.add(title);
+        const arr = [...links];
+        writeManualLinks(arr);
+        return sendJson(res, 200, { ok: true, manualLinks: arr });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
   }
 
   if (req.method === 'GET' && u.pathname === '/pylon/articles') {
