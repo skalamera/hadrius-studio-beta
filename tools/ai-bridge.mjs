@@ -1363,8 +1363,32 @@ const server = http.createServer(async (req, res) => {
       const log = (message) => { liteScan.log.push(String(message)); if (liteScan.log.length > 200) liteScan.log.shift(); };
       void (async () => {
         try {
+          let existingWorkflows = [];
+          if (fs.existsSync(WORKFLOWS_FILE)) {
+            try {
+              const ld = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8'));
+              for (const m of ld.modules || []) {
+                for (const w of m.workflows || []) {
+                  existingWorkflows.push({ module: m.module, ...w });
+                }
+              }
+            } catch (_) {}
+          }
+          if (LIBRARY_SECRET) {
+            try {
+              const sc = await libraryFetch('GET', null, null, COVERAGE_URL);
+              if (sc && Array.isArray(sc.items)) {
+                for (const it of sc.items) {
+                  if (!existingWorkflows.some((e) => e.title.toLowerCase() === it.title.toLowerCase())) {
+                    existingWorkflows.push(it);
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
           const { runScan } = await import('./coverage-scan.mjs');
-          const result = await runScan({ useCache: false, log });
+          const result = await runScan({ useCache: false, log, existingWorkflows });
           const modules = ALLOWED_MODULES.map((module) => ({
             module,
             workflows: (result.candidates || []).filter((workflow) => workflow.module === module).map((workflow) => ({
@@ -1767,8 +1791,15 @@ const server = http.createServer(async (req, res) => {
       const log = (m) => { coverageScan.log.push(m); if (coverageScan.log.length > 200) coverageScan.log.shift(); };
       (async () => {
         try {
+          let existingWorkflows = [];
+          if (LIBRARY_SECRET) {
+            try {
+              const sc = await libraryFetch('GET', null, null, COVERAGE_URL);
+              if (sc && Array.isArray(sc.items)) existingWorkflows = sc.items;
+            } catch (_) {}
+          }
           const { runScan } = await import('./coverage-scan.mjs');
-          const r = await runScan({ onlyModule: body.module || null, log, useCache: body.rediscover !== true });
+          const r = await runScan({ onlyModule: body.module || null, log, useCache: body.rediscover !== true, existingWorkflows });
           const out = await libraryFetch('POST', null, { candidates: r.candidates, full_scan: r.full_scan, updated_by: WHOAMI }, COVERAGE_URL);
           log(`Saved ${out.upserted} candidates${out.pruned ? `, pruned ${out.pruned} stale` : ''}.`);
           // Start preparing step-by-step plans for every new workflow right away, in the background.

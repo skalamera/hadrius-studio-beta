@@ -295,16 +295,75 @@ function applyAllowList(modules, log) {
 
 // ---- Phase 2: multi-agent workflow discovery & deep planning ----
 
+const STOP_WORDS = new Set(['how', 'to', 'a', 'an', 'the', 'in', 'on', 'for', 'of', 'and', 'with', 'new', 'your']);
+const SYNONYMS = {
+  add: 'create', adding: 'create', create: 'create', creating: 'create', make: 'create',
+  edit: 'update', editing: 'update', update: 'update', updating: 'update', modify: 'update',
+  delete: 'remove', deleting: 'remove', remove: 'remove', removing: 'remove'
+};
+
+export function workflowTokens(s) {
+  return new Set(
+    String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(' ')
+      .filter((t) => t && !STOP_WORDS.has(t))
+      .map((t) => SYNONYMS[t] || t)
+  );
+}
+
+export function workflowSimilarity(a, b) {
+  const ta = workflowTokens(a), tb = workflowTokens(b);
+  if (!ta.size || !tb.size) return 0;
+  let inter = 0; ta.forEach((t) => { if (tb.has(t)) inter++; });
+  return inter / Math.max(ta.size, tb.size);
+}
+
+export function findMatchingWorkflow(candidate, existingList = []) {
+  if (!existingList.length) return null;
+  const candRoute = String(candidate.start_route || candidate.startRoute || '').replace(/\/+$/, '');
+  let best = null;
+  let bestScore = 0;
+
+  for (const ex of existingList) {
+    const exTitle = ex.title || ex.name || '';
+    const exRoute = String(ex.startRoute || ex.start_route || '').replace(/\/+$/, '');
+    const sameRoute = exRoute && (exRoute === candRoute || exRoute.startsWith(candRoute + '/') || candRoute.startsWith(exRoute + '/'));
+    const sim = workflowSimilarity(candidate.title, exTitle);
+    const score = sim + (sameRoute ? 0.35 : 0);
+
+    if (score > bestScore && score >= 0.70) {
+      bestScore = score;
+      best = ex;
+    }
+  }
+
+  return best;
+}
+
 /** Stage 1: Discovery Agent surveys the module to identify discrete candidate workflows. */
-export async function discoverCandidates(mod, log = () => {}) {
+export async function discoverCandidates(mod, log = () => {}, existingList = []) {
   log(`Phase 2A: discovering candidate workflows for "${mod.module}"…`);
   const routes = (mod.routes || []).map((r) => `- ${r.label}: ${r.path}`).join('\n');
   const dirs = (mod.page_dirs || []).join(', ') || PAGES_DIR;
+
+  let existingBlock = '';
+  if (existingList.length > 0) {
+    existingBlock = `\nEXISTING WORKFLOWS ALREADY RECORDED IN THIS MODULE:
+${existingList.map((w) => `- "${w.title}" (Start route: ${w.startRoute || w.start_route || '/'})`).join('\n')}
+
+DEDUPLICATION RULES:
+1. Do NOT create duplicate workflows for user tasks already covered in the list above.
+2. If an existing workflow is still valid in code, reuse its EXACT title above so it updates in-place instead of creating a second entry.
+3. Only propose new titles for genuinely new user actions, screens, or features not yet in the list.\n`;
+  }
+
   const prompt = `You are an indexing lead surveying the "${mod.module}" module of the Hadrius compliance web app (repo "hadrius_frontend").
 Module routes:
 ${routes}
 Likely page components: ${dirs}
-
+${existingBlock}
 Use the hadrius-codebase MCP tools (list_directory, search_code) to find all USER-FACING workflows a compliance officer or employee performs in this module.
 Look for primary actions: adding/creating items, editing configurations, assigning reviewers, uploading documents, running searches/filters, generating reports, resolving exceptions, and performing sign-offs.
 
@@ -328,7 +387,21 @@ Rules:
   const out = await runClaude(prompt, { maxTurns: 25 });
   const list = extractJson(out);
   if (!Array.isArray(list)) throw new Error(`candidate discovery for ${mod.module} returned non-array`);
-  return list.filter((c) => c && c.title && c.start_route);
+
+  const filtered = list.filter((c) => c && c.title && c.start_route);
+
+  // Semantic deduplication against existing workflows
+  for (const c of filtered) {
+    const match = findMatchingWorkflow(c, existingList);
+    if (match) {
+      log(`    [Deduplicated] "${c.title}" mapped to existing workflow "${match.title}"`);
+      c.title = match.title;
+      c.key = match.key || null;
+      c.matched_existing = true;
+    }
+  }
+
+  return filtered;
 }
 
 /** Stage 2: Dedicated Worker Agent inspects real code and formulates a deep, granular walkthrough plan. */
@@ -444,9 +517,9 @@ IMPORTANT RULES:
 }
 
 /** Orchestrates the two-stage multi-agent pipeline for a module. */
-export async function discoverWorkflows(mod, log = () => {}) {
+export async function discoverWorkflows(mod, log = () => {}, existingList = []) {
   log(`Phase 2: discovering workflows for "${mod.module}" via multi-agent pipeline…`);
-  const candidates = await discoverCandidates(mod, log);
+  const candidates = await discoverCandidates(mod, log, existingList);
   log(`  ${mod.module}: discovered ${candidates.length} opportunities. Deploying parallel worker agents…`);
 
   const workflows = [];
@@ -466,7 +539,7 @@ export async function discoverWorkflows(mod, log = () => {}) {
   return workflows;
 }
 
-export async function runScan({ onlyModule = null, log = () => {}, useCache = true } = {}) {
+export async function runScan({ onlyModule = null, log = () => {}, useCache = true, existingWorkflows = [] } = {}) {
   let modules;
   if (useCache && fs.existsSync(CACHE_FILE)) {
     try { modules = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')).modules; log(`Using cached module map (${modules.length} modules); delete ${path.basename(CACHE_FILE)} to rediscover.`); } catch {}
@@ -482,23 +555,21 @@ export async function runScan({ onlyModule = null, log = () => {}, useCache = tr
 
   const candidates = [];
   const errors = [];
-  // A missing allow-listed module (renamed sidebar tab, cache drift) is a real error, not a log line:
-  // it must surface in the scan result and must block any "full scan" semantics.
   for (const m of allow.missing) errors.push({ module: m, error: 'not found in the sidebar this scan — was the tab renamed? Delete .coverage-scan-cache.json to rediscover.' });
-  // modest parallelism: each call is a full claude session
+
   const CONC = 3;
   for (let i = 0; i < targets.length; i += CONC) {
     const batch = targets.slice(i, i + CONC);
-    const results = await Promise.allSettled(batch.map((m) => discoverWorkflows(m, log)));
+    const results = await Promise.allSettled(batch.map((m) => {
+      const existingForMod = (existingWorkflows || []).filter((w) => (w.module || '').toLowerCase() === m.module.toLowerCase());
+      return discoverWorkflows(m, log, existingForMod);
+    }));
     results.forEach((r, j) => {
       if (r.status === 'fulfilled') candidates.push(...r.value);
       else { errors.push({ module: batch[j].module, error: String(r.reason?.message || r.reason) }); log(`  ! ${batch[j].module}: ${r.reason?.message || r.reason}`); }
     });
   }
-  // full_scan tells the shared coverage API it may prune candidates absent from this run. Since the
-  // scan is now deliberately scoped to ALLOWED_MODULES, it is never a full inventory of the app —
-  // marking it "full" would delete every other module's shared rows (links, dismissals) for everyone.
-  // Stale rows outside the allow-list are hidden by the bridge's /coverage filter instead.
+
   return { modules, candidates, errors, full_scan: false };
 }
 
