@@ -102,4 +102,27 @@
 button:disabled{opacity:.55;cursor:not-allowed;pointer-events:none}
 button.primary:disabled{background:#cbd5e1;border-color:#cbd5e1;color:#64748b}
 button.secondary:disabled{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
+.selected.plan-card{background:#fcfbfe;border:1px solid #ddd6fe;border-left:4px solid var(--purple);border-radius:12px;padding:12px 14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(76,61,171,.05)}
+.plan-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.plan-card-tag{display:flex;align-items:center;gap:6px}
+.plan-card-tag .module-icon.small{width:15px;height:15px}
+.plan-module-name{font-size:11px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.04em}
+.plan-pill{font-size:9.5px;font-weight:700;background:#efecff;color:var(--purple2);padding:1.5px 6px;border-radius:999px;border:1px solid #ddd6fe}
+.plan-close-btn{background:transparent;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:2px 5px;border-radius:4px;line-height:1}
+.plan-close-btn:hover{color:var(--ink);background:#efecff}
+.plan-card-title{font-size:14px;font-weight:700;color:var(--ink);margin:0 0 3px;line-height:1.35}
+.plan-card-subtitle{font-size:11px;color:var(--muted);margin:0 0 10px}
+.plan-steps-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:5px}
+.plan-step-item{display:flex;align-items:flex-start;gap:8px;padding:7px 9px;background:#fff;border:1px solid #e9e5f5;border-radius:8px;font-size:12px;line-height:1.4;color:var(--ink);cursor:pointer;user-select:none;transition:all .12s ease}
+.plan-step-item:hover{border-color:#c4b5fd;background:#faf8ff}
+.plan-step-item.done{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
+.plan-step-item.done .plan-quoted-action{color:#94a3b8}
+.plan-step-check{width:16px;height:16px;border-radius:4px;border:1.5px solid #cbd5e1;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-size:11px;font-weight:700;color:#fff;transition:all .12s ease}
+.plan-step-item.done .plan-step-check{background:#16a34a;border-color:#16a34a}
+.plan-step-item.done .plan-step-check::after{content:'✓'}
+.plan-step-num{font-size:11px;font-weight:700;color:var(--purple);min-width:14px;flex-shrink:0;font-variant-numeric:tabular-nums;margin-top:1px}
+.plan-step-item.done .plan-step-num{color:#94a3b8}
+.plan-step-desc{flex:1}
+.plan-quoted-action{font-weight:700;color:var(--purple2)}
+.plan-nav-arrow{color:var(--purple);font-weight:700;margin:0 2px}
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}

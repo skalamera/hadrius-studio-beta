@@ -344,11 +344,56 @@ function resolveSteps(module, workflow) {
   return steps;
 }
 
+function formatPlanStep(text) {
+  let escaped = esc(text);
+  escaped = escaped.replace(/&quot;(.*?)&quot;/g, '<strong class="plan-quoted-action">"$1"</strong>');
+  escaped = escaped.replace(/"(.*?)"/g, '<strong class="plan-quoted-action">"$1"</strong>');
+  escaped = escaped.replace(/&gt;/g, '<span class="plan-nav-arrow">›</span>');
+  return escaped;
+}
+
+function renderPlanCard(module, workflow, steps) {
+  const iconSrc = moduleIconPath(module);
+  const el = $('#selectedWorkflow');
+  el.className = 'selected plan-card';
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="plan-card-header">
+      <div class="plan-card-tag">
+        <img class="module-icon small" src="${iconSrc}" alt="" />
+        <span class="plan-module-name">${esc(module)}</span>
+        <span class="plan-pill">Workflow Plan</span>
+      </div>
+      <button id="closePlanBtn" class="plan-close-btn" type="button" title="Dismiss plan">✕</button>
+    </div>
+    <h2 class="plan-card-title">${esc(workflow.title)}</h2>
+    <p class="plan-card-subtitle">Follow this step-by-step plan while recording in Hadrius:</p>
+    <ul class="plan-steps-list">
+      ${(steps || []).map((s, i) => `
+        <li class="plan-step-item" data-step-idx="${i}">
+          <span class="plan-step-check"></span>
+          <span class="plan-step-num">${i + 1}.</span>
+          <span class="plan-step-desc">${formatPlanStep(s)}</span>
+        </li>
+      `).join('')}
+    </ul>
+  `;
+
+  el.querySelector('#closePlanBtn').onclick = () => {
+    el.hidden = true;
+  };
+
+  el.querySelectorAll('.plan-step-item').forEach((item) => {
+    item.onclick = () => {
+      item.classList.toggle('done');
+    };
+  });
+}
+
 async function chooseWorkflow(module, workflow, start=true) {
   const steps = resolveSteps(module, workflow);
   selected = { module, ...workflow, steps };
-  $('#selectedWorkflow').hidden = false;
-  $('#selectedWorkflow').innerHTML = `<h2>${esc(workflow.title)}</h2><p class="muted">${esc(module)} · Follow this plan while recording:</p><ol>${steps.map((s)=>`<li>${esc(s)}</li>`).join('')}</ol>`;
+  renderPlanCard(module, workflow, steps);
   $('#scriptName').value = workflow.title;
   await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:workflow.title,module,workflowPlan:steps,sourceFiles:workflow.sources || []}});
   switchView('recording');
@@ -965,8 +1010,13 @@ async function openScript(name) {
       title: humanTitle,
       steps: script.workflowPlan || []
     };
-    $('#selectedWorkflow').hidden = false;
-    $('#selectedWorkflow').innerHTML = `<strong>${esc(selected.title)}</strong><span class="muted">${esc(selected.module)}</span>`;
+    if (script.workflowPlan?.length) {
+      renderPlanCard(script.module, { title: humanTitle }, script.workflowPlan);
+    } else {
+      $('#selectedWorkflow').hidden = false;
+      $('#selectedWorkflow').className = 'selected';
+      $('#selectedWorkflow').innerHTML = `<strong>${esc(selected.title)}</strong><span class="muted">${esc(selected.module)}</span>`;
+    }
   }
   switchView('recording');
 }
