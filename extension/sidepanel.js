@@ -275,11 +275,12 @@ function renderModules() {
     pylonBox.className = 'pylon-section';
     const collectionUrl = getModuleCollectionUrl(group.module);
     const collectionLinkHtml = collectionUrl ? `<a href="${collectionUrl}" class="pylon-collection-link" target="_blank" rel="noopener noreferrer">↗ Open collection</a>` : '';
+    const pylonHeaderTitle = `PYLON ARTICLES - ${group.module.toUpperCase()}`;
 
     pylonBox.innerHTML = `
       <div class="pylon-section-header">
         <img class="pylon-header-icon" src="icons/pylon-icon.png" alt="" />
-        <span class="pylon-header-title">PYLON ARTICLES</span>
+        <span class="pylon-header-title">${esc(pylonHeaderTitle)}</span>
         <span class="pylon-count-badge">${visibleArticles.length}</span>
         ${collectionLinkHtml}
       </div>
