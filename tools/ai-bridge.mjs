@@ -888,6 +888,8 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
       ok: true,
+      product: 'hadrius-studio-beta',
+      version: '0.1.1',
       library: !!LIBRARY_SECRET,
       geminiFallback: !!(GEMINI_API_KEY || process.env.GEMINI_API_KEY),
       user: WHOAMI,

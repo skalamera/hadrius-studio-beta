@@ -13,8 +13,11 @@ const slug = (v='') => v.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$
 
 async function api(path, options) {
   const response = await fetch(BRIDGE + path, options);
-  const body = await response.json();
-  if (!response.ok || body.ok === false) throw new Error(body.error || `Bridge returned ${response.status}`);
+  const text = await response.text();
+  let body;
+  try { body = text ? JSON.parse(text) : null; }
+  catch { throw new Error(`Incompatible bridge response for ${path} (HTTP ${response.status})`); }
+  if (!response.ok || !body || body.ok === false) throw new Error(body?.error || `Bridge returned HTTP ${response.status} for ${path}`);
   return body;
 }
 
@@ -29,9 +32,15 @@ async function refreshAll() {
   const [workflowResult, pylonResult] = await Promise.allSettled([api('/workflows'), api('/pylon/articles')]);
   if (workflowResult.status === 'fulfilled') catalog = workflowResult.value;
   if (pylonResult.status === 'fulfilled') pylon = pylonResult.value;
-  $('#syncStatus').textContent = pylonResult.status === 'fulfilled'
-    ? `Live Pylon sync · ${new Date(pylon.syncedAt).toLocaleTimeString()} · ${catalog.modules.reduce((n,m)=>n+m.workflows.length,0)} workflows`
-    : `Workflow plans loaded · Pylon unavailable: ${pylonResult.reason?.message || 'bridge error'}`;
+  const workflowOk = workflowResult.status === 'fulfilled';
+  const pylonOk = pylonResult.status === 'fulfilled';
+  if (workflowOk && pylonOk) {
+    $('#syncStatus').textContent = `Live Pylon sync · ${new Date(pylon.syncedAt).toLocaleTimeString()} · ${catalog.modules.reduce((n,m)=>n+m.workflows.length,0)} workflows`;
+  } else if (!workflowOk) {
+    $('#syncStatus').textContent = `Workflows unavailable: ${workflowResult.reason?.message || 'bridge error'}. Stop the old bridge and run npm start from hadrius-studio-beta.`;
+  } else {
+    $('#syncStatus').textContent = `Workflow plans loaded · Pylon unavailable: ${pylonResult.reason?.message || 'bridge error'}`;
+  }
   renderModules();
 }
 
@@ -163,4 +172,4 @@ $('#scriptName').onchange=(e)=>send({type:'PANEL_UPDATE_SCRIPT',patch:{name:e.ta
 $('#renderBtn').onclick=renderVideo;$('#downloadBtn').onclick=exportScript;
 chrome.runtime.onMessage.addListener((message)=>{if(message.type==='KB_STEPS_UPDATED')loadState();});
 
-(async()=>{try{await api('/health');$('#bridgeDot').classList.add('ok');}catch{}await loadState();await refreshAll();checkRender();setInterval(refreshAll,60000);})();
+(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await loadState();await refreshAll();checkRender();setInterval(refreshAll,60000);})();
