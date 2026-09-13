@@ -206,7 +206,19 @@
   // script re-injecting mid-recording (a page reload resets any in-memory counter) — a per-emit
   // timestamp+random string is simpler and safer than a counter for both.
   function newCaptureId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function cleanup() {
+    recording = false;
+    if (navObserver) clearInterval(navObserver);
+    document.removeEventListener('pointerdown', onPointerDown, true);
+    document.removeEventListener('input', onInput, true);
+    document.removeEventListener('keydown', onKeyDown, true);
+    document.removeEventListener('focusout', onBlur, true);
+  }
   function emit(step) {
+    if (!chrome.runtime?.id) {
+      cleanup();
+      return;
+    }
     step.index = stepIndex++;
     step.captureId = newCaptureId();
     step.dpr = window.devicePixelRatio || 1;
@@ -214,7 +226,11 @@
     step.route = location.pathname + location.search;
     step.title = document.title;
     step.ts = Date.now();
-    chrome.runtime.sendMessage({ type: 'KB_STEP', step });
+    try {
+      chrome.runtime.sendMessage({ type: 'KB_STEP', step })?.catch(() => {});
+    } catch (_) {
+      cleanup();
+    }
   }
 
   function flushTyping() {
@@ -268,6 +284,10 @@
 
   let lastUrl = location.href;
   const navObserver = setInterval(() => {
+    if (!chrome.runtime?.id) {
+      cleanup();
+      return;
+    }
     if (recording && location.href !== lastUrl) {
       lastUrl = location.href;
       emit({ action: 'navigate', value: location.href });
