@@ -12,7 +12,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, claudeEnv } from './coverage-scan.mjs';
 import { STUDIO_TENANT_COMPANY_ID } from './stage-lib.mjs';
-import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID } from './pylon.mjs';
+import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID } from './pylon.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
