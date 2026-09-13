@@ -58,6 +58,14 @@ else
   unset IMPORTED_SECRET
 fi
 
+# Ensure beta URLs are used even if credentials were migrated from legacy installs
+if grep -qs 'studio-scripts' .env 2>/dev/null && ! grep -qs 'studio-beta-scripts' .env 2>/dev/null; then
+  sed -i '' 's/studio-scripts/studio-beta-scripts/g' .env 2>/dev/null || sed -i 's/studio-scripts/studio-beta-scripts/g' .env 2>/dev/null || true
+fi
+if grep -qs 'studio-coverage' .env 2>/dev/null && ! grep -qs 'studio-beta-coverage' .env 2>/dev/null; then
+  sed -i '' 's/studio-coverage/studio-beta-coverage/g' .env 2>/dev/null || sed -i 's/studio-coverage/studio-beta-coverage/g' .env 2>/dev/null || true
+fi
+
 if ! grep -qs '^STUDIO_LIBRARY_URL=.\+' .env 2>/dev/null; then
   echo "STUDIO_LIBRARY_URL=https://pylon-webhook-service.vercel.app/api/studio-beta-scripts" >> .env
 fi
@@ -71,6 +79,7 @@ if [[ ! -d .venv ]]; then
 fi
 .venv/bin/pip install -q -r requirements.txt
 npm install
+npx playwright install chromium 2>/dev/null || true
 
 NODE_PATH_BIN="$(command -v node)"
 NODE_BIN_DIR="$(dirname "$NODE_PATH_BIN")"
@@ -101,7 +110,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>$NODE_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.npm-global/bin</string>
+    <key>PATH</key><string>$REPO_DIR/.venv/bin:$NODE_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.npm-global/bin</string>
     <key>KBS_BRIDGE_PORT</key><string>8787</string>
   </dict>
   <key>RunAtLoad</key><true/>
