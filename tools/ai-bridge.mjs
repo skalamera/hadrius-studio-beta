@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ALLOWED_MODULES, canonicalModule, claudeEnv } from './coverage-scan.mjs';
+import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson } from './coverage-scan.mjs';
 import { STUDIO_TENANT_COMPANY_ID } from './stage-lib.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID } from './pylon.mjs';
 
@@ -490,6 +490,63 @@ async function runClaude(prompt) {
     console.warn(`Claude CLI failed (${claudeErr.message}), falling back to gemini-3.8-flash...`);
     return await runGeminiPrompt(prompt);
   }
+}
+
+async function generatePlanFromIdea({ userPrompt, previousPlan, clarification }) {
+  let prompt = `You are an expert technical lead and product educator on the Hadrius compliance web app (repo "hadrius_frontend", app code under apps/hadrius-app/src/).
+The user has an idea for a video walkthrough: "${userPrompt}".
+Your job is to inspect the real codebase using the hadrius-codebase MCP tools (search_code, read_file, list_directory, file_tree) and produce a strictly grounded, step-by-step walkthrough plan.
+
+IMPORTANT RULES:
+1. Use the MCP tools to inspect the real routes, pages, and components in apps/hadrius-app/src/ so every button label, route, dialog title, and field name matches the actual Hadrius code. Do NOT guess labels or make up steps.
+2. Determine which of the 6 Hadrius modules this workflow belongs to:
+   - "Testing program"
+   - "People oversight"
+   - "Branches"
+   - "Communications"
+   - "Marketing"
+   - "Account surveillance"
+   (or "Other" if genuinely none of these).
+3. Step 1 MUST ALWAYS be the starting navigation step: "Navigate to <Module> > <Tab>".
+4. Followed by 3 to 10 clear, imperative steps. Each step must reference exact visible UI labels in quotes, e.g. Click "Add policy", Enter policy name in "Policy title", Click "Save".
+5. Return ONLY a valid JSON object (no markdown fence, no surrounding prose) in this exact shape:
+{
+  "title": "Clean, human-readable walkthrough title (e.g. How to add a new policy)",
+  "module": "Testing program",
+  "startRoute": "/testing-program/policies",
+  "summary": "One sentence summary of the workflow.",
+  "steps": [
+    "Navigate to Testing program > Policies",
+    "Click \\"Add policy\\" to open the dialog.",
+    ...
+  ],
+  "sources": ["apps/hadrius-app/src/..."]
+}
+`;
+
+  if (previousPlan) {
+    prompt += `\n\nPREVIOUS PROPOSED PLAN:\n${JSON.stringify(previousPlan, null, 2)}`;
+  }
+  if (clarification) {
+    prompt += `\n\nUSER'S CLARIFICATION & REQUESTED CHANGES:\n"${clarification}"\nAdjust the plan according to their feedback and the codebase.`;
+  }
+
+  const rawOutput = await runClaude(prompt);
+  const plan = extractJson(String(rawOutput));
+  if (!plan || !Array.isArray(plan.steps) || !plan.steps.length) {
+    throw new Error('AI could not generate a valid step-by-step plan for this idea. Please try clarifying your request.');
+  }
+
+  // Ensure Step 1 has navigation
+  const first = plan.steps[0] || '';
+  const hasNav = /^(navigate to|open|go to)\s+/i.test(first);
+  if (!hasNav && plan.startRoute) {
+    const tab = plan.startRoute.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
+    const tabLabel = tab.charAt(0).toUpperCase() + tab.slice(1);
+    plan.steps.unshift(`Navigate to ${plan.module || 'Workflow'} > ${tabLabel}`);
+  }
+
+  return plan;
 }
 
 async function runGemini(steps, scriptName) {
@@ -1149,6 +1206,27 @@ const server = http.createServer(async (req, res) => {
       })();
       return sendJson(res, 202, { ok: true, scan: liteScan });
     }
+  }
+
+  if (req.method === 'POST' && u.pathname === '/plan/generate') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const userPrompt = String(payload.userPrompt || '').trim();
+        if (!userPrompt) throw new Error('Please describe the walkthrough idea or goal.');
+        const plan = await generatePlanFromIdea({
+          userPrompt,
+          previousPlan: payload.previousPlan || null,
+          clarification: payload.clarification ? String(payload.clarification).trim() : null
+        });
+        return sendJson(res, 200, { ok: true, plan });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
   }
 
   if (req.method === 'POST' && u.pathname === '/workflows/link') {

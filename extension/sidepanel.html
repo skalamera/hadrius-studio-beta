@@ -37,6 +37,63 @@
 
   <main id="recordingView">
     <section id="selectedWorkflow" class="selected" hidden></section>
+    <!-- AI Walkthrough Plan Generator -->
+    <section id="aiPlanBox" class="ai-plan-box">
+      <div id="aiPlanPromptView" class="ai-plan-prompt-view">
+        <div class="ai-plan-head">
+          <span class="ai-sparkle">✨</span>
+          <div class="ai-plan-title-group">
+            <strong>Generate walkthrough plan with AI</strong>
+            <p class="muted small">Have an idea for a video walkthrough? Describe what you want to achieve to generate a grounded plan from the codebase.</p>
+          </div>
+        </div>
+        <div class="ai-plan-input-row">
+          <textarea id="aiPlanPromptInput" rows="2" placeholder="e.g. How to invite a new employee and assign them a compliance officer role…"></textarea>
+          <div class="ai-plan-actions-row">
+            <button id="aiPlanGenerateBtn" class="primary ai-gen-btn" type="button">✨ Generate plan</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="aiPlanLoadingView" class="ai-plan-loading-view" hidden>
+        <span class="ai-spinner">⏳</span>
+        <div class="ai-loading-text">
+          <strong>Formulating grounded plan with AI…</strong>
+          <span class="muted small">Inspecting routes, pages, and components via Hadrius MCP</span>
+        </div>
+      </div>
+
+      <div id="aiPlanReviewView" class="ai-plan-review-view" hidden>
+        <div class="ai-plan-review-header">
+          <div class="ai-plan-tag">
+            <span class="ai-sparkle">✨</span>
+            <span id="aiPlanModuleTag" class="plan-module-name"></span>
+            <span class="plan-pill">Proposed Plan</span>
+          </div>
+          <span class="ai-mcp-badge">✓ Grounded in Code</span>
+        </div>
+
+        <h3 id="aiPlanProposedTitle" class="plan-card-title"></h3>
+        <p id="aiPlanProposedSummary" class="plan-card-subtitle"></p>
+
+        <ul id="aiPlanProposedStepsList" class="plan-steps-list"></ul>
+
+        <div class="ai-plan-decision-area">
+          <div class="ai-decision-buttons">
+            <button id="aiPlanAcceptBtn" class="primary" type="button">✓ Accept & Use Plan</button>
+            <button id="aiPlanDismissBtn" class="secondary" type="button">✕ Dismiss</button>
+          </div>
+
+          <div class="ai-iterate-box">
+            <label class="small muted">Need changes? Provide clarification or more details to refine:</label>
+            <div class="ai-iterate-row">
+              <input id="aiPlanClarifyInput" type="text" placeholder="e.g. Make sure to specify which dropdown to select first…" />
+              <button id="aiPlanIterateBtn" class="secondary" type="button">💬 Refine Plan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="record-controls">
       <input id="scriptName" placeholder="Walkthrough name">
       <div class="record-button-row">

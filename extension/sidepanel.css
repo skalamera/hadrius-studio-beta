@@ -125,4 +125,32 @@ button.secondary:disabled{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
 .plan-step-desc{flex:1}
 .plan-quoted-action{font-weight:700;color:var(--purple2)}
 .plan-nav-arrow{color:var(--purple);font-weight:700;margin:0 2px}
+
+/* ── AI Walkthrough Plan Generator ── */
+.ai-plan-box{background:#fbfaff;border:1px solid #ddd6fe;border-left:4px solid var(--purple);border-radius:12px;padding:12px 14px;margin-bottom:12px;box-shadow:0 1px 4px rgba(76,61,171,0.05)}
+.ai-plan-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+.ai-sparkle{font-size:16px;line-height:1}
+.ai-plan-title-group strong{font-size:13px;color:var(--purple2);display:block}
+.ai-plan-title-group p{margin:2px 0 0;line-height:1.35}
+.ai-plan-input-row{display:flex;flex-direction:column;gap:8px}
+.ai-plan-input-row textarea{font-size:12px;min-height:52px;border-color:#ddd6fe;border-radius:8px;padding:8px 10px;resize:vertical}
+.ai-plan-input-row textarea:focus{border-color:var(--purple);outline:none}
+.ai-plan-actions-row{display:flex;justify-content:flex-end}
+.ai-gen-btn{padding:6px 14px;font-size:11.5px}
+.ai-plan-loading-view{display:flex;align-items:center;gap:10px;padding:14px 6px}
+.ai-spinner{font-size:18px;display:inline-block}
+.ai-loading-text{display:flex;flex-direction:column;gap:2px}
+.ai-loading-text strong{font-size:12.5px;color:var(--purple2)}
+.ai-plan-review-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ai-plan-tag{display:flex;align-items:center;gap:6px}
+.ai-mcp-badge{font-size:10px;font-weight:700;color:#059669;background:#ecfdf5;border:1px solid #a7f3d0;padding:1.5px 7px;border-radius:999px}
+.ai-plan-decision-area{margin-top:12px;padding-top:12px;border-top:1px dashed #ddd6fe;display:flex;flex-direction:column;gap:10px}
+.ai-decision-buttons{display:flex;align-items:center;gap:8px}
+.ai-decision-buttons button{flex:1}
+.ai-iterate-box{background:#fff;border:1px solid #e9e5f5;border-radius:8px;padding:9px 10px;display:flex;flex-direction:column;gap:6px}
+.ai-iterate-row{display:flex;align-items:center;gap:6px}
+.ai-iterate-row input{font-size:12px;padding:6px 9px;border:1px solid #ddd6fe;border-radius:6px;flex:1}
+.ai-iterate-row input:focus{border-color:var(--purple);outline:none}
+.ai-iterate-row button{white-space:nowrap;padding:6px 12px;font-size:11px}
+
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}

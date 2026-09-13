@@ -222,6 +222,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'PANEL_LIBRARY_GET': { try { return reply(await bridge('GET', `/library?name=${encodeURIComponent(msg.name)}`)); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
       case 'PANEL_LIBRARY_SAVE': { try { return reply(await bridge('POST', '/library', { script: msg.script, broken_steps: msg.broken_steps, healed_step_index: msg.healed_step_index })); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
       case 'PANEL_LIBRARY_DELETE': { try { return reply(await bridge('DELETE', `/library?name=${encodeURIComponent(msg.name)}`)); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
+      case 'PANEL_GENERATE_PLAN': { try { return reply(await bridge('POST', '/plan/generate', msg.payload)); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
       // ---- workflow coverage ----
       case 'PANEL_COVERAGE_GET': { try { return reply(await bridge('GET', '/coverage')); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
       case 'PANEL_COVERAGE_PATCH': { try { return reply(await bridge('PATCH', '/coverage', msg.patch)); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }

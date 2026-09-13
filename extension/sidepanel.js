@@ -400,6 +400,110 @@ async function chooseWorkflow(module, workflow, start=true) {
   if (start) await startRecording();
 }
 
+let activeAiPlan = null; // { userPrompt, plan, previousPlan }
+
+function showAiPlanView(viewName) {
+  $('#aiPlanPromptView').hidden = viewName !== 'prompt';
+  $('#aiPlanLoadingView').hidden = viewName !== 'loading';
+  $('#aiPlanReviewView').hidden = viewName !== 'review';
+}
+
+async function generateAiPlan(clarification = null) {
+  const promptInput = $('#aiPlanPromptInput');
+  const userPrompt = activeAiPlan?.userPrompt || promptInput.value.trim();
+
+  if (!userPrompt) {
+    promptInput.focus();
+    return alert('Please describe what you want to achieve in the walkthrough.');
+  }
+
+  showAiPlanView('loading');
+
+  const payload = {
+    userPrompt,
+    previousPlan: clarification ? activeAiPlan?.plan : null,
+    clarification: clarification || null
+  };
+
+  const res = await send({ type: 'PANEL_GENERATE_PLAN', payload });
+
+  if (!res?.ok || !res.plan) {
+    alert(res?.error || 'Could not generate walkthrough plan. Please try again.');
+    if (activeAiPlan?.plan) {
+      showAiPlanView('review');
+    } else {
+      showAiPlanView('prompt');
+    }
+    return;
+  }
+
+  const plan = res.plan;
+  activeAiPlan = {
+    userPrompt,
+    plan,
+    previousPlan: activeAiPlan?.plan || null
+  };
+
+  // Render review card
+  $('#aiPlanModuleTag').textContent = plan.module || 'Workflow';
+  $('#aiPlanProposedTitle').textContent = plan.title || 'Proposed Walkthrough';
+  $('#aiPlanProposedSummary').textContent = plan.summary || '';
+  
+  const stepsList = $('#aiPlanProposedStepsList');
+  stepsList.innerHTML = (plan.steps || []).map((s, i) => `
+    <li class="plan-step-item">
+      <span class="plan-step-num">${i + 1}.</span>
+      <span class="plan-step-desc">${formatPlanStep(s)}</span>
+    </li>
+  `).join('');
+
+  $('#aiPlanClarifyInput').value = '';
+  showAiPlanView('review');
+}
+
+function acceptAiPlan() {
+  if (!activeAiPlan?.plan) return;
+  const plan = activeAiPlan.plan;
+  const mod = plan.module || 'Workflow';
+  const steps = plan.steps || [];
+
+  selected = { module: mod, ...plan, steps };
+  renderPlanCard(mod, plan, steps);
+  $('#scriptName').value = plan.title || '';
+
+  send({
+    type: 'PANEL_UPDATE_SCRIPT',
+    patch: {
+      name: plan.title,
+      module: mod,
+      workflowPlan: steps,
+      sourceFiles: plan.sources || []
+    }
+  });
+
+  activeAiPlan = null;
+  $('#aiPlanPromptInput').value = '';
+  $('#aiPlanClarifyInput').value = '';
+  showAiPlanView('prompt');
+}
+
+function dismissAiPlan() {
+  if (!confirm('Dismiss this AI-generated plan?')) return;
+  activeAiPlan = null;
+  $('#aiPlanPromptInput').value = '';
+  $('#aiPlanClarifyInput').value = '';
+  showAiPlanView('prompt');
+}
+
+function refineAiPlan() {
+  const clarification = $('#aiPlanClarifyInput').value.trim();
+  if (!clarification) {
+    $('#aiPlanClarifyInput').focus();
+    return alert('Please enter clarification or details on what to change.');
+  }
+  generateAiPlan(clarification);
+}
+
 let isRenderingActive = false;
 
 function updateRenderButtons() {
@@ -1039,6 +1143,24 @@ $('#closeSavedModalBtn').onclick = closeSavedScriptsModal;
 $('#savedScriptsSearch').oninput = renderSavedScripts;
 $('#savedScriptsModal').onclick = (e) => {
   if (e.target.id === 'savedScriptsModal') closeSavedScriptsModal();
+};
+
+// AI Walkthrough Plan Generator
+$('#aiPlanGenerateBtn').onclick = () => generateAiPlan();
+$('#aiPlanPromptInput').onkeydown = (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    generateAiPlan();
+  }
+};
+$('#aiPlanAcceptBtn').onclick = acceptAiPlan;
+$('#aiPlanDismissBtn').onclick = dismissAiPlan;
+$('#aiPlanIterateBtn').onclick = refineAiPlan;
+$('#aiPlanClarifyInput').onkeydown = (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    refineAiPlan();
+  }
 };
 
 const fileInput = $('#scriptFileInput');
