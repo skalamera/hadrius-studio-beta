@@ -936,6 +936,99 @@ $('#refreshWorkflowsBtn').onclick = async () => {
   }
 };
 
+let toastTimer = null;
+function toast(message) {
+  const el = $('#toast');
+  if (!el) return;
+  el.textContent = message;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3000);
+}
+
+async function takeUiScreenshot() {
+  const camBtn = $('#floatingCameraBtn');
+  if (camBtn) camBtn.style.display = 'none';
+
+  const t = $('#toast');
+  if (t) t.hidden = true;
+
+  let shutter = document.getElementById('cameraShutterFlash');
+  if (!shutter) {
+    shutter = document.createElement('div');
+    shutter.id = 'cameraShutterFlash';
+    shutter.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#fff;opacity:0;pointer-events:none;z-index:999999;transition:opacity 0.15s ease-out;';
+    document.body.appendChild(shutter);
+  }
+
+  try {
+    if (typeof html2canvas === 'undefined') {
+      throw new Error('html2canvas is not loaded');
+    }
+
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 40)));
+
+    const canvas = await html2canvas(document.documentElement, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#f4f7f5',
+      ignoreElements: (el) => el.id === 'floatingCameraBtn' || el.id === 'cameraShutterFlash' || el.id === 'toast'
+    });
+
+    shutter.style.opacity = '0.6';
+    setTimeout(() => { shutter.style.opacity = '0'; }, 150);
+
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `hadrius-studio-ui-${timestamp}.png`;
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) throw new Error('Failed to create image blob');
+      let copied = false;
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          copied = true;
+        }
+      } catch (clipErr) {
+        console.warn('Clipboard write failed:', clipErr);
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+      toast(copied ? '📸 Screenshot copied to clipboard & downloaded!' : '📸 Screenshot downloaded!');
+    }, 'image/png');
+  } catch (err) {
+    console.error('UI screenshot failed:', err);
+    toast(`Screenshot failed: ${err.message}`);
+  } finally {
+    if (camBtn) camBtn.style.display = 'flex';
+  }
+}
+
+const camBtn = $('#floatingCameraBtn');
+if (camBtn) {
+  camBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    takeUiScreenshot();
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.altKey && (e.key === 's' || e.key === 'S')) {
+    e.preventDefault();
+    takeUiScreenshot();
+  }
+});
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'KB_STEPS_UPDATED') loadState();
   if (message.type === 'KB_RECORDING') {

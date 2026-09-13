@@ -75,4 +75,9 @@
 .btn-open-script:hover{background:var(--purple2)}
 .btn-del-script{background:transparent;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:4px 6px;border-radius:4px}
 .btn-del-script:hover{color:var(--red);background:#fee2e2}
+.floating-camera-btn{position:fixed;bottom:24px;right:18px;width:42px;height:42px;border-radius:50%;background:var(--purple);color:#fff;border:1.5px solid rgba(255,255,255,.35);box-shadow:0 4px 14px rgba(76,61,171,.45);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:99999;transition:transform .15s ease,background .15s ease,box-shadow .15s ease;padding:0;outline:none}
+.floating-camera-btn:hover{background:var(--purple2);transform:scale(1.08);box-shadow:0 6px 20px rgba(76,61,171,.6)}
+.floating-camera-btn:active{transform:scale(.95)}
+.floating-camera-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.toast{position:fixed;bottom:76px;right:18px;background:#1e1b4b;color:#fff;padding:8px 14px;border-radius:8px;font-size:11px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,.25);border:1px solid #4338ca;z-index:100000;display:flex;align-items:center;gap:6px;animation:fadeIn .2s ease-out;pointer-events:none}
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}
