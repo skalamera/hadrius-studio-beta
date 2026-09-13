@@ -217,15 +217,35 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
  * fallback has no codebase tools at all (turns: 0), and even Claude answering in a single turn never
  * opened the repo.
  */
+function runGeminiCli(prompt, { timeout = 600000, signal, onMeta } = {}) {
+  return new Promise((resolve, reject) => {
+    const args = ['-p', prompt, '--output-format', 'json', '--approval-mode', 'yolo'];
+    const child = execFile('gemini', args, { maxBuffer: 1024 * 1024 * 40, timeout, signal, env: process.env }, (err, stdout, stderr) => {
+      if (err?.name === 'AbortError') return reject(new Error('cancelled'));
+      if (err && !stdout) return reject(new Error(`Gemini CLI failed: ${String(stderr || err.message).trim().slice(0, 500)}`));
+      try {
+        const parsed = JSON.parse(stdout);
+        const text = parsed.response || parsed.result || parsed.content || '';
+        if (!text) throw new Error('Gemini CLI returned no response text');
+        const toolCalls = parsed.stats?.tools?.totalCalls ?? parsed.tool_calls?.length ?? null;
+        onMeta?.({ model: parsed.model || 'gemini-cli', turns: toolCalls, costUsd: null });
+        resolve(text);
+      } catch (parseErr) {
+        if (stdout.trim()) resolve(stdout.trim()); else reject(parseErr);
+      }
+    });
+    child.stdin?.end();
+  });
+}
+
+/** Temporary provider order: Gemini CLI + Hadrius MCP first, Claude CLI fallback only. */
 export async function runClaude(prompt, opts = {}) {
   try {
+    return await runGeminiCli(prompt, opts);
+  } catch (geminiErr) {
+    if (opts.signal?.aborted) throw geminiErr;
+    console.warn(`Gemini CLI failed (${geminiErr.message}), temporarily falling back to Claude CLI...`);
     return await runClaudeCli(prompt, opts);
-  } catch (claudeErr) {
-    if (opts.signal?.aborted) throw claudeErr;
-    console.warn(`Claude CLI failed (${claudeErr.message}), falling back to gemini-3.8-flash...`);
-    const out = await runGeminiFallback(prompt, { systemPrompt: opts.systemPrompt });
-    opts.onMeta?.({ model: 'gemini-3.8-flash', turns: 0, costUsd: null });
-    return out;
   }
 }
 
@@ -287,8 +307,12 @@ Likely page code: ${dirs}
 Use ONLY the hadrius-codebase MCP tools (list_directory, read_file, search_code, file_tree). Look at the page components for these routes and find USER-FACING workflows a compliance officer or employee would actually perform: primary action buttons (e.g. "Add employees", "New test", "Send invite", "Export"), create/edit dialogs and multi-step wizards, approvals/reviews, connecting integrations, bulk actions, imports/exports, settings that must be configured. Ignore purely internal, admin-only debugging, or trivial navigation ("view the list").
 
 For each workflow output:
-{"title":"How to add an employee","description":"one sentence of what the user accomplishes","start_route":"/people-oversight/people-directory","trigger":"button \\"Add employees\\"","source_file":"apps/.../page_people_directory.tsx","priority":"high|medium|low"}
+{"title":"How to add an employee","description":"one sentence of what the user accomplishes","start_route":"/people-oversight/people-directory","trigger":"button \\"Add employees\\"","priority":"high|medium|low","steps":[{"instruction":"Open People Oversight and select People directory.","route":"/people-oversight/people-directory","control_label":"People directory","evidence":{"file":"apps/.../use_employee_tab.tsx","symbol":"visible component or function name","quote":"short exact source excerpt proving this step"}}],"sources":["apps/.../use_employee_tab.tsx","apps/.../page_people_directory.tsx"]}
 - title MUST start with "How to" and be specific.
+- Every step MUST be directly proven by source code read through the Hadrius MCP.
+- Every step requires an exact route, visible control label (or null only for initial page arrival), source file, symbol, and short exact code quote.
+- Do not infer labels, dialogs, fields, ordering, success states, or navigation. If source code does not prove a step, omit the step.
+- Reject a workflow unless it has at least two source-proven user actions and its trigger label is present in source.
 - start_route is where the user begins (a route from the list above or a child of one).
 - priority: high = core daily task or onboarding-critical; medium = periodic; low = rare/edge.
 - Aim for the 4-15 most valuable workflows for this module, no duplicates, no filler.
@@ -298,17 +322,24 @@ Output ONLY a JSON array, no prose, no markdown.`;
   const list = extractJson(out);
   if (!Array.isArray(list)) throw new Error(`workflow scan for ${mod.module} returned non-array`);
   const cleaned = list
-    .filter((w) => w && w.title && w.start_route)
+    .filter((w) => w && w.title && w.start_route && w.trigger && Array.isArray(w.steps) && w.steps.length >= 2)
     .map((w) => ({
       module: mod.module,
       module_path: mod.module_path || null,
       title: String(w.title).trim(),
       description: w.description ? String(w.description).trim() : null,
       start_route: String(w.start_route).trim().replace(/\?.*$/, '') || '/',
-      trigger: w.trigger ? String(w.trigger).trim() : null,
-      source_file: w.source_file ? String(w.source_file).trim() : null,
+      trigger: String(w.trigger).trim(),
       priority: ['high', 'medium', 'low'].includes(w.priority) ? w.priority : 'medium',
-    }));
+      steps: w.steps.filter((step) => step?.instruction && step?.route && step?.evidence?.file && step?.evidence?.symbol && step?.evidence?.quote).map((step) => ({
+        instruction: String(step.instruction).trim(),
+        route: String(step.route).trim(),
+        control_label: step.control_label == null ? null : String(step.control_label).trim(),
+        evidence: { file: String(step.evidence.file).trim(), symbol: String(step.evidence.symbol).trim(), quote: String(step.evidence.quote).trim() }
+      })),
+      sources: [...new Set((w.sources || []).map(String).filter(Boolean))]
+    }))
+    .filter((w) => w.steps.length >= 2);
   log(`  ${mod.module}: ${cleaned.length} workflows`);
   return cleaned;
 }

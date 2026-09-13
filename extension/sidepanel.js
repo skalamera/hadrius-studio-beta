@@ -119,12 +119,12 @@ async function stopAndNarrate() {
   await loadState();
   if (!state.steps.length) return;
   $('#narrationStatus').hidden = false;
-  $('#narrationStatus').textContent = 'Drafting narration with Claude…';
+  $('#narrationStatus').textContent = 'Drafting narration with Gemini…';
   const payload = state.steps.map((s) => ({index:s.index,action:s.action,key:s.key,route:s.route,target:s.target ? {role:s.target.role,name:s.target.name,label:s.target.label,text:s.target.text,placeholder:s.target.placeholder}:null}));
   const result = await send({type:'PANEL_AI_NARRATE',steps:payload,scriptName:$('#scriptName').value.trim()});
   if (result?.ok && Array.isArray(result.lines)) {
     for (let i=0;i<state.steps.length;i++) if (result.lines[i]) await send({type:'PANEL_UPDATE_STEP',index:state.steps[i].index,patch:{narration:result.lines[i],caption:result.lines[i]}});
-    $('#narrationStatus').textContent = `Narration drafted automatically with ${result.model?.startsWith('gemini')?'Gemini fallback':'Claude'}. Review any line below before rendering.`;
+    $('#narrationStatus').textContent = `Narration drafted automatically with ${result.model?.startsWith('gemini')?'Gemini':'Claude fallback'}. Review any line below before rendering.`;
   } else $('#narrationStatus').textContent = `Narration could not be drafted: ${result?.error || 'unknown error'}. Your recording is saved.`;
   await loadState();
 }
@@ -164,7 +164,7 @@ async function checkRender(){const result=await send({type:'PANEL_RENDER_STATUS'
 function exportScript(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(toScript(),null,2)],{type:'application/json'}));a.download=`${slug(toScript().name)||'walkthrough'}.script.json`;a.click();URL.revokeObjectURL(a.href);}
 
 $('#search').oninput=renderModules;
-$('#scanBtn').onclick=async()=>{if(!confirm('Run a new Claude codebase scan? This can take several minutes.'))return;$('#scanBtn').disabled=true;try{await api('/workflows',{method:'POST'});$('#syncStatus').textContent='Claude is scanning the Hadrius codebase. Existing workflows remain available.';pollScan();}catch(e){alert(e.message);$('#scanBtn').disabled=false;}};
+$('#scanBtn').onclick=async()=>{if(!confirm('Run a new Gemini codebase scan through the Hadrius MCP? This can take several minutes.'))return;$('#scanBtn').disabled=true;try{await api('/workflows',{method:'POST'});$('#syncStatus').textContent='Gemini is scanning the Hadrius codebase through the MCP. Only source-evidenced plans will be saved.';pollScan();}catch(e){alert(e.message);$('#scanBtn').disabled=false;}};
 async function pollScan(){try{const result=await api('/workflows');catalog=result;if(result.scan?.running)return setTimeout(pollScan,2500);$('#scanBtn').disabled=false;await refreshAll();if(result.scan?.error)alert(result.scan.error);}catch(e){$('#scanBtn').disabled=false;}}
 $('#recordBtn').onclick=startRecording;$('#stopBtn').onclick=stopAndNarrate;
 $('#clearBtn').onclick=async()=>{if(confirm('Clear this recording?')){await send({type:'PANEL_CLEAR'});selected=null;$('#selectedWorkflow').hidden=true;await loadState();}};

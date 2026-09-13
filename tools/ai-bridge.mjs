@@ -910,14 +910,18 @@ const server = http.createServer(async (req, res) => {
       void (async () => {
         try {
           const { runScan } = await import('./coverage-scan.mjs');
-          const result = await runScan({ force: true, log });
-          const modules = (result.modules || []).map((entry) => ({
-            module: entry.module,
-            workflows: (entry.workflows || entry.candidates || []).map((workflow) => ({
+          const result = await runScan({ useCache: false, log });
+          const modules = ALLOWED_MODULES.map((module) => ({
+            module,
+            workflows: (result.candidates || []).filter((workflow) => workflow.module === module).map((workflow) => ({
               title: workflow.title,
-              purpose: workflow.purpose || workflow.description || '',
-              steps: workflow.steps || workflow.plan || [],
-              sources: workflow.sources || (workflow.source_file ? [workflow.source_file] : [])
+              purpose: workflow.description || '',
+              startRoute: workflow.start_route,
+              trigger: workflow.trigger,
+              priority: workflow.priority,
+              steps: (workflow.steps || []).map((step) => step.instruction).filter(Boolean),
+              evidence: (workflow.steps || []).map((step) => ({ instruction: step.instruction, route: step.route, controlLabel: step.control_label, ...step.evidence })),
+              sources: workflow.sources || []
             }))
           }));
           if (modules.some((entry) => entry.workflows.length)) {
@@ -1204,25 +1208,23 @@ const server = http.createServer(async (req, res) => {
         if (!Array.isArray(steps) || !steps.length) throw new Error('no steps provided');
 
         let lines = null;
-        let model = 'claude';
+        let model = 'gemini-3.8-flash';
         let fallbackReason = null;
 
         try {
-          const prompt = buildPrompt(steps, scriptName);
-          const result = await runClaude(prompt);
+          lines = await runGemini(steps, scriptName);
+        } catch (geminiErr) {
+          fallbackReason = String(geminiErr?.message || geminiErr);
+          console.warn(`Gemini drafting failed (${fallbackReason}), temporarily falling back to Claude CLI...`);
+          const result = await runClaudeCli(buildPrompt(steps, scriptName));
           const match = result.match(/\[[\s\S]*\]/);
           lines = JSON.parse(match ? match[0] : result);
-          if (!Array.isArray(lines)) throw new Error('Claude did not return a JSON array');
-        } catch (claudeErr) {
-          fallbackReason = String(claudeErr?.message || claudeErr);
-          console.warn(`Claude drafting failed (${fallbackReason}), falling back to gemini-3.8-flash...`);
-          lines = await runGemini(steps, scriptName);
-          model = 'gemini-3.8-flash';
+          model = 'claude';
         }
 
         if (!Array.isArray(lines)) throw new Error('model did not return a JSON array');
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'claude', fallbackReason } : {}) }));
+        res.end(JSON.stringify({ ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'gemini', fallbackReason } : {}) }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));

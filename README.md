@@ -4,7 +4,7 @@ A Chrome side-panel extension for producing short Hadrius knowledge-base walkthr
 
 ## What it does
 
-- Scans `hadrius_frontend` through the Hadrius MCP using Claude CLI, with Gemini fallback.
+- Temporarily scans `hadrius_frontend` through the Hadrius MCP using Gemini CLI, with Claude fallback. Every saved plan step requires source evidence.
 - Groups workflow opportunities into Testing Program, People Oversight, Branches, Communications, Marketing, and Account Surveillance.
 - Shows the current articles in each module's Pylon knowledge-base collection. The panel refreshes every minute and on launch, so additions and deletions are reflected without an extension release.
 - Opens every article directly in Pylon and automatically matches same-title articles to workflow opportunities.
@@ -16,7 +16,7 @@ A Chrome side-panel extension for producing short Hadrius knowledge-base walkthr
 
 ## Install
 
-Requirements: Node 20+, Python 3, FFmpeg, Claude CLI, and Chrome.
+Requirements: Node 20+, Python 3, FFmpeg, Chrome, and a `GEMINI_API_KEY`. `setup.sh` installs Gemini CLI; Claude CLI is optional fallback.
 
 ```bash
 cp .env.example .env
@@ -24,7 +24,7 @@ cp .env.example .env
 npm start
 ```
 
-Set `PYLON_API_TOKEN` in `.env`. For fallback AI, set `GEMINI_API_KEY`. Authenticate Claude once with `claude login`. `setup.sh` configures the Hadrius codebase MCP for Claude when its URL is available.
+Set `PYLON_API_TOKEN` and `GEMINI_API_KEY` in `.env`. `setup.sh` configures the Hadrius codebase MCP for Gemini CLI. If Claude CLI is installed, it remains fallback-only.
 
 In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `extension/`.
 
@@ -34,7 +34,7 @@ In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpa
 2. Open the Studio side panel while on any Hadrius PROD or Staging company.
 3. Choose a workflow and review its recording plan.
 4. Click **Record** and perform the workflow normally.
-5. Click **Stop & draft narration**. Claude immediately drafts narration; Gemini is used if Claude is unavailable.
+5. Click **Stop & draft narration**. Gemini immediately drafts narration; Claude is used only if Gemini is unavailable.
 6. Edit any action, narration, or caption, then click **Render MP4**.
 
 Outputs are written to `out/<walkthrough name>/`.
