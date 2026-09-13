@@ -145,8 +145,16 @@ button.secondary:disabled{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
 .ai-plan-tag{display:flex;align-items:center;gap:6px}
 .ai-mcp-badge{font-size:10px;font-weight:700;color:#059669;background:#ecfdf5;border:1px solid #a7f3d0;padding:1.5px 7px;border-radius:999px}
 .ai-plan-decision-area{margin-top:12px;padding-top:12px;border-top:1px dashed #ddd6fe;display:flex;flex-direction:column;gap:10px}
-.ai-decision-buttons{display:flex;align-items:center;gap:8px}
-.ai-decision-buttons button{flex:1}
+.ai-decision-buttons{display:flex;align-items:center;gap:8px;position:relative}
+.ai-decision-buttons > button, .ai-dropdown-wrapper{flex:1}
+.ai-dropdown-wrapper{position:relative;display:flex}
+.ai-dropdown-trigger{width:100%;display:flex;align-items:center;justify-content:center;gap:6px}
+.dropdown-caret{font-size:10px;line-height:1}
+.ai-dropdown-menu{position:absolute;top:calc(100% + 4px);left:0;width:240px;background:#fff;border:1px solid #ddd6fe;border-radius:8px;box-shadow:0 6px 20px rgba(76,61,171,0.18);padding:4px;z-index:200;display:flex;flex-direction:column;gap:2px}
+.ai-dropdown-item{display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:transparent;border:none;border-radius:6px;padding:8px 10px;cursor:pointer;width:100%;color:var(--ink);transition:background .12s ease}
+.ai-dropdown-item:hover{background:#f5f3ff}
+.ai-dropdown-item-title{font-size:12px;font-weight:700;color:var(--purple2)}
+.ai-dropdown-item-desc{font-size:10.5px;color:var(--muted);margin-top:1px}
 .ai-iterate-box{background:#fff;border:1px solid #e9e5f5;border-radius:8px;padding:9px 10px;display:flex;flex-direction:column;gap:6px}
 .ai-iterate-row{display:flex;align-items:center;gap:6px}
 .ai-iterate-row input{font-size:12px;padding:6px 9px;border:1px solid #ddd6fe;border-radius:6px;flex:1}

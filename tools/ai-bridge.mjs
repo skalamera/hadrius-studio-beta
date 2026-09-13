@@ -1249,6 +1249,89 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && u.pathname === '/workflows/opportunity') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { module: modName, workflow } = JSON.parse(body || '{}');
+        if (!workflow?.title) throw new Error('workflow title required');
+        const targetModule = canonicalModule(modName || workflow.module) || modName || 'Testing program';
+        const title = workflow.title.trim();
+
+        // 1. Remove from dismissed-workflows.json and manual-links.json if present
+        const dismissed = new Set(readDismissedWorkflows());
+        if (dismissed.delete(title)) writeDismissedWorkflows([...dismissed]);
+
+        const links = new Set(readManualLinks());
+        if (links.delete(title)) writeManualLinks([...links]);
+
+        // 2. Add or update in local data/workflows.json
+        try {
+          let data = { modules: [] };
+          if (fs.existsSync(WORKFLOWS_FILE)) {
+            data = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8'));
+          }
+          if (!Array.isArray(data.modules)) data.modules = [];
+          let targetModObj = data.modules.find((m) => m.module.toLowerCase() === targetModule.toLowerCase());
+          if (!targetModObj) {
+            targetModObj = { module: targetModule, workflows: [] };
+            data.modules.push(targetModObj);
+          }
+          if (!Array.isArray(targetModObj.workflows)) targetModObj.workflows = [];
+
+          const existingIdx = targetModObj.workflows.findIndex((w) => w.title.toLowerCase() === title.toLowerCase());
+          const fullWf = {
+            title,
+            purpose: workflow.summary || workflow.purpose || '',
+            startRoute: workflow.startRoute || workflow.start_route || '/overview',
+            trigger: workflow.trigger || '',
+            priority: workflow.priority || 'medium',
+            steps: Array.isArray(workflow.steps) ? workflow.steps : [],
+            evidence: workflow.evidence || [],
+            sources: workflow.sources || [workflow.source_file].filter(Boolean),
+            status: 'missing'
+          };
+          if (existingIdx >= 0) {
+            targetModObj.workflows[existingIdx] = fullWf;
+          } else {
+            targetModObj.workflows.unshift(fullWf);
+          }
+          fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify(data, null, 2));
+        } catch (fileErr) {
+          console.warn('[workflows/opportunity] Could not write to local workflows.json:', fileErr.message);
+        }
+
+        // 3. Upsert into shared Neon repository (hadrius_studio_beta_workflow_candidates)
+        if (LIBRARY_SECRET) {
+          try {
+            const candKey = candSlug(`${targetModule}-${title}`);
+            await libraryFetch('POST', null, {
+              candidates: [{
+                key: candKey,
+                module: targetModule,
+                title,
+                description: workflow.summary || workflow.purpose || '',
+                start_route: workflow.startRoute || workflow.start_route || '/overview',
+                source_file: workflow.sources?.[0] || workflow.source_file || null,
+                priority: 'medium',
+                updated_by: WHOAMI
+              }],
+              full_scan: false
+            }, COVERAGE_URL);
+          } catch (sharedErr) {
+            console.warn('[workflows/opportunity] Could not upsert to shared repository:', sharedErr.message);
+          }
+        }
+
+        return sendJson(res, 200, { ok: true });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && u.pathname === '/workflows/dismiss') {
     let body = '';
     req.on('data', (c) => (body += c));

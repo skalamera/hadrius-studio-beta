@@ -467,7 +467,9 @@ async function generateAiPlan(clarification = null) {
   $('#aiPlanModuleTag').textContent = plan.module || 'Workflow';
   $('#aiPlanProposedTitle').textContent = plan.title || 'Proposed Walkthrough';
   $('#aiPlanProposedSummary').textContent = plan.summary || '';
-  
+  $('#scriptName').value = plan.title || '';
+  send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: plan.title } });
+
   const stepsList = $('#aiPlanProposedStepsList');
   stepsList.innerHTML = (plan.steps || []).map((s, i) => `
     <li class="plan-step-item">
@@ -477,10 +479,20 @@ async function generateAiPlan(clarification = null) {
   `).join('');
 
   $('#aiPlanClarifyInput').value = '';
+  toggleAiAcceptMenu(false);
   showAiPlanView('review');
 }
 
-function acceptAiPlan() {
+function toggleAiAcceptMenu(open) {
+  const menu = $('#aiPlanAcceptMenu');
+  if (!menu) return;
+  const shouldOpen = typeof open === 'boolean' ? open : menu.hidden;
+  menu.hidden = !shouldOpen;
+  $('#aiPlanAcceptBtn')?.closest('.ai-dropdown-wrapper')?.classList.toggle('open', shouldOpen);
+}
+
+function acceptAiPlanNow() {
+  toggleAiAcceptMenu(false);
   if (!activeAiPlan?.plan) return;
   const plan = activeAiPlan.plan;
   const mod = plan.module || 'Workflow';
@@ -506,7 +518,42 @@ function acceptAiPlan() {
   showAiPlanView('prompt');
 }
 
+async function acceptAiPlanLater() {
+  toggleAiAcceptMenu(false);
+  if (!activeAiPlan?.plan) return;
+  const plan = activeAiPlan.plan;
+  const mod = plan.module || 'Testing program';
+  const title = plan.title;
+
+  try {
+    const res = await api('/workflows/opportunity', {
+      method: 'POST',
+      body: JSON.stringify({ module: mod, workflow: plan })
+    });
+    if (!res?.ok) throw new Error(res?.error || 'Failed to save opportunity');
+
+    dismissedWorkflows.delete(title);
+    manualLinks.delete(title);
+    await chrome.storage.local.set({
+      dismissedWorkflows: [...dismissedWorkflows],
+      manualLinks: [...manualLinks]
+    });
+
+    refreshAll().catch(() => {});
+
+    alert(`✓ Added "${title}" as a recording opportunity under ${mod} on the Workflows tab.`);
+
+    activeAiPlan = null;
+    $('#aiPlanPromptInput').value = '';
+    $('#aiPlanClarifyInput').value = '';
+    showAiPlanView('prompt');
+  } catch (err) {
+    alert(`Could not save opportunity: ${err.message}`);
+  }
+}
+
 function dismissAiPlan() {
+  toggleAiAcceptMenu(false);
   if (!confirm('Dismiss this AI-generated plan?')) return;
   activeAiPlan = null;
   $('#aiPlanPromptInput').value = '';
@@ -515,6 +562,7 @@ function dismissAiPlan() {
 }
 
 function refineAiPlan() {
+  toggleAiAcceptMenu(false);
   const clarification = $('#aiPlanClarifyInput').value.trim();
   if (!clarification) {
     $('#aiPlanClarifyInput').focus();
@@ -1172,7 +1220,12 @@ $('#aiPlanPromptInput').onkeydown = (e) => {
     generateAiPlan();
   }
 };
-$('#aiPlanAcceptBtn').onclick = acceptAiPlan;
+$('#aiPlanAcceptBtn').onclick = (e) => {
+  e.stopPropagation();
+  toggleAiAcceptMenu();
+};
+$('#aiPlanAcceptNowBtn').onclick = acceptAiPlanNow;
+$('#aiPlanAcceptLaterBtn').onclick = acceptAiPlanLater;
 $('#aiPlanDismissBtn').onclick = dismissAiPlan;
 $('#aiPlanIterateBtn').onclick = refineAiPlan;
 $('#aiPlanClarifyInput').onkeydown = (e) => {
@@ -1181,6 +1234,12 @@ $('#aiPlanClarifyInput').onkeydown = (e) => {
     refineAiPlan();
   }
 };
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.ai-dropdown-wrapper')) {
+    toggleAiAcceptMenu(false);
+  }
+});
 
 const fileInput = $('#scriptFileInput');
 if (fileInput) {

@@ -88,56 +88,6 @@
           ]
         },
         {
-          "title": "How to complete a test questionnaire and submit it for review",
-          "purpose": "A test owner answers the assigned questionnaire, saves progress, and submits the run for reviewer sign-off.",
-          "startRoute": "/testing-program/tests",
-          "trigger": "button \"Submit for review\"",
-          "priority": "high",
-          "steps": [
-            "Navigate to Testing program > Tests",
-            "Answer questionnaire questions on the test's Tests tab; responses auto-save as drafts.",
-            "Optionally click \"Save as draft\" to manually save progress without submitting.",
-            "Once all required questions are answered, click \"Submit for review\"."
-          ],
-          "evidence": [
-            {
-              "instruction": "Navigate to Testing program > Tests",
-              "route": "/testing-program/tests",
-              "controlLabel": "Tests",
-              "file": null,
-              "symbol": "SidebarNav",
-              "quote": "Navigate to Testing program > Tests"
-            },
-            {
-              "instruction": "Answer questionnaire questions on the test's Tests tab; responses auto-save as drafts.",
-              "route": "/testing-program/tests",
-              "controlLabel": null,
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/test_run_questionnaire_flow.tsx",
-              "symbol": "handleResponseChange",
-              "quote": "setLocalResponses((previous) => { ... queueDraftSave(); return next; });"
-            },
-            {
-              "instruction": "Optionally click \"Save as draft\" to manually save progress without submitting.",
-              "route": "/testing-program/tests",
-              "controlLabel": "Save as draft",
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/test_run_questionnaire_flow.tsx",
-              "symbol": "handleSaveDraft",
-              "quote": "{isSavingDraft ? \"Saving...\" : \"Save as draft\"}"
-            },
-            {
-              "instruction": "Once all required questions are answered, click \"Submit for review\".",
-              "route": "/testing-program/tests",
-              "controlLabel": "Submit for review",
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/test_run_questionnaire_flow.tsx",
-              "symbol": "handleSubmit",
-              "quote": "{isSubmitting || isSubmittingRun ? \"Submitting...\" : \"Submit for review\"}"
-            }
-          ],
-          "sources": [
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/test_run_questionnaire_flow.tsx"
-          ]
-        },
-        {
           "title": "How to review and approve a test run",
           "purpose": "A reviewer clears each questionnaire answer with no objection (or flags issues) and then approves, forwards, or returns the run.",
           "startRoute": "/testing-program/tests",

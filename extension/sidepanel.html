@@ -80,7 +80,21 @@
 
         <div class="ai-plan-decision-area">
           <div class="ai-decision-buttons">
-            <button id="aiPlanAcceptBtn" class="primary" type="button">✓ Accept & Use Plan</button>
+            <div class="ai-dropdown-wrapper">
+              <button id="aiPlanAcceptBtn" class="primary ai-dropdown-trigger" type="button">
+                Accept <span class="dropdown-caret">▾</span>
+              </button>
+              <div id="aiPlanAcceptMenu" class="ai-dropdown-menu" hidden>
+                <button id="aiPlanAcceptNowBtn" class="ai-dropdown-item" type="button">
+                  <span class="ai-dropdown-item-title">Accept & Use Now</span>
+                  <span class="ai-dropdown-item-desc">Load plan now to start recording</span>
+                </button>
+                <button id="aiPlanAcceptLaterBtn" class="ai-dropdown-item" type="button">
+                  <span class="ai-dropdown-item-title">Accept & Use Later</span>
+                  <span class="ai-dropdown-item-desc">Add as an opportunity on Workflows tab</span>
+                </button>
+              </div>
+            </div>
             <button id="aiPlanDismissBtn" class="secondary" type="button">✕ Dismiss</button>
           </div>
 

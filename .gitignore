@@ -12,3 +12,5 @@ __pycache__/
 .coverage-plans.json
 .test-browser-profile/
 scripts/
+data/manual-links.json
+data/dismissed-workflows.json
