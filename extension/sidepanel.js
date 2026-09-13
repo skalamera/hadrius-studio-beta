@@ -28,14 +28,77 @@ function switchView(name) {
 }
 $$('.tab').forEach((tab) => tab.onclick = () => switchView(tab.dataset.view));
 
+let scanPollTimer = null;
+function updateScanStatus(scan) {
+  const banner = $('#scanBanner');
+  const scanBtn = $('#scanBtn');
+  if (!banner) return;
+  if (scan?.running) {
+    banner.hidden = false;
+    if (scanBtn) {
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'Scanning…';
+    }
+    const logs = scan.log || [];
+    const latest = logs[logs.length - 1] || 'Scanning Hadrius modules via MCP…';
+    $('#scanBannerDetail').textContent = latest;
+    if (!scanPollTimer) {
+      scanPollTimer = setTimeout(pollScan, 2000);
+    }
+  } else {
+    if (scanPollTimer) {
+      clearTimeout(scanPollTimer);
+      scanPollTimer = null;
+    }
+    if (!banner.hidden) {
+      if (scan?.error) {
+        $('#scanBannerDetail').textContent = `Scan failed: ${scan.error}`;
+      } else {
+        $('#scanBannerDetail').textContent = '✓ Scan complete! Workflows updated.';
+      }
+      setTimeout(() => { banner.hidden = true; }, 4000);
+    } else {
+      banner.hidden = true;
+    }
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.textContent = 'Scan codebase';
+    }
+  }
+}
+
+async function pollScan() {
+  scanPollTimer = null;
+  try {
+    const result = await api('/workflows');
+    catalog = result;
+    updateScanStatus(result.scan);
+    if (result.scan?.running) {
+      scanPollTimer = setTimeout(pollScan, 2000);
+    } else {
+      await refreshAll();
+      if (result.scan?.error) alert(`Codebase scan error: ${result.scan.error}`);
+    }
+  } catch (e) {
+    updateScanStatus({ running: false });
+  }
+}
+
 async function refreshAll() {
   const [workflowResult, pylonResult] = await Promise.allSettled([api('/workflows'), api('/pylon/articles')]);
-  if (workflowResult.status === 'fulfilled') catalog = workflowResult.value;
+  if (workflowResult.status === 'fulfilled') {
+    catalog = workflowResult.value;
+    updateScanStatus(catalog.scan);
+  }
   if (pylonResult.status === 'fulfilled') pylon = pylonResult.value;
   const workflowOk = workflowResult.status === 'fulfilled';
   const pylonOk = pylonResult.status === 'fulfilled';
   if (workflowOk && pylonOk) {
-    $('#syncStatus').textContent = `Live Pylon sync · ${new Date(pylon.syncedAt).toLocaleTimeString()} · ${catalog.modules.reduce((n,m)=>n+m.workflows.length,0)} workflows`;
+    if (!catalog.scan?.running) {
+      $('#syncStatus').textContent = `Live Pylon sync · ${new Date(pylon.syncedAt).toLocaleTimeString()} · ${catalog.modules.reduce((n,m)=>n+m.workflows.length,0)} workflows`;
+    } else {
+      $('#syncStatus').textContent = `Codebase scan in progress… (Pylon synced ${new Date(pylon.syncedAt).toLocaleTimeString()})`;
+    }
   } else if (!workflowOk) {
     $('#syncStatus').textContent = `Workflows unavailable: ${workflowResult.reason?.message || 'bridge error'}. Stop the old bridge and run npm start from hadrius-studio-beta.`;
   } else {
@@ -109,6 +172,20 @@ async function chooseWorkflow(module, workflow, start=true) {
   if (start) await startRecording();
 }
 
+function updateRecordingBanner() {
+  const banner = $('#recordingBanner');
+  if (!banner) return;
+  if (state.recording) {
+    banner.hidden = false;
+    const count = state.steps?.length || 0;
+    const lastStep = state.steps?.[count - 1];
+    const route = lastStep?.route ? ` · ${lastStep.route}` : '';
+    $('#recordingStepIndicator').textContent = `${count} ${count === 1 ? 'step' : 'steps'} captured${route}`;
+  } else {
+    banner.hidden = true;
+  }
+}
+
 async function loadState() {
   state = await send({type:'PANEL_GET_STATE'});
   $('#stepCount').textContent = state.steps.length;
@@ -119,6 +196,7 @@ async function loadState() {
     $('#narrationStatus').textContent = '';
   }
   $('#scriptName').value = state.script?.name || '';
+  updateRecordingBanner();
   renderSteps();
 }
 
@@ -313,8 +391,17 @@ async function resetRecordingSession() {
 }
 
 $('#search').oninput=renderModules;
-$('#scanBtn').onclick=async()=>{if(!confirm('Run a new Gemini codebase scan through the Hadrius MCP? This can take several minutes.'))return;$('#scanBtn').disabled=true;try{await api('/workflows',{method:'POST'});$('#syncStatus').textContent='Gemini is scanning the Hadrius codebase through the MCP. Only source-evidenced plans will be saved.';pollScan();}catch(e){alert(e.message);$('#scanBtn').disabled=false;}};
-async function pollScan(){try{const result=await api('/workflows');catalog=result;if(result.scan?.running)return setTimeout(pollScan,2500);$('#scanBtn').disabled=false;await refreshAll();if(result.scan?.error)alert(result.scan.error);}catch(e){$('#scanBtn').disabled=false;}}
+$('#scanBtn').onclick = async () => {
+  if (!confirm('Run a new Gemini codebase scan through the Hadrius MCP? This can take several minutes.')) return;
+  updateScanStatus({ running: true, log: ['Starting codebase scan via Hadrius MCP…'] });
+  try {
+    await api('/workflows', { method: 'POST' });
+    pollScan();
+  } catch (e) {
+    alert(e.message);
+    updateScanStatus({ running: false });
+  }
+};
 $('#recordBtn').onclick=startRecording;$('#stopBtn').onclick=stopAndNarrate;
 $('#clearBtn').onclick=async()=>{if(confirm('Clear this recording?')){await resetRecordingSession();}};
 $('#scriptName').onchange=(e)=>send({type:'PANEL_UPDATE_SCRIPT',patch:{name:e.target.value}});
@@ -335,6 +422,14 @@ $('#pylonArticleLink').onclick = (e) => {
 
 $('#dismissResetBtn').onclick = resetRecordingSession;
 
-chrome.runtime.onMessage.addListener((message)=>{if(message.type==='KB_STEPS_UPDATED')loadState();});
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'KB_STEPS_UPDATED') loadState();
+  if (message.type === 'KB_RECORDING') {
+    state.recording = message.recording;
+    $('#recordBtn').hidden = state.recording;
+    $('#stopBtn').hidden = !state.recording;
+    updateRecordingBanner();
+  }
+});
 
 (async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await loadState();await refreshAll();checkRender();setInterval(refreshAll,60000);})();

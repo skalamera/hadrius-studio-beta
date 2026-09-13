@@ -13,6 +13,23 @@
   <header><img src="icons/wordmark.png" class="wordmark" alt="Hadrius Studio"><span class="lite">LITE</span><span id="bridgeDot" class="dot"></span></header>
   <nav><button class="tab active" data-view="workflows">Workflows</button><button class="tab" data-view="recording">Recording <span id="stepCount">0</span></button></nav>
 
+  <div id="statusBarContainer" class="top-status-container">
+    <div id="recordingBanner" class="top-banner recording-banner" hidden>
+      <span class="pulse-dot"></span>
+      <div class="banner-text-group">
+        <span class="banner-title">RECORDING LIVE</span>
+        <span id="recordingStepIndicator" class="banner-detail">0 steps</span>
+      </div>
+    </div>
+    <div id="scanBanner" class="top-banner scan-banner" hidden>
+      <span class="spinner-icon">⏳</span>
+      <div class="banner-text-group">
+        <span class="banner-title">Scanning Codebase via MCP</span>
+        <span id="scanBannerDetail" class="banner-detail">Querying Hadrius frontend…</span>
+      </div>
+    </div>
+  </div>
+
   <main id="workflowsView">
     <section class="toolbar">
       <input id="search" type="search" placeholder="Search workflows and articles…">
