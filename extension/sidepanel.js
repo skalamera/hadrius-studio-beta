@@ -172,6 +172,15 @@ async function chooseWorkflow(module, workflow, start=true) {
   if (start) await startRecording();
 }
 
+function updateRecordingButtons() {
+  const isRec = !!state.recording;
+  $('#recordBtn').hidden = isRec;
+  $('#stopBtn').hidden = !isRec;
+  $('#cancelRecordBtn').hidden = !isRec;
+  $('#clearBtn').hidden = isRec;
+  updateRecordingBanner();
+}
+
 function updateRecordingBanner() {
   const banner = $('#recordingBanner');
   if (!banner) return;
@@ -186,17 +195,26 @@ function updateRecordingBanner() {
   }
 }
 
+async function cancelRecording() {
+  if (state.steps?.length && !confirm('Cancel this recording? Captured steps will be discarded.')) return;
+  await send({ type: 'PANEL_STOP' });
+  await send({ type: 'PANEL_CLEAR' });
+  state.recording = false;
+  $('#narrationStatus').hidden = true;
+  $('#narrationStatus').textContent = '';
+  updateRecordingButtons();
+  await loadState();
+}
+
 async function loadState() {
   state = await send({type:'PANEL_GET_STATE'});
-  $('#stepCount').textContent = state.steps.length;
-  $('#recordBtn').hidden = state.recording;
-  $('#stopBtn').hidden = !state.recording;
-  if (!state.steps.length) {
+  $('#stepCount').textContent = state.steps?.length || 0;
+  updateRecordingButtons();
+  if (!state.steps?.length) {
     $('#narrationStatus').hidden = true;
     $('#narrationStatus').textContent = '';
   }
   $('#scriptName').value = state.script?.name || '';
-  updateRecordingBanner();
   renderSteps();
 }
 
@@ -402,9 +420,11 @@ $('#scanBtn').onclick = async () => {
     updateScanStatus({ running: false });
   }
 };
-$('#recordBtn').onclick=startRecording;$('#stopBtn').onclick=stopAndNarrate;
-$('#clearBtn').onclick=async()=>{if(confirm('Clear this recording?')){await resetRecordingSession();}};
-$('#scriptName').onchange=(e)=>send({type:'PANEL_UPDATE_SCRIPT',patch:{name:e.target.value}});
+$('#recordBtn').onclick = startRecording;
+$('#stopBtn').onclick = stopAndNarrate;
+$('#cancelRecordBtn').onclick = cancelRecording;
+$('#clearBtn').onclick = async () => { if (confirm('Clear this recording?')) { await resetRecordingSession(); } };
+$('#scriptName').onchange = (e) => send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: e.target.value } });
 $('#renderBtn').onclick = () => renderVideo('video');
 $('#renderBothBtn').onclick = () => renderVideo('both');
 $('#downloadBtn').onclick = exportScript;
@@ -425,10 +445,8 @@ $('#dismissResetBtn').onclick = resetRecordingSession;
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'KB_STEPS_UPDATED') loadState();
   if (message.type === 'KB_RECORDING') {
-    state.recording = message.recording;
-    $('#recordBtn').hidden = state.recording;
-    $('#stopBtn').hidden = !state.recording;
-    updateRecordingBanner();
+    state.recording = !!message.recording;
+    updateRecordingButtons();
   }
 });
 
