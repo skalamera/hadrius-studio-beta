@@ -464,18 +464,26 @@ function runClaudeCli(prompt) {
       'mcp__hadrius-codebase__get_policy',
       'mcp__hadrius-codebase__search_by_tag',
     ].join(',');
-    const args = ['-p', prompt, '--output-format', 'json', '--max-turns', '10', '--allowedTools', allowedTools];
-    const child = execFile('claude', args, { maxBuffer: 1024 * 1024 * 20, timeout: 180000, env: claudeEnv() }, (err, stdout, stderr) => {
+    const args = ['-p', prompt, '--output-format', 'json', '--max-turns', '40', '--allowedTools', allowedTools];
+    const child = execFile('claude', args, { maxBuffer: 1024 * 1024 * 20, timeout: 300000, env: claudeEnv() }, (err, stdout, stderr) => {
       if (err && !stdout) return reject(new Error(stderr || err.message));
       try {
         const parsed = JSON.parse(stdout);
-        if (parsed.is_error || (parsed.subtype && parsed.subtype !== 'success')) return reject(new Error(`claude: ${parsed.result || parsed.subtype || stderr || 'unknown error'}`));
+        if (parsed.is_error || (parsed.subtype && parsed.subtype !== 'success')) {
+          if (parsed.result) {
+            try {
+              extractJson(parsed.result);
+              return resolve(parsed.result);
+            } catch (_) {}
+          }
+          return reject(new Error(`claude: ${parsed.result || parsed.subtype || stderr || 'unknown error'}`));
+        }
         resolve(parsed.result ?? stdout);
       } catch (_) {
-        resolve(stdout.trim()); // fall back to raw text if it didn't come back as the json envelope
+        resolve(stdout.trim());
       }
     });
-    child.stdin?.end(); // prompt is in argv; otherwise the CLI waits ~3s for piped stdin
+    child.stdin?.end();
   });
 }
 
@@ -490,9 +498,14 @@ async function runGeminiPrompt(prompt) {
   });
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.error?.message || `Gemini API returned HTTP ${resp.status}`);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned an empty response');
-  return text.trim();
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const nonThought = parts.filter(p => p.text && !p.thought);
+  const text = (nonThought.length ? nonThought : parts).map(p => p.text).filter(Boolean).join('\n').trim();
+  if (!text) {
+    console.error('[runGeminiPrompt] Empty response from Gemini. Response structure:', JSON.stringify(data));
+    throw new Error('Gemini could not generate a response for this prompt.');
+  }
+  return text;
 }
 
 async function runClaude(prompt) {
@@ -510,7 +523,7 @@ The user has an idea for a video walkthrough: "${userPrompt}".
 Your job is to inspect the real codebase using the hadrius-codebase MCP tools (search_code, read_file, list_directory, file_tree) and produce a strictly grounded, step-by-step walkthrough plan.
 
 IMPORTANT RULES:
-1. Use the MCP tools to inspect the real routes, pages, and components in apps/hadrius-app/src/ so every button label, route, dialog title, and field name matches the actual Hadrius code. Do NOT guess labels or make up steps.
+1. Be focused and efficient: use 2-4 targeted MCP tool calls (search_code for the key term or route, then read_file on the main page/dialog component), then immediately output the final JSON plan.
 2. Determine which of the 6 Hadrius modules this workflow belongs to:
    - "Testing program"
    - "People oversight"
@@ -543,7 +556,42 @@ IMPORTANT RULES:
     prompt += `\n\nUSER'S CLARIFICATION & REQUESTED CHANGES:\n"${clarification}"\nAdjust the plan according to their feedback and the codebase.`;
   }
 
-  const rawOutput = await runClaude(prompt);
+  let rawOutput;
+  try {
+    rawOutput = await runClaudeCli(prompt);
+  } catch (claudeErr) {
+    console.warn(`Claude CLI with MCP failed (${claudeErr.message}), falling back to Gemini with Hadrius knowledge...`);
+    const fallbackPrompt = `You are an expert product educator on the Hadrius compliance web app.
+The user wants a video walkthrough plan for: "${userPrompt}".
+${previousPlan ? `Previous plan: ${JSON.stringify(previousPlan)}` : ''}
+${clarification ? `User feedback/clarification: "${clarification}"` : ''}
+
+Hadrius has 6 core modules:
+1. Testing program (policies, tests, exceptions, calendar, risks & controls) - route prefix /testing-program/
+2. People oversight (employees, attestations, disclosures, certifications) - route prefix /people-oversight/
+3. Branches (branch directory, inspections, exams) - route prefix /branches/
+4. Communications (email review, instant messages, lexicon, datasets, cases) - route prefix /communications/
+5. Marketing (materials review, websites, social media) - route prefix /marketing/
+6. Account surveillance (trades, holdings, accounts, flags) - route prefix /account-surveillance/
+
+Formulate a clean, grounded step-by-step walkthrough plan for what the user wants to achieve.
+Step 1 MUST ALWAYS be the starting navigation step: "Navigate to <Module> > <Tab>".
+Followed by 3 to 10 clear, imperative steps referencing visible buttons/dialogs in quotes.
+
+Return ONLY a valid JSON object in this exact shape:
+{
+  "title": "Clean concise walkthrough title",
+  "module": "Communications",
+  "startRoute": "/communications/cases",
+  "summary": "One sentence summary of the workflow.",
+  "steps": [
+    "Navigate to Communications > Cases",
+    ...
+  ]
+}`;
+    rawOutput = await runGeminiPrompt(fallbackPrompt);
+  }
+
   const plan = extractJson(String(rawOutput));
   if (!plan || !Array.isArray(plan.steps) || !plan.steps.length) {
     throw new Error('AI could not generate a valid step-by-step plan for this idea. Please try clarifying your request.');

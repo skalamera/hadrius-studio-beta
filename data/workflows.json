@@ -5,6 +5,55 @@
       "module": "Testing program",
       "workflows": [
         {
+          "title": "How to associate a control with a risk's treatment plan",
+          "purpose": "From a risk's edit drawer, use the Treatment Plan section to associate one or more existing controls with that risk.",
+          "startRoute": "/testing-program/risks",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to Testing program > Risks",
+            "In the risk table, click the row actions menu for the target risk and click \"Edit\" to open the risk drawer.",
+            "In the drawer, scroll to the \"Treatment Plan\" section (between Inherent risk and Residual risk).",
+            "Click \"Edit\" in the Treatment Plan section header to enter edit mode.",
+            "Optionally type in the \"Search controls\" field to filter the control list.",
+            "Check the checkbox next to each control you want to associate with the risk.",
+            "Click \"Save Changes\" to confirm the association (or \"Cancel\" to discard).",
+            "Verify the associated control now appears listed under \"Treatment Plan\" as a clickable link to the control register."
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+            "apps/hadrius-app/src/api/firm_oversight/api_firm_oversight.ts",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx"
+          ],
+          "status": "missing"
+        },
+        {
+          "title": "How to link a test to additional entities",
+          "purpose": "Link an existing compliance test to one or more of the firm's business entities so edits and completion status stay in sync across them.",
+          "startRoute": "/testing-program/tests",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to Testing program > Tests",
+            "Click a test row to open its detail page (e.g. /firm_oversight_v2/tests/[id])",
+            "Open the actions dropdown menu on the test detail page",
+            "Click \"Link test to entity\"",
+            "In the dialog titled \"Select entities to link this test.\", use the \"Search entities\" field to find the entity you want",
+            "Toggle the switch next to each entity you want to link — the row will show \"Sync enabled\" once toggled on",
+            "Click \"Link\" to save (button shows \"Linking...\" while saving)",
+            "Confirm the toast notification \"Link test enabled\" — \"This test is now linked across different entities. Edits and completion will stay in sync.\""
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/link_test_to_entity_dialog.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/page_test_details.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx"
+          ],
+          "status": "missing"
+        },
+        {
           "title": "How to create a new test",
           "purpose": "Set up a new compliance test through the multi-step wizard, from basics through questionnaire, scheduling, ownership, and review.",
           "startRoute": "/testing-program/tests",
@@ -287,56 +336,6 @@
           ],
           "sources": [
             "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_risks.tsx",
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx"
-          ]
-        },
-        {
-          "title": "How to associate a control with a risk's treatment plan",
-          "purpose": "Open a risk's edit drawer and choose which controls mitigate it, updating the treatment plan.",
-          "startRoute": "/testing-program/risks",
-          "trigger": "button \"Edit\" (Treatment Plan)",
-          "priority": "medium",
-          "steps": [
-            "Navigate to Testing program > Risks",
-            "Open a risk's Edit drawer, then click \"Edit\" in the Treatment Plan card.",
-            "Search for and check the controls to associate.",
-            "Click \"Save Changes\" to apply the treatment plan update."
-          ],
-          "evidence": [
-            {
-              "instruction": "Navigate to Testing program > Risks",
-              "route": "/testing-program/risks",
-              "controlLabel": "Risks",
-              "file": null,
-              "symbol": "SidebarNav",
-              "quote": "Navigate to Testing program > Risks"
-            },
-            {
-              "instruction": "Open a risk's Edit drawer, then click \"Edit\" in the Treatment Plan card.",
-              "route": "/testing-program/risks?tab=register",
-              "controlLabel": "Edit",
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
-              "symbol": "TreatmentPlan",
-              "quote": "<Button variant=\"ghost\" size=\"sm\" type=\"button\" onClick={handleStartEditingControls}>\n            <Pencil className=\"mr-2 h-3.5 w-3.5\" />\n            Edit\n          </Button>"
-            },
-            {
-              "instruction": "Search for and check the controls to associate.",
-              "route": "/testing-program/risks?tab=register",
-              "controlLabel": "Search controls",
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
-              "symbol": "TreatmentPlan",
-              "quote": "<Input\n              type=\"text\"\n              placeholder=\"Search controls\""
-            },
-            {
-              "instruction": "Click \"Save Changes\" to apply the treatment plan update.",
-              "route": "/testing-program/risks?tab=register",
-              "controlLabel": "Save Changes",
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
-              "symbol": "TreatmentPlan",
-              "quote": "<Button onClick={handleSaveControls} disabled={isLoading} type=\"button\">\n                {isLoading ? \"Saving...\" : \"Save Changes\"}\n              </Button>"
-            }
-          ],
-          "sources": [
             "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx"
           ]
         },
@@ -637,48 +636,6 @@
             "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/page_entity_detail.tsx",
             "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/export_all_dialog.tsx"
           ]
-        },
-        {
-          "title": "How to link a test to additional entities",
-          "purpose": "Attach an existing test to more than one legal entity so it runs for each of them.",
-          "startRoute": "/testing-program/tests",
-          "trigger": "button \"Link test to entity\"",
-          "priority": "low",
-          "steps": [
-            "Navigate to Testing program > Tests",
-            "Click \"Link test to entity\".",
-            "Toggle the switch for each entity to link, then click \"Link\"."
-          ],
-          "evidence": [
-            {
-              "instruction": "Navigate to Testing program > Tests",
-              "route": "/testing-program/tests",
-              "controlLabel": "Tests",
-              "file": null,
-              "symbol": "SidebarNav",
-              "quote": "Navigate to Testing program > Tests"
-            },
-            {
-              "instruction": "Open a test row's actions menu and click \"Link test to entity\".",
-              "route": "/testing-program/tests",
-              "controlLabel": "Link test to entity",
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
-              "symbol": "TestActions",
-              "quote": "<DropdownMenuItem icon={LinkIcon} item=\"Link test to entity\" onClick={() => setLinkDialogOpen(true)} />"
-            },
-            {
-              "instruction": "Toggle the switch for each entity to link, then click \"Link\".",
-              "route": "/testing-program/tests",
-              "controlLabel": "Link",
-              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/link_test_to_entity_dialog.tsx",
-              "symbol": "LinkTestToEntityDialog",
-              "quote": "<Button onClick={handleSave} disabled={!hasChanges || saving}>\n            {saving ? \"Linking...\" : \"Link\"}"
-            }
-          ],
-          "sources": [
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/link_test_to_entity_dialog.tsx"
-          ]
         }
       ]
     },
@@ -975,57 +932,6 @@
           "sources": [
             "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/submissions/start_review_button.tsx",
             "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/task_detail/task_detail_header.tsx"
-          ]
-        },
-        {
-          "title": "How an employee completes and signs a certification",
-          "purpose": "An employee opens an assigned certification task, answers required questions (saving progress as a draft if needed), attests to accuracy, and submits their signed certification for review.",
-          "startRoute": "/employee/certifications",
-          "trigger": "button \"Submit\"",
-          "priority": "high",
-          "steps": [
-            "Navigate to People oversight > Certifications",
-            "Open an assigned certification task and answer the questions, navigating with Previous/Next.",
-            "Optionally click Save as draft to save progress and return later.",
-            "Once all required questions are complete, check both attestation boxes and click Submit (or Resubmit if returned) to sign and send the certification."
-          ],
-          "evidence": [
-            {
-              "instruction": "Navigate to People oversight > Certifications",
-              "route": "/employee/certifications",
-              "controlLabel": "Certifications",
-              "file": null,
-              "symbol": "SidebarNav",
-              "quote": "Navigate to People oversight > Certifications"
-            },
-            {
-              "instruction": "Open an assigned certification task and answer the questions, navigating with Previous/Next.",
-              "route": "/employee/certification/[taskId]",
-              "controlLabel": null,
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/index.tsx",
-              "symbol": "EmployeeTaskDetail",
-              "quote": "const requiredVisible = visibleQuestions.filter((vq) => vq.question.required);"
-            },
-            {
-              "instruction": "Optionally click Save as draft to save progress and return later.",
-              "route": "/employee/certification/[taskId]",
-              "controlLabel": "Save as draft",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/employee_task_header.tsx",
-              "symbol": "EmployeeTaskHeader",
-              "quote": "{!isSavingDraft && \"Save as draft\"}"
-            },
-            {
-              "instruction": "Once all required questions are complete, check both attestation boxes and click Submit (or Resubmit if returned) to sign and send the certification.",
-              "route": "/employee/certification/[taskId]",
-              "controlLabel": "Submit",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/employee_task_header.tsx",
-              "symbol": "EmployeeTaskHeader",
-              "quote": "{!isSubmitting && status === \"action_required\" && \"Resubmit\"}{!isSubmitting && status !== \"action_required\" && \"Submit\"}"
-            }
-          ],
-          "sources": [
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/index.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/employee_task_header.tsx"
           ]
         },
         {
