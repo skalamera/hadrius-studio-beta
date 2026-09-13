@@ -218,20 +218,61 @@ async function loadState() {
   renderSteps();
 }
 
+async function detectEnvironment() {
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (activeTab?.url) {
+    try {
+      const u = new URL(activeTab.url);
+      if (u.hostname.includes('staging.hadrius.com') || u.hostname === 'localhost') {
+        const envInfo = { env: 'staging', origin: u.origin, companyId: u.searchParams.get('company_id') };
+        await chrome.storage.local.set({ lastHadriusEnv: envInfo });
+        return envInfo;
+      }
+      if (u.hostname.includes('app.hadrius.com')) {
+        const envInfo = { env: 'prod', origin: u.origin, companyId: u.searchParams.get('company_id') };
+        await chrome.storage.local.set({ lastHadriusEnv: envInfo });
+        return envInfo;
+      }
+    } catch (_) {}
+  }
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  for (const t of tabs) {
+    if (t.url) {
+      try {
+        const u = new URL(t.url);
+        if (u.hostname.includes('staging.hadrius.com') || u.hostname === 'localhost') {
+          const envInfo = { env: 'staging', origin: u.origin, companyId: u.searchParams.get('company_id') };
+          await chrome.storage.local.set({ lastHadriusEnv: envInfo });
+          return envInfo;
+        }
+        if (u.hostname.includes('app.hadrius.com')) {
+          const envInfo = { env: 'prod', origin: u.origin, companyId: u.searchParams.get('company_id') };
+          await chrome.storage.local.set({ lastHadriusEnv: envInfo });
+          return envInfo;
+        }
+      } catch (_) {}
+    }
+  }
+  const { lastHadriusEnv } = await chrome.storage.local.get('lastHadriusEnv');
+  return lastHadriusEnv || { env: 'staging', origin: 'https://staging.hadrius.com', companyId: null };
+}
+
 async function startRecording() {
   const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
   if (!tab?.id || !/^https?:/.test(tab.url || '')) return alert('Open PROD or Staging in the active tab before recording.');
-  const env = document.querySelector('input[name=environment]:checked').value;
+
+  const envInfo = await detectEnvironment();
 
   if (selected?.startRoute && tab.url) {
     try {
       const currentUrl = new URL(tab.url);
       const isHadrius = currentUrl.hostname.endsWith('hadrius.com') || currentUrl.hostname === 'localhost';
-      const targetOrigin = isHadrius ? currentUrl.origin : (env === 'staging' ? 'https://staging.hadrius.com' : 'https://app.hadrius.com');
+      const targetOrigin = isHadrius ? currentUrl.origin : envInfo.origin;
       const targetUrl = new URL(selected.startRoute, targetOrigin);
 
-      if (currentUrl.searchParams.has('company_id') && !targetUrl.searchParams.has('company_id')) {
-        targetUrl.searchParams.set('company_id', currentUrl.searchParams.get('company_id'));
+      const compId = currentUrl.searchParams.get('company_id') || envInfo.companyId;
+      if (compId && !targetUrl.searchParams.has('company_id')) {
+        targetUrl.searchParams.set('company_id', compId);
       }
 
       if (currentUrl.origin !== targetUrl.origin || currentUrl.pathname !== targetUrl.pathname) {
@@ -253,7 +294,7 @@ async function startRecording() {
     }
   }
 
-  await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:$('#scriptName').value.trim() || selected?.title || 'Untitled walkthrough',module:selected?.module || '',environmentName:env}});
+  await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:$('#scriptName').value.trim() || selected?.title || 'Untitled walkthrough',module:selected?.module || '',environmentName:envInfo.env}});
   const result = await send({type:'PANEL_START',tabId:tab.id,fresh:state.steps.length===0});
   if (!result?.ok) return alert(result?.error || 'Could not start recording.');
   await loadState();
@@ -294,7 +335,8 @@ function renderSteps() {
 function toScript() {
   const now = new Date().toISOString();
   const firstUrl = state.steps.find((s)=>s.url)?.url || null;
-  return {version:1,name:$('#scriptName').value.trim() || 'untitled',module:selected?.module || state.script?.module || '',workflowPlan:selected?.steps || state.script?.workflowPlan || [],createdAt:state.script?.createdAt || now,updatedAt:now,environment:{name:document.querySelector('input[name=environment]:checked').value,startUrl:firstUrl},recording:{id:state.recordingId,recordedAt:now},captionsFromNarration:false,steps:state.steps.map((s)=>({index:s.index,action:s.action,...(s.key?{key:s.key}:{}),...(s.value!==undefined?{value:s.value}:{}),target:s.target?stripBbox(s.target):undefined,route:s.route,url:s.url,dpr:s.dpr,...(s.captureId?{media:{pre:`step_${s.captureId}.png`}}:{}),narration:s.narration||'',caption:s.caption||s.narration||'',capture:s.capture!==false,motion:!!s.motion}))};
+  const envName = state.script?.environmentName || (firstUrl?.includes('staging') ? 'staging' : 'prod');
+  return {version:1,name:$('#scriptName').value.trim() || 'untitled',module:selected?.module || state.script?.module || '',workflowPlan:selected?.steps || state.script?.workflowPlan || [],createdAt:state.script?.createdAt || now,updatedAt:now,environment:{name:envName,startUrl:firstUrl},recording:{id:state.recordingId,recordedAt:now},captionsFromNarration:false,steps:state.steps.map((s)=>({index:s.index,action:s.action,...(s.key?{key:s.key}:{}),...(s.value!==undefined?{value:s.value}:{}),target:s.target?stripBbox(s.target):undefined,route:s.route,url:s.url,dpr:s.dpr,...(s.captureId?{media:{pre:`step_${s.captureId}.png`}}:{}),narration:s.narration||'',caption:s.caption||s.narration||'',capture:s.capture!==false,motion:!!s.motion}))};
 }
 function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,hint:{bbox,viewport}};}
 
