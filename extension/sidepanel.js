@@ -200,7 +200,7 @@ function renderModules() {
 
     for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as already having an article in Pylon">Mark as linked</button></div>`;
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button></div>`;
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
       item.querySelector('.plan').onclick = () => chooseWorkflow(group.module, workflow, false);
       item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
@@ -211,7 +211,7 @@ function renderModules() {
     if (manuallyLinkedInModule.length > 0) {
       const manualFoot = document.createElement('div');
       manualFoot.className = 'item manual-links-bar muted';
-      manualFoot.innerHTML = `<span>${manuallyLinkedInModule.length} manually marked as linked</span> <button class="link-btn undoLinks" type="button">Reset manual links</button>`;
+      manualFoot.innerHTML = `<span>${manuallyLinkedInModule.length} manually marked as done</span> <button class="link-btn undoLinks" type="button">Reset</button>`;
       manualFoot.querySelector('.undoLinks').onclick = async () => {
         for (const w of manuallyLinkedInModule) manualLinks.delete(w.title);
         await chrome.storage.local.set({ manualLinks: [...manualLinks] });
