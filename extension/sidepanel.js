@@ -152,6 +152,11 @@ function getModuleArticles(moduleName) {
   return [];
 }
 
+function moduleIconPath(moduleName) {
+  const s = slug(moduleName);
+  return `icons/modules/${s}.png`;
+}
+
 function renderModules() {
   const q = $('#search').value.trim().toLowerCase();
   $('#modules').innerHTML = '';
@@ -169,8 +174,9 @@ function renderModules() {
     const visibleArticles = articles.filter((a) => !q || a.title.toLowerCase().includes(q));
     if (q && !matchingWorkflows.length && !visibleArticles.length) continue;
 
+    const iconSrc = moduleIconPath(group.module);
     const section = document.createElement('section'); section.className = 'module';
-    section.innerHTML = `<div class="module-head"><h2>${esc(group.module)}</h2><span class="counts">${unlinkedWorkflows.length} opportunities · ${visibleArticles.length} articles</span></div><div class="module-body"></div>`;
+    section.innerHTML = `<div class="module-head"><img class="module-icon" src="${iconSrc}" alt="" /><h2>${esc(group.module)}</h2><span class="counts">${unlinkedWorkflows.length} opportunities · ${visibleArticles.length} articles</span></div><div class="module-body"></div>`;
     const body = section.querySelector('.module-body');
     body.innerHTML = '<div class="subhead">Recording opportunities</div>';
 
