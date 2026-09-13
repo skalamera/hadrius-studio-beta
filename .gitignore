@@ -11,3 +11,4 @@ __pycache__/
 .coverage-scan-cache.json
 .coverage-plans.json
 .test-browser-profile/
+scripts/

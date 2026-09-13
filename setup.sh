@@ -1,53 +1,53 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")"
+REPO_DIR="$(pwd)"
 
-# Migrate credentials from an existing Hadrius Studio installation.
+command -v node >/dev/null || { echo 'Node 20+ is required.' >&2; exit 1; }
+command -v python3 >/dev/null || { echo 'Python 3 is required.' >&2; exit 1; }
+command -v ffmpeg >/dev/null || echo 'Warning: FFmpeg is required to render MP4 files.'
+command -v claude >/dev/null || { echo 'Install Claude CLI: npm install -g @anthropic-ai/claude-code' >&2; exit 1; }
+
+# Migrate .env if needed from prior Hadrius Studio installs
 if [[ ! -f .env ]]; then
-  for candidate in "$HOME/kb-studio/.env" "$HOME/hadrius-studio/.env" "../hadrius-studio/.env"; do
+  for candidate in "$HOME/kb-studio/.env" "$HOME/hadrius-studio/.env" "../hadrius-studio/.env" "../kb-studio/.env"; do
     if [[ -f "$candidate" ]]; then
       echo "Migrating existing credentials from $candidate..."
       cp "$candidate" .env
       break
     fi
   done
-  [[ ! -f .env && -f .env.example ]] && cp .env.example .env
+  if [[ ! -f .env && -f .env.example ]]; then
+    cp .env.example .env
+  fi
 fi
 
-command -v node >/dev/null || { echo 'Node 20+ is required.' >&2; exit 1; }
-command -v python3 >/dev/null || { echo 'Python 3 is required.' >&2; exit 1; }
-command -v ffmpeg >/dev/null || echo 'Warning: FFmpeg is required to render MP4 files.'
-if ! command -v gemini >/dev/null; then
-  echo 'Installing Gemini CLI (temporary primary AI provider)...'
-  npm install -g @google/gemini-cli
-fi
-command -v claude >/dev/null || echo 'Warning: Claude CLI is unavailable; temporary fallback will be disabled.'
-
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-NODE_BIN="$(command -v node)"
-NODE_DIR="$(dirname "$NODE_BIN")"
-
-if ! gemini mcp list 2>/dev/null | grep -q 'hadrius-codebase'; then
-  gemini mcp add --transport http --scope user --trust hadrius-codebase https://mcp.hadriusapi.com/codebase
-fi
-if command -v claude >/dev/null && ! claude mcp list 2>/dev/null | grep -q '^hadrius-codebase:'; then
+if ! claude mcp list 2>/dev/null | grep -q '^hadrius-codebase:'; then
   claude mcp add --transport http hadrius-codebase https://mcp.hadriusapi.com/codebase --scope user
 fi
-python3 -m venv .venv
+
+if [[ ! -d .venv ]]; then
+  python3 -m venv .venv
+fi
 .venv/bin/pip install -q -r requirements.txt
 npm install
 
-# Re-point and restart the background bridge daemon.
+NODE_PATH_BIN="$(command -v node)"
+NODE_BIN_DIR="$(dirname "$NODE_PATH_BIN")"
+
+# Update background daemon to run this beta bridge automatically
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  PLIST="$HOME/Library/LaunchAgents/com.kbstudio.aibridge.plist"
+  PLIST_DIR="$HOME/Library/LaunchAgents"
+  PLIST="$PLIST_DIR/com.kbstudio.aibridge.plist"
+  mkdir -p "$PLIST_DIR" "$HOME/Library/Logs"
 
   launchctl unload "$PLIST" 2>/dev/null || true
 
+  # Terminate any process currently bound to port 8787
   if lsof -ti :8787 >/dev/null 2>&1; then
     kill -9 $(lsof -ti :8787) 2>/dev/null || true
   fi
 
-  mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
   cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -56,12 +56,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   <key>Label</key><string>com.kbstudio.aibridge</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$NODE_BIN</string>
+    <string>$NODE_PATH_BIN</string>
     <string>$REPO_DIR/tools/ai-bridge.mjs</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.npm-global/bin</string>
+    <key>PATH</key><string>$NODE_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.npm-global/bin</string>
     <key>KBS_BRIDGE_PORT</key><string>8787</string>
   </dict>
   <key>RunAtLoad</key><true/>
@@ -73,8 +73,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 EOF
 
   launchctl load "$PLIST"
-  echo "✓ Switched background bridge to beta (launchd: com.kbstudio.aibridge)"
-
+  echo "Switched background bridge to beta (launchd: com.kbstudio.aibridge)."
 elif [[ "$(uname -s)" == "Linux" ]]; then
   UNIT_DIR="$HOME/.config/systemd/user"
   UNIT="$UNIT_DIR/kbstudio-ai-bridge.service"
@@ -87,9 +86,9 @@ elif [[ "$(uname -s)" == "Linux" ]]; then
 Description=KB Studio AI narration bridge (Beta)
 
 [Service]
-ExecStart=$NODE_BIN $REPO_DIR/tools/ai-bridge.mjs
+ExecStart=$NODE_PATH_BIN $REPO_DIR/tools/ai-bridge.mjs
 Environment=KBS_BRIDGE_PORT=8787
-Environment=PATH=$NODE_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PATH=$NODE_BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Restart=always
 
 [Install]
@@ -98,7 +97,7 @@ EOF
 
   systemctl --user daemon-reload
   systemctl --user enable --now kbstudio-ai-bridge
-  echo "✓ Switched background bridge to beta (systemd user service)"
+  echo "Switched background bridge to beta (systemd: kbstudio-ai-bridge)."
 fi
 
-printf '\nSetup complete. Gemini CLI is the temporary primary AI provider with the Hadrius MCP. The beta bridge is running in the background.\n'
+printf '\nSetup complete. Run "claude login" and "claude mcp login hadrius-codebase" if needed.\n'

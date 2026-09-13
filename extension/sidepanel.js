@@ -85,12 +85,26 @@ function renderModules() {
   }
 }
 
+function resolveSteps(module, workflow) {
+  const steps = [...(workflow.steps || [])];
+  if (!steps.length) return steps;
+  const first = steps[0] || '';
+  const hasNav = /^(navigate to|open|go to)\s+/i.test(first) && (first.includes('>') || first.toLowerCase().includes(module.toLowerCase()));
+  if (!hasNav && workflow.startRoute) {
+    const tab = workflow.startRoute.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
+    const tabLabel = tab.charAt(0).toUpperCase() + tab.slice(1);
+    steps.unshift(`Navigate to ${module} > ${tabLabel}`);
+  }
+  return steps;
+}
+
 async function chooseWorkflow(module, workflow, start=true) {
-  selected = { module, ...workflow };
+  const steps = resolveSteps(module, workflow);
+  selected = { module, ...workflow, steps };
   $('#selectedWorkflow').hidden = false;
-  $('#selectedWorkflow').innerHTML = `<h2>${esc(workflow.title)}</h2><p class="muted">${esc(module)} · Follow this plan while recording:</p><ol>${workflow.steps.map((s)=>`<li>${esc(s)}</li>`).join('')}</ol>`;
+  $('#selectedWorkflow').innerHTML = `<h2>${esc(workflow.title)}</h2><p class="muted">${esc(module)} · Follow this plan while recording:</p><ol>${steps.map((s)=>`<li>${esc(s)}</li>`).join('')}</ol>`;
   $('#scriptName').value = workflow.title;
-  await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:workflow.title,module,workflowPlan:workflow.steps,sourceFiles:workflow.sources || []}});
+  await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:workflow.title,module,workflowPlan:steps,sourceFiles:workflow.sources || []}});
   switchView('recording');
   if (start) await startRecording();
 }
@@ -108,6 +122,37 @@ async function startRecording() {
   const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
   if (!tab?.id || !/^https?:/.test(tab.url || '')) return alert('Open PROD or Staging in the active tab before recording.');
   const env = document.querySelector('input[name=environment]:checked').value;
+
+  if (selected?.startRoute && tab.url) {
+    try {
+      const currentUrl = new URL(tab.url);
+      const isHadrius = currentUrl.hostname.endsWith('hadrius.com') || currentUrl.hostname === 'localhost';
+      const targetOrigin = isHadrius ? currentUrl.origin : (env === 'staging' ? 'https://staging.hadrius.com' : 'https://app.hadrius.com');
+      const targetUrl = new URL(selected.startRoute, targetOrigin);
+
+      if (currentUrl.searchParams.has('company_id') && !targetUrl.searchParams.has('company_id')) {
+        targetUrl.searchParams.set('company_id', currentUrl.searchParams.get('company_id'));
+      }
+
+      if (currentUrl.origin !== targetUrl.origin || currentUrl.pathname !== targetUrl.pathname) {
+        await chrome.tabs.update(tab.id, { url: targetUrl.href });
+        await new Promise((resolve) => {
+          const onUpdated = (tid, info) => {
+            if (tid === tab.id && info.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(onUpdated);
+              resolve();
+            }
+          };
+          chrome.tabs.onUpdated.addListener(onUpdated);
+          setTimeout(() => { chrome.tabs.onUpdated.removeListener(onUpdated); resolve(); }, 8000);
+        });
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    } catch (err) {
+      console.warn('Auto-navigation failed:', err);
+    }
+  }
+
   await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:$('#scriptName').value.trim() || selected?.title || 'Untitled walkthrough',module:selected?.module || '',environmentName:env}});
   const result = await send({type:'PANEL_START',tabId:tab.id,fresh:state.steps.length===0});
   if (!result?.ok) return alert(result?.error || 'Could not start recording.');

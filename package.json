@@ -7,5 +7,8 @@
   "scripts": {
     "start": "node tools/ai-bridge.mjs",
     "check": "node --check extension/background.js && node --check extension/content.js && node --check extension/sidepanel.js && node --check tools/ai-bridge.mjs && node --check tools/coverage-scan.mjs && node --check tools/pylon.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
   }
 }

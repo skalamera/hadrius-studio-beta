@@ -307,8 +307,10 @@ Likely page code: ${dirs}
 Use ONLY the hadrius-codebase MCP tools (list_directory, read_file, search_code, file_tree). Look at the page components for these routes and find USER-FACING workflows a compliance officer or employee would actually perform: primary action buttons (e.g. "Add employees", "New test", "Send invite", "Export"), create/edit dialogs and multi-step wizards, approvals/reviews, connecting integrations, bulk actions, imports/exports, settings that must be configured. Ignore purely internal, admin-only debugging, or trivial navigation ("view the list").
 
 For each workflow output:
-{"title":"How to add an employee","description":"one sentence of what the user accomplishes","start_route":"/people-oversight/people-directory","trigger":"button \\"Add employees\\"","priority":"high|medium|low","steps":[{"instruction":"Open People Oversight and select People directory.","route":"/people-oversight/people-directory","control_label":"People directory","evidence":{"file":"apps/.../use_employee_tab.tsx","symbol":"visible component or function name","quote":"short exact source excerpt proving this step"}}],"sources":["apps/.../use_employee_tab.tsx","apps/.../page_people_directory.tsx"]}
+{"title":"How to add an employee","description":"one sentence of what the user accomplishes","start_route":"/people-oversight/people-directory","trigger":"button \\"Add employees\\"","priority":"high|medium|low","steps":[{"instruction":"Navigate to People oversight > People directory","route":"/people-oversight/people-directory","control_label":"People directory","evidence":{"file":"apps/.../use_employee_tab.tsx","symbol":"visible component or function name","quote":"short exact source excerpt proving this step"}},{"instruction":"Click \\"Add employees\\" to open the dialog.","route":"/people-oversight/people-directory","control_label":"Add employees","evidence":{"file":"apps/.../page_people_directory.tsx","symbol":"AddEmployeesButton","quote":"<Button>Add employees</Button>"}}],"sources":["apps/.../use_employee_tab.tsx","apps/.../page_people_directory.tsx"]}
 - title MUST start with "How to" and be specific.
+- Step 1 MUST ALWAYS be the navigation step specifying where to begin: "Navigate to <Module> > <Tab/Section>" (e.g. "Navigate to Testing program > Policies").
+- Step 2 and subsequent steps are the user actions performed on that page/dialog.
 - Every step MUST be directly proven by source code read through the Hadrius MCP.
 - Every step requires an exact route, visible control label (or null only for initial page arrival), source file, symbol, and short exact code quote.
 - Do not infer labels, dialogs, fields, ordering, success states, or navigation. If source code does not prove a step, omit the step.
@@ -323,22 +325,45 @@ Output ONLY a JSON array, no prose, no markdown.`;
   if (!Array.isArray(list)) throw new Error(`workflow scan for ${mod.module} returned non-array`);
   const cleaned = list
     .filter((w) => w && w.title && w.start_route && w.trigger && Array.isArray(w.steps) && w.steps.length >= 2)
-    .map((w) => ({
-      module: mod.module,
-      module_path: mod.module_path || null,
-      title: String(w.title).trim(),
-      description: w.description ? String(w.description).trim() : null,
-      start_route: String(w.start_route).trim().replace(/\?.*$/, '') || '/',
-      trigger: String(w.trigger).trim(),
-      priority: ['high', 'medium', 'low'].includes(w.priority) ? w.priority : 'medium',
-      steps: w.steps.filter((step) => step?.instruction && step?.route && step?.evidence?.file && step?.evidence?.symbol && step?.evidence?.quote).map((step) => ({
+    .map((w) => {
+      const startRoute = String(w.start_route).trim().replace(/\?.*$/, '') || '/';
+      const matchedRoute = (mod.routes || []).find((r) => r.path === startRoute || startRoute.startsWith(r.path));
+      const tabLabel = matchedRoute?.label || startRoute.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
+      const navText = `Navigate to ${mod.module} > ${tabLabel.charAt(0).toUpperCase() + tabLabel.slice(1)}`;
+
+      const steps = w.steps.filter((step) => step?.instruction && step?.route && step?.evidence?.file && step?.evidence?.symbol && step?.evidence?.quote).map((step) => ({
         instruction: String(step.instruction).trim(),
         route: String(step.route).trim(),
         control_label: step.control_label == null ? null : String(step.control_label).trim(),
         evidence: { file: String(step.evidence.file).trim(), symbol: String(step.evidence.symbol).trim(), quote: String(step.evidence.quote).trim() }
-      })),
-      sources: [...new Set((w.sources || []).map(String).filter(Boolean))]
-    }))
+      }));
+
+      const firstInstruction = steps[0]?.instruction || '';
+      const hasNav = /^(navigate to|open|go to)\s+/i.test(firstInstruction) &&
+                     (firstInstruction.toLowerCase().includes(tabLabel.toLowerCase()) || firstInstruction.toLowerCase().includes(mod.module.toLowerCase())) &&
+                     !firstInstruction.toLowerCase().includes('click');
+
+      if (!hasNav && steps.length > 0) {
+        steps.unshift({
+          instruction: navText,
+          route: startRoute,
+          control_label: tabLabel,
+          evidence: { file: 'navigation', symbol: 'SidebarNav', quote: navText }
+        });
+      }
+
+      return {
+        module: mod.module,
+        module_path: mod.module_path || null,
+        title: String(w.title).trim(),
+        description: w.description ? String(w.description).trim() : null,
+        start_route: startRoute,
+        trigger: String(w.trigger).trim(),
+        priority: ['high', 'medium', 'low'].includes(w.priority) ? w.priority : 'medium',
+        steps,
+        sources: [...new Set((w.sources || []).map(String).filter(Boolean))]
+      };
+    })
     .filter((w) => w.steps.length >= 2);
   log(`  ${mod.module}: ${cleaned.length} workflows`);
   return cleaned;
