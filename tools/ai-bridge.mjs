@@ -53,6 +53,10 @@ let liteScan = { running: false, startedAt: null, finishedAt: null, log: [], err
 const WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'workflows.json');
 const MANUAL_LINKS_FILE = path.join(REPO_ROOT, 'data', 'manual-links.json');
 
+function candSlug(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140);
+}
+
 function readManualLinks() {
   try { return fs.existsSync(MANUAL_LINKS_FILE) ? JSON.parse(fs.readFileSync(MANUAL_LINKS_FILE, 'utf8')) : []; }
   catch (_) { return []; }
@@ -817,7 +821,21 @@ async function publishRenderToPylon(name, outDir) {
     }
   }
 
-  return pylonCreateArticle({ title, bodyHtml, collectionId: pylonCollectionForModule(module) });
+  const article = await pylonCreateArticle({ title, bodyHtml, collectionId: pylonCollectionForModule(module) });
+
+  // Sync link to shared team repository if configured
+  if (LIBRARY_SECRET && module && title) {
+    try {
+      const candKey = candSlug(`${module}--${title}`);
+      await libraryFetch('PATCH', null, {
+        key: candKey,
+        linked_script: name,
+        updated_by: WHOAMI
+      }, COVERAGE_URL);
+    } catch (_) {}
+  }
+
+  return article;
 }
 
 function buildAutoHealPrompt(step, candidates, route) {
@@ -931,8 +949,100 @@ const server = http.createServer(async (req, res) => {
   // ---- Studio Lite: source-grounded workflows and live Pylon collection contents ----
   if (u.pathname === '/workflows') {
     if (req.method === 'GET') {
-      try { return sendJson(res, 200, { ok: true, ...JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')), manualLinks: readManualLinks(), scan: liteScan }); }
-      catch (e) { return sendJson(res, 500, { ok: false, error: String(e?.message || e) }); }
+      try {
+        let localData = { modules: [] };
+        if (fs.existsSync(WORKFLOWS_FILE)) {
+          try { localData = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')); } catch (_) {}
+        }
+        const manualLinksSet = new Set(readManualLinks());
+
+        if (LIBRARY_SECRET) {
+          try {
+            const sharedCov = await libraryFetch('GET', null, null, COVERAGE_URL);
+            if (sharedCov && Array.isArray(sharedCov.items)) {
+              for (const it of sharedCov.items) {
+                if (it.linked_script || it.status === 'covered' || it.dismissed) {
+                  manualLinksSet.add(it.title);
+                }
+              }
+
+              const localWorkflowMap = new Map();
+              for (const mod of localData.modules || []) {
+                for (const wf of mod.workflows || []) {
+                  localWorkflowMap.set(`${mod.module.toLowerCase()}::${wf.title.toLowerCase()}`, wf);
+                }
+              }
+
+              const sharedByModule = new Map();
+              for (const it of sharedCov.items) {
+                const canon = canonicalModule(it.module);
+                if (!canon) continue;
+                if (!sharedByModule.has(canon)) sharedByModule.set(canon, []);
+                sharedByModule.get(canon).push(it);
+              }
+
+              const mergedModules = ALLOWED_MODULES.map((module) => {
+                const sharedItems = sharedByModule.get(module) || [];
+                const localMod = (localData.modules || []).find((m) => m.module.toLowerCase() === module.toLowerCase());
+                const localWfs = localMod?.workflows || [];
+
+                const workflows = [];
+                const seenTitles = new Set();
+
+                for (const it of sharedItems) {
+                  const titleKey = it.title.toLowerCase();
+                  seenTitles.add(titleKey);
+                  const localMatch = localWorkflowMap.get(`${module.toLowerCase()}::${titleKey}`);
+                  workflows.push({
+                    title: it.title,
+                    purpose: it.description || localMatch?.purpose || '',
+                    startRoute: it.start_route || localMatch?.startRoute || `/${candSlug(module)}`,
+                    trigger: it.trigger || localMatch?.trigger || '',
+                    priority: it.priority || localMatch?.priority || 'medium',
+                    steps: localMatch?.steps?.length ? localMatch.steps : [
+                      `Navigate to ${module} > ${(it.start_route || '').split('/').filter(Boolean).pop() || 'overview'}`,
+                      `Follow the steps for ${it.title}`
+                    ],
+                    evidence: localMatch?.evidence || [],
+                    sources: localMatch?.sources || [it.source_file].filter(Boolean),
+                    linkedScript: it.linked_script || null,
+                    status: it.status || 'missing'
+                  });
+                }
+
+                for (const lWf of localWfs) {
+                  if (!seenTitles.has(lWf.title.toLowerCase())) {
+                    workflows.push(lWf);
+                  }
+                }
+
+                return { module, workflows };
+              });
+
+              return sendJson(res, 200, {
+                ok: true,
+                scannedAt: sharedCov.summary?.last_scan_at || localData.scannedAt || new Date().toISOString(),
+                modules: mergedModules,
+                manualLinks: [...manualLinksSet],
+                scan: liteScan,
+                shared: true
+              });
+            }
+          } catch (netErr) {
+            console.warn('[workflows] Shared repository fetch failed, falling back to local:', netErr.message);
+          }
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          ...localData,
+          manualLinks: [...manualLinksSet],
+          scan: liteScan,
+          shared: false
+        });
+      } catch (e) {
+        return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+      }
     }
     if (req.method === 'POST') {
       if (liteScan.running) return sendJson(res, 409, { ok: false, error: 'a scan is already running', scan: liteScan });
@@ -958,6 +1068,29 @@ const server = http.createServer(async (req, res) => {
           if (modules.some((entry) => entry.workflows.length)) {
             fs.mkdirSync(path.dirname(WORKFLOWS_FILE), { recursive: true });
             fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify({ scannedAt: new Date().toISOString(), modules }, null, 2));
+
+            if (LIBRARY_SECRET) {
+              try {
+                const candidates = [];
+                for (const m of modules) {
+                  for (const w of m.workflows) {
+                    candidates.push({
+                      module: m.module,
+                      title: w.title,
+                      description: w.purpose || '',
+                      start_route: w.startRoute,
+                      trigger: w.trigger,
+                      source_file: w.sources?.[0] || null,
+                      priority: w.priority || 'medium'
+                    });
+                  }
+                }
+                await libraryFetch('POST', null, { candidates, full_scan: false, updated_by: WHOAMI }, COVERAGE_URL);
+                log('✓ Synced scan to shared team repository (Neon).');
+              } catch (sharedErr) {
+                console.warn('[workflows] Could not sync scan to shared repository:', sharedErr.message);
+              }
+            }
           }
           liteScan = { ...liteScan, running: false, finishedAt: new Date().toISOString() };
         } catch (e) {
@@ -971,15 +1104,31 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && u.pathname === '/workflows/link') {
     let body = '';
     req.on('data', (c) => (body += c));
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
-        const { title, unmark = false } = JSON.parse(body);
+        const { title, module: modName, unmark = false } = JSON.parse(body);
         if (!title) throw new Error('title required');
         const links = new Set(readManualLinks());
         if (unmark) links.delete(title);
         else links.add(title);
         const arr = [...links];
         writeManualLinks(arr);
+
+        if (LIBRARY_SECRET) {
+          try {
+            const targetModule = modName || 'Testing program';
+            const candKey = candSlug(`${targetModule}--${title}`);
+            await libraryFetch('PATCH', null, {
+              key: candKey,
+              linked_script: unmark ? null : (title || 'linked'),
+              dismissed: !unmark,
+              updated_by: WHOAMI
+            }, COVERAGE_URL);
+          } catch (sharedErr) {
+            console.warn('[workflows/link] Could not sync to shared repository:', sharedErr.message);
+          }
+        }
+
         return sendJson(res, 200, { ok: true, manualLinks: arr });
       } catch (e) {
         return sendJson(res, 400, { ok: false, error: String(e?.message || e) });

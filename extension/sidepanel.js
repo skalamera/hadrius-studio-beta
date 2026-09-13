@@ -124,7 +124,8 @@ async function refreshAll() {
   const pylonOk = pylonResult.status === 'fulfilled';
   if (workflowOk && pylonOk) {
     if (!catalog.scan?.running) {
-      $('#syncStatus').textContent = `Live Pylon sync · ${new Date(pylon.syncedAt).toLocaleTimeString()} · ${catalog.modules.reduce((n,m)=>n+m.workflows.length,0)} workflows`;
+      const sourceLabel = catalog.shared ? 'Shared team repository' : 'Local repository';
+      $('#syncStatus').textContent = `Live Pylon sync · ${sourceLabel} · ${catalog.modules.reduce((n,m)=>n+m.workflows.length,0)} workflows`;
     } else {
       $('#syncStatus').textContent = `Codebase scan in progress… (Pylon synced ${new Date(pylon.syncedAt).toLocaleTimeString()})`;
     }

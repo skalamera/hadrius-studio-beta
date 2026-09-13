@@ -22,6 +22,46 @@ if [[ ! -f .env ]]; then
   fi
 fi
 
+touch .env
+chmod 600 .env
+
+# Shared team repository configuration (Neon database via pylon-webhook-service)
+if grep -qs '^STUDIO_SHARED_SECRET=.\+' .env 2>/dev/null; then
+  echo "✓ Shared team repository: configured (.env)."
+else
+  # Try importing from candidate locations
+  IMPORTED_SECRET=""
+  for cand in "$HOME/kb-studio/.env" "$HOME/hadrius-studio/.env" "../kb-studio/.env" "$HOME/.hermes/.env"; do
+    if [[ -f "$cand" ]] && grep -qs '^STUDIO_SHARED_SECRET=.\+' "$cand" 2>/dev/null; then
+      IMPORTED_SECRET="$(grep '^STUDIO_SHARED_SECRET=' "$cand" | head -n1 | cut -d'=' -f2- | tr -d '\"'\')"
+      break
+    fi
+  done
+
+  if [[ -n "$IMPORTED_SECRET" ]]; then
+    { grep -v '^STUDIO_SHARED_SECRET=' .env 2>/dev/null || true; echo "STUDIO_SHARED_SECRET=$IMPORTED_SECRET"; } > .env.tmp && mv .env.tmp .env
+    chmod 600 .env
+    echo "✓ Shared team repository: imported STUDIO_SHARED_SECRET."
+  else
+    echo "Hadrius Studio connects to a shared team repository (Neon) so everyone shares"
+    echo "the same workflows, walkthrough scripts, and live article coverage."
+    echo "Ask Stephen for the STUDIO_SHARED_SECRET."
+    read -r -p "Paste STUDIO_SHARED_SECRET (or press Enter to skip for now): " STUDIO_SECRET || true
+    if [[ -n "${STUDIO_SECRET:-}" ]]; then
+      { grep -v '^STUDIO_SHARED_SECRET=' .env 2>/dev/null || true; echo "STUDIO_SHARED_SECRET=$STUDIO_SECRET"; } > .env.tmp && mv .env.tmp .env
+      chmod 600 .env
+      echo "✓ Saved STUDIO_SHARED_SECRET to .env."
+    else
+      echo "⚠ Skipped. Add STUDIO_SHARED_SECRET=... to .env later to connect to the shared repository."
+    fi
+  fi
+  unset IMPORTED_SECRET
+fi
+
+if ! grep -qs '^STUDIO_LIBRARY_URL=.\+' .env 2>/dev/null; then
+  echo "STUDIO_LIBRARY_URL=https://pylon-webhook-service.vercel.app/api/studio-scripts" >> .env
+fi
+
 if ! claude mcp list 2>/dev/null | grep -q '^hadrius-codebase:'; then
   claude mcp add --transport http hadrius-codebase https://mcp.hadriusapi.com/codebase --scope user
 fi
