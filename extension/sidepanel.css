@@ -56,6 +56,13 @@
 .import-file-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
 .import-file-btn:hover{background:#f8fafc;border-color:#cbd5e1}
 .saved-scripts-list{overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;max-height:calc(85vh - 120px)}
+.saved-module-section{background:var(--soft);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:8px}
+.saved-module-header{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fff;cursor:pointer;user-select:none;transition:background-color .15s}
+.saved-module-header:hover{background:#f8fafc}
+.saved-caret{font-size:12px;color:var(--muted);width:12px;text-align:center;flex-shrink:0}
+.saved-module-title{font-weight:700;font-size:12px;color:var(--ink);flex:1}
+.saved-module-count{font-size:10px;font-weight:700;color:var(--purple);background:#efecff;border-radius:999px;padding:2px 7px}
+.saved-module-items{padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--soft)}
 .saved-script-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;transition:all .15s}
 .saved-script-card:hover{border-color:var(--purple);box-shadow:0 2px 8px rgba(76,61,171,.08)}
 .saved-script-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}

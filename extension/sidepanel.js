@@ -593,6 +593,40 @@ function formatHumanTitle(str) {
 }
 
 let savedScripts = [];
+let savedOpenModules = new Set();
+let savedModulesInitialized = false;
+
+const SAVED_MODULE_ORDER = [
+  'Testing program',
+  'People oversight',
+  'Branches',
+  'Communications',
+  'Marketing',
+  'Account surveillance'
+];
+
+function resolveScriptModule(script) {
+  if (script.module) {
+    const m = SAVED_MODULE_ORDER.find((a) => a.toLowerCase() === script.module.toLowerCase());
+    if (m) return m;
+    return script.module;
+  }
+  const title = (script.title || script.name || '').toLowerCase();
+  for (const group of catalog.modules || []) {
+    for (const wf of group.workflows || []) {
+      if (wf.title.toLowerCase() === title || slug(wf.title) === slug(script.name)) {
+        return group.module;
+      }
+    }
+  }
+  if (title.includes('branch')) return 'Branches';
+  if (title.includes('employee') || title.includes('people')) return 'People oversight';
+  if (title.includes('test') || title.includes('policy') || title.includes('risk') || title.includes('control')) return 'Testing program';
+  if (title.includes('communication') || title.includes('email') || title.includes('message')) return 'Communications';
+  if (title.includes('marketing') || title.includes('campaign')) return 'Marketing';
+  if (title.includes('surveillance') || title.includes('alert') || title.includes('trade')) return 'Account surveillance';
+  return 'Other';
+}
 
 async function openSavedScriptsModal() {
   $('#savedScriptsModal').hidden = false;
@@ -632,40 +666,98 @@ function renderSavedScripts() {
     return;
   }
 
+  // Group by module
+  const byModule = new Map();
   for (const it of filtered) {
-    const card = document.createElement('div');
-    card.className = 'saved-script-card';
-    const humanTitle = it.title || formatHumanTitle(it.name);
-    const when = it.updated_at ? new Date(it.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-    const mp4Badge = it.mp4_ready ? '<span class="mp4-badge">🎬 MP4 ready</span>' : '';
-    const modBadge = it.module ? `<span class="muted">${esc(it.module)}</span> · ` : '';
+    const mod = resolveScriptModule(it);
+    if (!byModule.has(mod)) byModule.set(mod, []);
+    byModule.get(mod).push(it);
+  }
 
-    card.innerHTML = `
-      <div class="saved-script-top">
-        <div class="saved-script-title">${esc(humanTitle)}</div>
-        ${mp4Badge}
-      </div>
-      <div class="saved-script-meta">
-        <span>${it.step_count} step${it.step_count === 1 ? '' : 's'}</span> ·
-        ${modBadge}
-        <span>${when}</span>
-        ${it.updated_by && it.updated_by !== 'local' ? `<span>by ${esc(it.updated_by)}</span>` : ''}
-      </div>
-      <div class="saved-script-actions">
-        <button class="btn-del-script" type="button" title="Delete this script">🗑</button>
-        <button class="btn-open-script" type="button">Open & Edit</button>
-      </div>
+  // Initialize all modules as open on first load
+  if (!savedModulesInitialized && savedScripts.length) {
+    for (const it of savedScripts) {
+      savedOpenModules.add(resolveScriptModule(it));
+    }
+    savedModulesInitialized = true;
+  }
+
+  // Sort modules by canonical order
+  const sortedModules = [...byModule.keys()].sort((a, b) => {
+    const ia = SAVED_MODULE_ORDER.indexOf(a);
+    const ib = SAVED_MODULE_ORDER.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const mod of sortedModules) {
+    const items = byModule.get(mod);
+    const isOpen = q ? true : savedOpenModules.has(mod);
+
+    const section = document.createElement('section');
+    section.className = 'saved-module-section';
+
+    const isKnownModule = SAVED_MODULE_ORDER.includes(mod);
+    const iconHtml = isKnownModule ? `<img class="module-icon" src="${moduleIconPath(mod)}" alt="" />` : '';
+
+    const header = document.createElement('header');
+    header.className = 'saved-module-header';
+    header.innerHTML = `
+      <span class="saved-caret">${isOpen ? '▾' : '▸'}</span>
+      ${iconHtml}
+      <span class="saved-module-title">${esc(mod)}</span>
+      <span class="saved-module-count">${items.length}</span>
     `;
 
-    card.querySelector('.btn-open-script').onclick = () => openScript(it.name);
-    card.querySelector('.btn-del-script').onclick = async (e) => {
-      e.stopPropagation();
-      if (!confirm(`Delete "${humanTitle}" from saved scripts?`)) return;
-      await send({ type: 'PANEL_LIBRARY_DELETE', name: it.name });
-      await loadSavedScripts();
+    header.onclick = () => {
+      if (savedOpenModules.has(mod)) savedOpenModules.delete(mod);
+      else savedOpenModules.add(mod);
+      renderSavedScripts();
     };
+    section.appendChild(header);
 
-    listEl.appendChild(card);
+    const itemsContainer = document.createElement('div');
+    itemsContainer.className = 'saved-module-items';
+    if (!isOpen) itemsContainer.hidden = true;
+
+    for (const it of items) {
+      const card = document.createElement('div');
+      card.className = 'saved-script-card';
+      const humanTitle = it.title || formatHumanTitle(it.name);
+      const when = it.updated_at ? new Date(it.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+      const mp4Badge = it.mp4_ready ? '<span class="mp4-badge">🎬 MP4 ready</span>' : '';
+
+      card.innerHTML = `
+        <div class="saved-script-top">
+          <div class="saved-script-title">${esc(humanTitle)}</div>
+          ${mp4Badge}
+        </div>
+        <div class="saved-script-meta">
+          <span>${it.step_count} step${it.step_count === 1 ? '' : 's'}</span> ·
+          <span>${when}</span>
+          ${it.updated_by && it.updated_by !== 'local' ? `<span>· by ${esc(it.updated_by)}</span>` : ''}
+        </div>
+        <div class="saved-script-actions">
+          <button class="btn-del-script" type="button" title="Delete this script">🗑</button>
+          <button class="btn-open-script" type="button">Open & Edit</button>
+        </div>
+      `;
+
+      card.querySelector('.btn-open-script').onclick = () => openScript(it.name);
+      card.querySelector('.btn-del-script').onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete "${humanTitle}" from saved scripts?`)) return;
+        await send({ type: 'PANEL_LIBRARY_DELETE', name: it.name });
+        await loadSavedScripts();
+      };
+
+      itemsContainer.appendChild(card);
+    }
+
+    section.appendChild(itemsContainer);
+    listEl.appendChild(section);
   }
 }
 
