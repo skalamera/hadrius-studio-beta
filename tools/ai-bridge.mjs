@@ -1165,9 +1165,81 @@ const server = http.createServer(async (req, res) => {
     try {
       if (req.method === 'GET') {
         const name = u.searchParams.get('name');
-        const attention = u.searchParams.get('attention');
-        const q = name ? { name } : (attention ? { attention: '1' } : null);
-        return sendJson(res, 200, { ok: true, ...(await libraryFetch('GET', q)) });
+        if (name) {
+          const sName = safeName(name);
+          const localScriptPath = path.join(REPO_ROOT, 'scripts', `${sName}.script.json`);
+          if (fs.existsSync(localScriptPath)) {
+            try {
+              const sc = JSON.parse(fs.readFileSync(localScriptPath, 'utf8'));
+              return sendJson(res, 200, { ok: true, item: { name, script: sc } });
+            } catch (_) {}
+          }
+          if (LIBRARY_SECRET) {
+            try {
+              const remote = await libraryFetch('GET', { name });
+              if (remote?.item) return sendJson(res, 200, { ok: true, ...remote });
+            } catch (_) {}
+          }
+          return sendJson(res, 404, { ok: false, error: `Script "${name}" not found` });
+        }
+
+        let remoteItems = [];
+        if (LIBRARY_SECRET) {
+          try {
+            const remote = await libraryFetch('GET', u.searchParams.get('attention') ? { attention: '1' } : null);
+            remoteItems = remote.items || [];
+          } catch (e) {
+            console.warn('[library] Remote fetch failed:', e.message);
+          }
+        }
+
+        const localItems = [];
+        const scriptsDir = path.join(REPO_ROOT, 'scripts');
+        if (fs.existsSync(scriptsDir)) {
+          for (const f of fs.readdirSync(scriptsDir)) {
+            if (!f.endsWith('.script.json')) continue;
+            try {
+              const sc = JSON.parse(fs.readFileSync(path.join(scriptsDir, f), 'utf8'));
+              const sName = sc.name || f.replace('.script.json', '');
+              const sTitle = formatHumanTitle(sc.title || sc.name || sName);
+              const mName = safeName(sName);
+              const mp4Path = path.join(REPO_ROOT, 'out', mName, `${mName}.mp4`);
+              localItems.push({
+                name: sName,
+                title: sTitle,
+                module: sc.module || '',
+                step_count: Array.isArray(sc.steps) ? sc.steps.length : 0,
+                start_url: sc.environment?.startUrl || null,
+                updated_at: sc.updatedAt || sc.createdAt || null,
+                updated_by: sc.updated_by || 'local',
+                mp4_ready: fs.existsSync(mp4Path),
+                local: true
+              });
+            } catch (_) {}
+          }
+        }
+
+        const seenNames = new Set();
+        const merged = [];
+        for (const r of remoteItems) {
+          const sName = r.name;
+          seenNames.add(sName.toLowerCase());
+          const mName = safeName(sName);
+          const mp4Path = path.join(REPO_ROOT, 'out', mName, `${mName}.mp4`);
+          merged.push({
+            ...r,
+            title: formatHumanTitle(r.title || r.name),
+            mp4_ready: fs.existsSync(mp4Path)
+          });
+        }
+        for (const l of localItems) {
+          if (!seenNames.has(l.name.toLowerCase())) {
+            merged.push(l);
+          }
+        }
+
+        merged.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+        return sendJson(res, 200, { ok: true, count: merged.length, items: merged });
       }
       if (req.method === 'POST') {
         const body = await readJsonBody(req);
@@ -1637,6 +1709,24 @@ const server = http.createServer(async (req, res) => {
         const recordingId = String(script.recording?.id || '').replace(/[^\w-]+/g, '');
         if (!recordingId) throw new Error('script has no live recording id — make a new recording before rendering');
         const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
+        fs.mkdirSync(recordingDir, { recursive: true });
+
+        // If slides are missing from recordingDir, check if they exist in out/<name>/slides
+        const priorOutSlides = path.join(REPO_ROOT, 'out', name, 'slides');
+        if (fs.existsSync(priorOutSlides)) {
+          const files = fs.readdirSync(priorOutSlides);
+          for (let i = 0; i < script.steps.length; i++) {
+            const step = script.steps[i];
+            const slideFile = step.media?.pre ? path.basename(step.media.pre) : null;
+            if (slideFile && !fs.existsSync(path.join(recordingDir, slideFile))) {
+              const candidateSlide = `slide_${String(i + 1).padStart(2, '0')}.png`;
+              if (files.includes(candidateSlide)) {
+                try { fs.copyFileSync(path.join(priorOutSlides, candidateSlide), path.join(recordingDir, slideFile)); } catch (_) {}
+              }
+            }
+          }
+        }
+
         const renderable = script.steps.filter((step) => step.capture !== false && step.media?.pre);
         if (!renderable.length) throw new Error('the recording has no captured slides');
 

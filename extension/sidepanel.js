@@ -430,7 +430,34 @@ function toScript() {
   const now = new Date().toISOString();
   const firstUrl = state.steps.find((s)=>s.url)?.url || null;
   const envName = state.script?.environmentName || (firstUrl?.includes('staging') ? 'staging' : 'prod');
-  return {version:1,name:$('#scriptName').value.trim() || 'untitled',module:selected?.module || state.script?.module || '',workflowPlan:selected?.steps || state.script?.workflowPlan || [],createdAt:state.script?.createdAt || now,updatedAt:now,environment:{name:envName,startUrl:firstUrl},recording:{id:state.recordingId,recordedAt:now},captionsFromNarration:false,steps:state.steps.map((s)=>({index:s.index,action:s.action,...(s.key?{key:s.key}:{}),...(s.value!==undefined?{value:s.value}:{}),target:s.target?stripBbox(s.target):undefined,route:s.route,url:s.url,dpr:s.dpr,...(s.captureId?{media:{pre:`step_${s.captureId}.png`}}:{}),narration:s.narration||'',caption:s.caption||s.narration||'',capture:s.capture!==false,motion:!!s.motion}))};
+  const humanTitle = $('#scriptName').value.trim() || 'untitled';
+  return {
+    version: 1,
+    name: humanTitle,
+    title: humanTitle,
+    module: selected?.module || state.script?.module || '',
+    workflowPlan: selected?.steps || state.script?.workflowPlan || [],
+    createdAt: state.script?.createdAt || now,
+    updatedAt: now,
+    environment: { name: envName, startUrl: firstUrl },
+    recording: { id: state.recordingId || state.script?.recording?.id, recordedAt: now },
+    captionsFromNarration: false,
+    steps: state.steps.map((s) => ({
+      index: s.index,
+      action: s.action,
+      ...(s.key ? { key: s.key } : {}),
+      ...(s.value !== undefined ? { value: s.value } : {}),
+      target: s.target ? stripBbox(s.target) : undefined,
+      route: s.route,
+      url: s.url,
+      dpr: s.dpr,
+      ...(s.captureId ? { media: { pre: `step_${s.captureId}.png` } } : (s.media ? { media: s.media } : {})),
+      narration: s.narration || '',
+      caption: s.caption || s.narration || '',
+      capture: s.capture !== false,
+      motion: !!s.motion
+    }))
+  };
 }
 function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,hint:{bbox,viewport}};}
 
@@ -554,6 +581,116 @@ async function resetRecordingSession() {
   await loadState();
 }
 
+function formatHumanTitle(str) {
+  if (!str) return 'Walkthrough';
+  let t = String(str).trim();
+  if (t.includes('-') && (!t.includes(' ') || t.startsWith('How-to-') || t.startsWith('how-to-'))) {
+    t = t.replace(/^How-to-/i, 'How to ').replace(/-/g, ' ');
+  } else {
+    t = t.replace(/^How-to-/i, 'How to ');
+  }
+  return t.replace(/\s+/g, ' ').trim();
+}
+
+let savedScripts = [];
+
+async function openSavedScriptsModal() {
+  $('#savedScriptsModal').hidden = false;
+  await loadSavedScripts();
+}
+
+function closeSavedScriptsModal() {
+  $('#savedScriptsModal').hidden = true;
+}
+
+async function loadSavedScripts() {
+  const listEl = $('#savedScriptsList');
+  listEl.innerHTML = '<p class="muted small" style="padding: 16px; text-align: center;">Loading saved walkthroughs…</p>';
+  const r = await send({ type: 'PANEL_LIBRARY_LIST' });
+  if (!r?.ok) {
+    listEl.innerHTML = `<p class="muted small" style="padding: 16px; color: var(--red); text-align: center;">${esc(r?.error || 'Failed to load saved walkthroughs.')}</p>`;
+    return;
+  }
+  savedScripts = r.items || [];
+  $('#savedScriptsCount').textContent = savedScripts.length;
+  renderSavedScripts();
+}
+
+function renderSavedScripts() {
+  const listEl = $('#savedScriptsList');
+  listEl.innerHTML = '';
+  const q = $('#savedScriptsSearch').value.trim().toLowerCase();
+  const filtered = savedScripts.filter((s) => {
+    if (!q) return true;
+    const title = (s.title || s.name || '').toLowerCase();
+    const mod = (s.module || '').toLowerCase();
+    return title.includes(q) || mod.includes(q);
+  });
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<p class="muted small" style="padding: 20px; text-align: center;">${q ? 'No walkthroughs matching "' + esc(q) + '"' : 'No saved walkthroughs yet.'}</p>`;
+    return;
+  }
+
+  for (const it of filtered) {
+    const card = document.createElement('div');
+    card.className = 'saved-script-card';
+    const humanTitle = it.title || formatHumanTitle(it.name);
+    const when = it.updated_at ? new Date(it.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+    const mp4Badge = it.mp4_ready ? '<span class="mp4-badge">🎬 MP4 ready</span>' : '';
+    const modBadge = it.module ? `<span class="muted">${esc(it.module)}</span> · ` : '';
+
+    card.innerHTML = `
+      <div class="saved-script-top">
+        <div class="saved-script-title">${esc(humanTitle)}</div>
+        ${mp4Badge}
+      </div>
+      <div class="saved-script-meta">
+        <span>${it.step_count} step${it.step_count === 1 ? '' : 's'}</span> ·
+        ${modBadge}
+        <span>${when}</span>
+        ${it.updated_by && it.updated_by !== 'local' ? `<span>by ${esc(it.updated_by)}</span>` : ''}
+      </div>
+      <div class="saved-script-actions">
+        <button class="btn-del-script" type="button" title="Delete this script">🗑</button>
+        <button class="btn-open-script" type="button">Open & Edit</button>
+      </div>
+    `;
+
+    card.querySelector('.btn-open-script').onclick = () => openScript(it.name);
+    card.querySelector('.btn-del-script').onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${humanTitle}" from saved scripts?`)) return;
+      await send({ type: 'PANEL_LIBRARY_DELETE', name: it.name });
+      await loadSavedScripts();
+    };
+
+    listEl.appendChild(card);
+  }
+}
+
+async function openScript(name) {
+  if (state.steps.length && !confirm(`Replace the current steps in the editor with "${name}"?`)) return;
+  const r = await send({ type: 'PANEL_LIBRARY_GET', name });
+  if (!r?.ok || !r.item?.script) return alert(r?.error || 'Could not load script.');
+  const script = r.item.script;
+  await send({ type: 'PANEL_LOAD_SCRIPT', script });
+  closeSavedScriptsModal();
+  await loadState();
+  const humanTitle = script.title || formatHumanTitle(script.name) || '';
+  $('#scriptName').value = humanTitle;
+  if (script.module) {
+    selected = {
+      module: script.module,
+      title: humanTitle,
+      steps: script.workflowPlan || []
+    };
+    $('#selectedWorkflow').hidden = false;
+    $('#selectedWorkflow').innerHTML = `<strong>${esc(selected.title)}</strong><span class="muted">${esc(selected.module)}</span>`;
+  }
+  switchView('recording');
+}
+
 $('#search').oninput=renderModules;
 $('#scanBtn').onclick = async () => {
   if (!confirm('Run a new Gemini codebase scan through the Hadrius MCP? This can take several minutes.')) return;
@@ -567,6 +704,35 @@ $('#scanBtn').onclick = async () => {
   }
 };
 $('#recordBtn').onclick = startRecording;
+$('#openSavedBtn').onclick = openSavedScriptsModal;
+$('#closeSavedModalBtn').onclick = closeSavedScriptsModal;
+$('#savedScriptsSearch').oninput = renderSavedScripts;
+$('#savedScriptsModal').onclick = (e) => {
+  if (e.target.id === 'savedScriptsModal') closeSavedScriptsModal();
+};
+
+const fileInput = $('#scriptFileInput');
+if (fileInput) {
+  fileInput.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const script = JSON.parse(text);
+      if (!Array.isArray(script.steps)) throw new Error('Invalid script file: no steps array');
+      await send({ type: 'PANEL_LOAD_SCRIPT', script });
+      closeSavedScriptsModal();
+      await loadState();
+      $('#scriptName').value = script.title || formatHumanTitle(script.name) || '';
+      switchView('recording');
+    } catch (err) {
+      alert('Failed to import script: ' + err.message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+}
+
 $('#stopBtn').onclick = stopAndNarrate;
 $('#bannerStopBtn').onclick = stopAndNarrate;
 $('#cancelRecordBtn').onclick = cancelRecording;

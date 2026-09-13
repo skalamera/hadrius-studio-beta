@@ -40,6 +40,7 @@
       <input id="scriptName" placeholder="Walkthrough name">
       <div class="record-button-row">
         <button id="recordBtn" class="primary" type="button">● Record</button>
+        <button id="openSavedBtn" class="secondary" type="button" title="Load a saved walkthrough script to view, edit, or re-render">📂 Saved scripts</button>
         <button id="stopBtn" class="danger" type="button" hidden>■ Stop & draft narration</button>
         <button id="cancelRecordBtn" class="secondary" type="button" hidden>✕ Cancel recording</button>
         <button id="clearBtn" class="secondary" type="button">Clear</button>
@@ -85,6 +86,29 @@
       </button>
     </footer>
   </main>
+
+  <div id="savedScriptsModal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3>Saved Walkthroughs</h3>
+          <span id="savedScriptsCount" class="badge">0</span>
+        </div>
+        <button id="closeSavedModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
+      </div>
+      <div class="modal-toolbar">
+        <input id="savedScriptsSearch" type="search" placeholder="Search saved walkthroughs…">
+        <label class="import-file-btn" title="Import a .script.json file from your computer">
+          📥 Import
+          <input type="file" id="scriptFileInput" accept=".json,.script.json" hidden>
+        </label>
+      </div>
+      <div id="savedScriptsList" class="saved-scripts-list">
+        <p class="muted small" style="padding: 16px; text-align: center;">Loading saved walkthroughs…</p>
+      </div>
+    </div>
+  </div>
+
   <script src="sidepanel.js"></script>
 </body>
 </html>
