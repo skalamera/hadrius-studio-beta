@@ -345,11 +345,12 @@ function resolveSteps(module, workflow) {
 }
 
 function formatPlanStep(text) {
-  let escaped = esc(text);
-  escaped = escaped.replace(/&quot;(.*?)&quot;/g, '<strong class="plan-quoted-action">"$1"</strong>');
-  escaped = escaped.replace(/"(.*?)"/g, '<strong class="plan-quoted-action">"$1"</strong>');
-  escaped = escaped.replace(/&gt;/g, '<span class="plan-nav-arrow">›</span>');
-  return escaped;
+  if (!text) return '';
+  let s = String(text).replace(/&quot;/g, '"');
+  s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s = s.replace(/&gt;/g, "<span class='plan-nav-arrow'>›</span>");
+  s = s.replace(/"([^"]+)"/g, "<strong class='plan-quoted-action'>\"$1\"</strong>");
+  return s;
 }
 
 function renderPlanCard(module, workflow, steps) {
