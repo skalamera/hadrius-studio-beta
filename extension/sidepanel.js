@@ -242,35 +242,8 @@ function renderModules() {
     const section = document.createElement('section'); section.className = 'module';
     section.innerHTML = `<div class="module-head"><img class="module-icon" src="${iconSrc}" alt="" /><h2>${esc(group.module)}</h2><span class="counts">${unlinkedWorkflows.length} opportunities · ${visibleArticles.length} articles</span></div><div class="module-body"></div>`;
     const body = section.querySelector('.module-body');
-    body.innerHTML = '<div class="subhead">Recording opportunities</div>';
 
-    if (!matchingWorkflows.length) {
-      body.insertAdjacentHTML('beforeend', '<div class="item muted">All workflows in this module have linked articles ✓</div>');
-    }
-
-    for (const workflow of matchingWorkflows) {
-      const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button></div>`;
-      item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
-      item.querySelector('.plan').onclick = () => chooseWorkflow(group.module, workflow, false);
-      item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
-      body.appendChild(item);
-    }
-
-    const manuallyLinkedInModule = (group.workflows || []).filter((w) => manualLinks.has(w.title));
-    if (manuallyLinkedInModule.length > 0) {
-      const manualFoot = document.createElement('div');
-      manualFoot.className = 'item manual-links-bar muted';
-      manualFoot.innerHTML = `<span>${manuallyLinkedInModule.length} manually marked as done</span> <button class="link-btn undoLinks" type="button">Reset</button>`;
-      manualFoot.querySelector('.undoLinks').onclick = async () => {
-        for (const w of manuallyLinkedInModule) manualLinks.delete(w.title);
-        await chrome.storage.local.set({ manualLinks: [...manualLinks] });
-        renderModules();
-      };
-      body.appendChild(manualFoot);
-    }
-
-    // Dedicated Pylon Articles container with clear visual separation
+    // 1. Dedicated Pylon Articles container (above recording opportunities)
     const pylonBox = document.createElement('section');
     pylonBox.className = 'pylon-section';
     const collectionUrl = getModuleCollectionUrl(group.module);
@@ -322,6 +295,35 @@ function renderModules() {
       }
     }
     body.appendChild(pylonBox);
+
+    // 2. Recording opportunities below Pylon articles
+    body.insertAdjacentHTML('beforeend', '<div class="subhead">Recording opportunities</div>');
+
+    if (!matchingWorkflows.length) {
+      body.insertAdjacentHTML('beforeend', '<div class="item muted">All workflows in this module have linked articles ✓</div>');
+    }
+
+    for (const workflow of matchingWorkflows) {
+      const item = document.createElement('div'); item.className = 'item';
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button></div>`;
+      item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
+      item.querySelector('.plan').onclick = () => chooseWorkflow(group.module, workflow, false);
+      item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
+      body.appendChild(item);
+    }
+
+    const manuallyLinkedInModule = (group.workflows || []).filter((w) => manualLinks.has(w.title));
+    if (manuallyLinkedInModule.length > 0) {
+      const manualFoot = document.createElement('div');
+      manualFoot.className = 'item manual-links-bar muted';
+      manualFoot.innerHTML = `<span>${manuallyLinkedInModule.length} manually marked as done</span> <button class="link-btn undoLinks" type="button">Reset</button>`;
+      manualFoot.querySelector('.undoLinks').onclick = async () => {
+        for (const w of manuallyLinkedInModule) manualLinks.delete(w.title);
+        await chrome.storage.local.set({ manualLinks: [...manualLinks] });
+        renderModules();
+      };
+      body.appendChild(manualFoot);
+    }
     const moduleBody = section.querySelector('.module-body');
     moduleBody.hidden = !q;
     section.querySelector('.module-head').onclick = () => moduleBody.hidden = !moduleBody.hidden;
