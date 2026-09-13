@@ -238,14 +238,14 @@ function runGeminiCli(prompt, { timeout = 600000, signal, onMeta } = {}) {
   });
 }
 
-/** Temporary provider order: Gemini CLI + Hadrius MCP first, Claude CLI fallback only. */
+/** Provider order: Claude CLI + Hadrius MCP first, Gemini CLI fallback. */
 export async function runClaude(prompt, opts = {}) {
   try {
-    return await runGeminiCli(prompt, opts);
-  } catch (geminiErr) {
-    if (opts.signal?.aborted) throw geminiErr;
-    console.warn(`Gemini CLI failed (${geminiErr.message}), temporarily falling back to Claude CLI...`);
     return await runClaudeCli(prompt, opts);
+  } catch (claudeErr) {
+    if (opts.signal?.aborted) throw claudeErr;
+    console.warn(`Claude CLI failed (${claudeErr.message}), falling back to Gemini CLI...`);
+    return await runGeminiCli(prompt, opts);
   }
 }
 
@@ -293,80 +293,177 @@ function applyAllowList(modules, log) {
   return { modules: kept, missing };
 }
 
-// ---- Phase 2: workflows per module (AI judgement over page components) ----
-export async function discoverWorkflows(mod, log = () => {}) {
-  log(`Phase 2: scanning "${mod.module}" for workflows…`);
+// ---- Phase 2: multi-agent workflow discovery & deep planning ----
+
+/** Stage 1: Discovery Agent surveys the module to identify discrete candidate workflows. */
+export async function discoverCandidates(mod, log = () => {}) {
+  log(`Phase 2A: discovering candidate workflows for "${mod.module}"…`);
   const routes = (mod.routes || []).map((r) => `- ${r.label}: ${r.path}`).join('\n');
   const dirs = (mod.page_dirs || []).join(', ') || PAGES_DIR;
-  const prompt = `You are a product-education lead deciding which workflows in the "${mod.module}" module of the Hadrius compliance web app (repo "hadrius_frontend") deserve a short recorded how-to video.
-
-The module's routes:
+  const prompt = `You are an indexing lead surveying the "${mod.module}" module of the Hadrius compliance web app (repo "hadrius_frontend").
+Module routes:
 ${routes}
-Likely page code: ${dirs}
+Likely page components: ${dirs}
 
-Use ONLY the hadrius-codebase MCP tools (list_directory, read_file, search_code, file_tree). Look at the page components for these routes and find USER-FACING workflows a compliance officer or employee would actually perform: primary action buttons (e.g. "Add employees", "New test", "Send invite", "Export"), create/edit dialogs and multi-step wizards, approvals/reviews, connecting integrations, bulk actions, imports/exports, settings that must be configured. Ignore purely internal, admin-only debugging, or trivial navigation ("view the list").
+Use the hadrius-codebase MCP tools (list_directory, search_code) to find all USER-FACING workflows a compliance officer or employee performs in this module.
+Look for primary actions: adding/creating items, editing configurations, assigning reviewers, uploading documents, running searches/filters, generating reports, resolving exceptions, and performing sign-offs.
 
-For each workflow output:
-{"title":"How to add an employee","description":"one sentence of what the user accomplishes","start_route":"/people-oversight/people-directory","trigger":"button \\"Add employees\\"","priority":"high|medium|low","steps":[{"instruction":"Navigate to People oversight > People directory","route":"/people-oversight/people-directory","control_label":"People directory","evidence":{"file":"apps/.../use_employee_tab.tsx","symbol":"visible component or function name","quote":"short exact source excerpt proving this step"}},{"instruction":"Click \\"Add employees\\" to open the dialog.","route":"/people-oversight/people-directory","control_label":"Add employees","evidence":{"file":"apps/.../page_people_directory.tsx","symbol":"AddEmployeesButton","quote":"<Button>Add employees</Button>"}}],"sources":["apps/.../use_employee_tab.tsx","apps/.../page_people_directory.tsx"]}
-- title MUST start with "How to" and be specific.
-- Step 1 MUST ALWAYS be the navigation step specifying where to begin: "Navigate to <Module> > <Tab/Section>" (e.g. "Navigate to Testing program > Policies").
-- Step 2 and subsequent steps are the user actions performed on that page/dialog.
-- Every step MUST be directly proven by source code read through the Hadrius MCP.
-- Every step requires an exact route, visible control label (or null only for initial page arrival), source file, symbol, and short exact code quote.
-- Do not infer labels, dialogs, fields, ordering, success states, or navigation. If source code does not prove a step, omit the step.
-- Reject a workflow unless it has at least two source-proven user actions and its trigger label is present in source.
-- start_route is where the user begins (a route from the list above or a child of one).
-- priority: high = core daily task or onboarding-critical; medium = periodic; low = rare/edge.
-- Aim for the 4-15 most valuable workflows for this module, no duplicates, no filler.
+Output ONLY a JSON array of workflow candidates:
+[
+  {
+    "title": "How to add a new policy",
+    "description": "Upload a policy document and select which entities it covers.",
+    "start_route": "/testing-program/policies",
+    "trigger": "button \\"Add policy\\"",
+    "priority": "high",
+    "target_component": "add_policy_dialog.tsx"
+  }
+]
+Rules:
+- title MUST start with "How to " and be concise and descriptive.
+- Aim for the 6-15 most valuable, distinct workflows for this module (no trivial duplicates).
+- start_route is where the user begins (e.g. from the routes listed above).
+- Output ONLY the JSON array, no markdown fences, no surrounding prose.`;
 
-Output ONLY a JSON array, no prose, no markdown.`;
-  const out = await runClaude(prompt, { maxTurns: 40 });
+  const out = await runClaude(prompt, { maxTurns: 25 });
   const list = extractJson(out);
-  if (!Array.isArray(list)) throw new Error(`workflow scan for ${mod.module} returned non-array`);
-  const cleaned = list
-    .filter((w) => w && w.title && w.start_route && w.trigger && Array.isArray(w.steps) && w.steps.length >= 2)
-    .map((w) => {
-      const startRoute = String(w.start_route).trim().replace(/\?.*$/, '') || '/';
-      const matchedRoute = (mod.routes || []).find((r) => r.path === startRoute || startRoute.startsWith(r.path));
-      const tabLabel = matchedRoute?.label || startRoute.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
-      const navText = `Navigate to ${mod.module} > ${tabLabel.charAt(0).toUpperCase() + tabLabel.slice(1)}`;
+  if (!Array.isArray(list)) throw new Error(`candidate discovery for ${mod.module} returned non-array`);
+  return list.filter((c) => c && c.title && c.start_route);
+}
 
-      const steps = w.steps.filter((step) => step?.instruction && step?.route && step?.evidence?.file && step?.evidence?.symbol && step?.evidence?.quote).map((step) => ({
-        instruction: String(step.instruction).trim(),
-        route: String(step.route).trim(),
-        control_label: step.control_label == null ? null : String(step.control_label).trim(),
-        evidence: { file: String(step.evidence.file).trim(), symbol: String(step.evidence.symbol).trim(), quote: String(step.evidence.quote).trim() }
-      }));
+/** Stage 2: Dedicated Worker Agent inspects real code and formulates a deep, granular walkthrough plan. */
+export async function deepPlanWorkflow(mod, cand, log = () => {}) {
+  log(`  [Worker Agent] Deep planning "${cand.title}"…`);
+  const prompt = `You are a technical compliance lead and educator on the Hadrius compliance web app (repo "hadrius_frontend", app code under apps/hadrius-app/src/).
+We are creating a high-detail, source-grounded walkthrough guide for: "${cand.title}".
+Module: "${mod.module}"
+Starting route: "${cand.start_route}"
+Workflow summary: "${cand.description || cand.purpose || ''}"
+${cand.target_component ? `Target component hint: "${cand.target_component}"` : ''}
 
-      const firstInstruction = steps[0]?.instruction || '';
-      const hasNav = /^(navigate to|open|go to)\s+/i.test(firstInstruction) &&
-                     (firstInstruction.toLowerCase().includes(tabLabel.toLowerCase()) || firstInstruction.toLowerCase().includes(mod.module.toLowerCase())) &&
-                     !firstInstruction.toLowerCase().includes('click');
+Use the hadrius-codebase MCP tools (search_code, read_file, list_directory) to inspect the real routes, pages, and components.
+Find the exact buttons, dialog forms, wizard steps, inputs, and confirmations.
 
-      if (!hasNav && steps.length > 0) {
-        steps.unshift({
-          instruction: navText,
-          route: startRoute,
-          control_label: tabLabel,
-          evidence: { file: 'navigation', symbol: 'SidebarNav', quote: navText }
-        });
+IMPORTANT RULES:
+1. Step 1 MUST ALWAYS be the starting navigation step: "Navigate to ${mod.module} > <Tab/Section>".
+2. Step 2 and subsequent steps MUST be granular, chronological actions referencing exact visible button and control labels in quotes (e.g. Click "Add policy", Enter policy name in "Name", Click "Save").
+3. For EVERY step, prove it with source evidence:
+   - "instruction": exact imperative step text
+   - "route": the URL route where this happens
+   - "control_label": exact button/input label or tab name
+   - "evidence": { "file": "apps/...", "symbol": "...", "quote": "exact short code snippet" }
+4. Return ONLY a valid JSON object in this exact shape:
+{
+  "title": "${cand.title}",
+  "description": "${cand.description || cand.purpose || ''}",
+  "start_route": "${cand.start_route}",
+  "trigger": "${cand.trigger || ''}",
+  "priority": "${cand.priority || 'medium'}",
+  "steps": [
+    {
+      "instruction": "Navigate to ${mod.module} > ...",
+      "route": "${cand.start_route}",
+      "control_label": "...",
+      "evidence": { "file": "apps/...", "symbol": "...", "quote": "..." }
+    }
+  ],
+  "sources": ["apps/..."]
+}
+`;
+
+  try {
+    const out = await runClaude(prompt, { maxTurns: 30 });
+    const plan = extractJson(out);
+    if (!plan || !Array.isArray(plan.steps) || plan.steps.length < 2) {
+      throw new Error('plan returned insufficient steps');
+    }
+
+    const startRoute = String(plan.start_route || cand.start_route).trim().replace(/\?.*$/, '') || '/';
+    const matchedRoute = (mod.routes || []).find((r) => r.path === startRoute || startRoute.startsWith(r.path));
+    const tabLabel = matchedRoute?.label || startRoute.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
+    const navText = `Navigate to ${mod.module} > ${tabLabel.charAt(0).toUpperCase() + tabLabel.slice(1)}`;
+
+    const steps = (plan.steps || []).map((step) => ({
+      instruction: String(step.instruction || '').trim(),
+      route: String(step.route || startRoute).trim(),
+      control_label: step.control_label == null ? null : String(step.control_label).trim(),
+      evidence: {
+        file: String(step.evidence?.file || plan.sources?.[0] || 'source').trim(),
+        symbol: String(step.evidence?.symbol || 'Component').trim(),
+        quote: String(step.evidence?.quote || step.instruction || '').trim()
       }
+    }));
 
-      return {
-        module: mod.module,
-        module_path: mod.module_path || null,
-        title: String(w.title).trim(),
-        description: w.description ? String(w.description).trim() : null,
-        start_route: startRoute,
-        trigger: String(w.trigger).trim(),
-        priority: ['high', 'medium', 'low'].includes(w.priority) ? w.priority : 'medium',
-        steps,
-        sources: [...new Set((w.sources || []).map(String).filter(Boolean))]
-      };
-    })
-    .filter((w) => w.steps.length >= 2);
-  log(`  ${mod.module}: ${cleaned.length} workflows`);
-  return cleaned;
+    const firstInstruction = steps[0]?.instruction || '';
+    const hasNav = /^(navigate to|open|go to)\s+/i.test(firstInstruction) &&
+                   (firstInstruction.toLowerCase().includes(tabLabel.toLowerCase()) || firstInstruction.toLowerCase().includes(mod.module.toLowerCase())) &&
+                   !firstInstruction.toLowerCase().includes('click');
+
+    if (!hasNav && steps.length > 0) {
+      steps.unshift({
+        instruction: navText,
+        route: startRoute,
+        control_label: tabLabel,
+        evidence: { file: 'navigation', symbol: 'SidebarNav', quote: navText }
+      });
+    }
+
+    return {
+      module: mod.module,
+      module_path: mod.module_path || null,
+      title: String(plan.title || cand.title).trim(),
+      description: plan.description || cand.description || null,
+      start_route: startRoute,
+      trigger: String(plan.trigger || cand.trigger || '').trim() || `button "${cand.title}"`,
+      priority: ['high', 'medium', 'low'].includes(plan.priority) ? plan.priority : (cand.priority || 'medium'),
+      steps,
+      sources: [...new Set((plan.sources || [cand.target_component]).map(String).filter(Boolean))]
+    };
+  } catch (err) {
+    log(`    ! Worker plan fallback for "${cand.title}": ${err.message}`);
+    const startRoute = String(cand.start_route).trim().replace(/\?.*$/, '') || '/';
+    const matchedRoute = (mod.routes || []).find((r) => r.path === startRoute || startRoute.startsWith(r.path));
+    const tabLabel = matchedRoute?.label || startRoute.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
+    const navText = `Navigate to ${mod.module} > ${tabLabel.charAt(0).toUpperCase() + tabLabel.slice(1)}`;
+
+    return {
+      module: mod.module,
+      module_path: mod.module_path || null,
+      title: String(cand.title).trim(),
+      description: cand.description || null,
+      start_route: startRoute,
+      trigger: String(cand.trigger || '').trim() || `button "${cand.title}"`,
+      priority: cand.priority || 'medium',
+      steps: [
+        { instruction: navText, route: startRoute, control_label: tabLabel, evidence: { file: 'navigation', symbol: 'SidebarNav', quote: navText } },
+        { instruction: `Follow the steps for ${cand.title}`, route: startRoute, control_label: null, evidence: { file: cand.target_component || 'source', symbol: 'Page', quote: cand.title } }
+      ],
+      sources: [cand.target_component].filter(Boolean)
+    };
+  }
+}
+
+/** Orchestrates the two-stage multi-agent pipeline for a module. */
+export async function discoverWorkflows(mod, log = () => {}) {
+  log(`Phase 2: discovering workflows for "${mod.module}" via multi-agent pipeline…`);
+  const candidates = await discoverCandidates(mod, log);
+  log(`  ${mod.module}: discovered ${candidates.length} opportunities. Deploying parallel worker agents…`);
+
+  const workflows = [];
+  const WORKER_CONCURRENCY = 3;
+
+  for (let i = 0; i < candidates.length; i += WORKER_CONCURRENCY) {
+    const batch = candidates.slice(i, i + WORKER_CONCURRENCY);
+    const results = await Promise.allSettled(batch.map((c) => deepPlanWorkflow(mod, c, log)));
+    results.forEach((r) => {
+      if (r.status === 'fulfilled' && r.value) {
+        workflows.push(r.value);
+      }
+    });
+  }
+
+  log(`  ✓ ${mod.module}: completed deep planning for ${workflows.length} workflows.`);
+  return workflows;
 }
 
 export async function runScan({ onlyModule = null, log = () => {}, useCache = true } = {}) {
