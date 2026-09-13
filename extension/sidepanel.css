@@ -26,4 +26,10 @@
 .banner-text-group{display:flex;flex-direction:column;min-width:0;flex:1}
 .banner-title{font-weight:700;letter-spacing:.04em;font-size:11px}
 .banner-detail{font-size:10px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.banner-actions{display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0}
+.banner-btn{border:none;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700;cursor:pointer;line-height:1.2;transition:all .15s}
+.banner-btn-stop{background:#fff;color:#881337}
+.banner-btn-stop:hover{background:#fee2e2;color:#7f1d1d}
+.banner-btn-cancel{background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.45)}
+.banner-btn-cancel:hover{background:rgba(255,255,255,.35);color:#fff}
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}

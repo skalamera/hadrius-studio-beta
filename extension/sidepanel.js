@@ -482,7 +482,9 @@ $('#scanBtn').onclick = async () => {
 };
 $('#recordBtn').onclick = startRecording;
 $('#stopBtn').onclick = stopAndNarrate;
+$('#bannerStopBtn').onclick = stopAndNarrate;
 $('#cancelRecordBtn').onclick = cancelRecording;
+$('#bannerCancelBtn').onclick = cancelRecording;
 $('#clearBtn').onclick = async () => { if (confirm('Clear this recording?')) { await resetRecordingSession(); } };
 $('#scriptName').onchange = (e) => send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: e.target.value } });
 $('#renderBtn').onclick = () => renderVideo('video');
