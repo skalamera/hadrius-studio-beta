@@ -153,4 +153,7 @@ button.secondary:disabled{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
 .ai-iterate-row input:focus{border-color:var(--purple);outline:none}
 .ai-iterate-row button{white-space:nowrap;padding:6px 12px;font-size:11px}
 
+button.dismissWf{color:#991b1b;border-color:#fee2e2;background:#fffafa}
+button.dismissWf:hover{background:#fef2f2;border-color:#fca5a5;color:#7f1d1d}
+
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}

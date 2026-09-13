@@ -54,6 +54,7 @@ let coverageScan = { running: false, startedAt: null, finishedAt: null, log: [],
 let liteScan = { running: false, startedAt: null, finishedAt: null, log: [], error: null };
 const WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'workflows.json');
 const MANUAL_LINKS_FILE = path.join(REPO_ROOT, 'data', 'manual-links.json');
+const DISMISSED_WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'dismissed-workflows.json');
 
 function candSlug(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140);
@@ -67,6 +68,17 @@ function writeManualLinks(links) {
   try {
     fs.mkdirSync(path.dirname(MANUAL_LINKS_FILE), { recursive: true });
     fs.writeFileSync(MANUAL_LINKS_FILE, JSON.stringify(links, null, 2));
+  } catch (_) {}
+}
+
+function readDismissedWorkflows() {
+  try { return fs.existsSync(DISMISSED_WORKFLOWS_FILE) ? JSON.parse(fs.readFileSync(DISMISSED_WORKFLOWS_FILE, 'utf8')) : []; }
+  catch (_) { return []; }
+}
+function writeDismissedWorkflows(list) {
+  try {
+    fs.mkdirSync(path.dirname(DISMISSED_WORKFLOWS_FILE), { recursive: true });
+    fs.writeFileSync(DISMISSED_WORKFLOWS_FILE, JSON.stringify(list, null, 2));
   } catch (_) {}
 }
 
@@ -1026,13 +1038,17 @@ const server = http.createServer(async (req, res) => {
           try { localData = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')); } catch (_) {}
         }
         const manualLinksSet = new Set(readManualLinks());
+        const dismissedSet = new Set(readDismissedWorkflows());
 
         if (LIBRARY_SECRET) {
           try {
             const sharedCov = await libraryFetch('GET', null, null, COVERAGE_URL);
             if (sharedCov && Array.isArray(sharedCov.items)) {
               for (const it of sharedCov.items) {
-                if (it.linked_script || it.status === 'covered' || it.dismissed) {
+                if (it.dismissed || it.status === 'dismissed') {
+                  dismissedSet.add(it.title);
+                }
+                if (it.linked_script || it.status === 'covered') {
                   manualLinksSet.add(it.title);
                 }
               }
@@ -1061,6 +1077,7 @@ const server = http.createServer(async (req, res) => {
                 const seenTitles = new Set();
 
                 for (const it of sharedItems) {
+                  if (dismissedSet.has(it.title) || it.dismissed || it.status === 'dismissed') continue;
                   const titleKey = it.title.toLowerCase();
                   seenTitles.add(titleKey);
                   const localMatch = localWorkflowMap.get(`${module.toLowerCase()}::${titleKey}`);
@@ -1082,7 +1099,7 @@ const server = http.createServer(async (req, res) => {
                 }
 
                 for (const lWf of localWfs) {
-                  if (!seenTitles.has(lWf.title.toLowerCase())) {
+                  if (!seenTitles.has(lWf.title.toLowerCase()) && !dismissedSet.has(lWf.title)) {
                     workflows.push(lWf);
                   }
                 }
@@ -1093,6 +1110,7 @@ const server = http.createServer(async (req, res) => {
               // Add "Other" section at the bottom of the 6 modules
               const otherWorkflows = [];
               for (const it of sharedCov.items) {
+                if (dismissedSet.has(it.title) || it.dismissed || it.status === 'dismissed') continue;
                 const canon = canonicalModule(it.module);
                 if (!canon) {
                   otherWorkflows.push({
@@ -1115,7 +1133,7 @@ const server = http.createServer(async (req, res) => {
               const localOther = (localData.modules || []).find((m) => m.module.toLowerCase() === 'other');
               if (localOther?.workflows) {
                 for (const w of localOther.workflows) {
-                  if (!otherWorkflows.some((o) => o.title.toLowerCase() === w.title.toLowerCase())) {
+                  if (!dismissedSet.has(w.title) && !otherWorkflows.some((o) => o.title.toLowerCase() === w.title.toLowerCase())) {
                     otherWorkflows.push(w);
                   }
                 }
@@ -1131,6 +1149,7 @@ const server = http.createServer(async (req, res) => {
                 scannedAt: sharedCov.summary?.last_scan_at || localData.scannedAt || new Date().toISOString(),
                 modules: mergedModules,
                 manualLinks: [...manualLinksSet],
+                dismissed: [...dismissedSet],
                 scan: liteScan,
                 shared: true
               });
@@ -1144,6 +1163,7 @@ const server = http.createServer(async (req, res) => {
           ok: true,
           ...localData,
           manualLinks: [...manualLinksSet],
+          dismissed: [...dismissedSet],
           scan: liteScan,
           shared: false
         });
@@ -1222,6 +1242,51 @@ const server = http.createServer(async (req, res) => {
           clarification: payload.clarification ? String(payload.clarification).trim() : null
         });
         return sendJson(res, 200, { ok: true, plan });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && u.pathname === '/workflows/dismiss') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { title, module: modName } = JSON.parse(body || '{}');
+        if (!title) throw new Error('title required');
+        const dismissed = new Set(readDismissedWorkflows());
+        dismissed.add(title);
+        writeDismissedWorkflows([...dismissed]);
+
+        // Also remove from local workflows.json if present
+        if (fs.existsSync(WORKFLOWS_FILE)) {
+          try {
+            const data = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8'));
+            if (Array.isArray(data.modules)) {
+              for (const mod of data.modules) {
+                if (Array.isArray(mod.workflows)) {
+                  mod.workflows = mod.workflows.filter((w) => w.title.toLowerCase() !== title.toLowerCase());
+                }
+              }
+              fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify(data, null, 2));
+            }
+          } catch (_) {}
+        }
+
+        // Delete or mark dismissed in shared Neon repository
+        if (LIBRARY_SECRET) {
+          try {
+            const targetModule = modName || 'Testing program';
+            const candKey = candSlug(`${targetModule}-${title}`);
+            await libraryFetch('DELETE', { key: candKey }, null, COVERAGE_URL);
+          } catch (sharedErr) {
+            console.warn('[workflows/dismiss] Could not delete from shared repository:', sharedErr.message);
+          }
+        }
+
+        return sendJson(res, 200, { ok: true });
       } catch (e) {
         return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
       }

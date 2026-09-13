@@ -88,12 +88,16 @@ async function pollScan() {
 }
 
 let manualLinks = new Set();
+let dismissedWorkflows = new Set();
 
 async function initManualLinks() {
   try {
-    const res = await chrome.storage.local.get('manualLinks');
+    const res = await chrome.storage.local.get(['manualLinks', 'dismissedWorkflows']);
     if (Array.isArray(res.manualLinks)) {
       for (const t of res.manualLinks) manualLinks.add(t);
+    }
+    if (Array.isArray(res.dismissedWorkflows)) {
+      for (const t of res.dismissedWorkflows) dismissedWorkflows.add(t);
     }
   } catch (_) {}
 }
@@ -112,6 +116,14 @@ async function unmarkWorkflowLinked(title) {
   renderModules();
 }
 
+async function dismissWorkflow(title, moduleName) {
+  if (!confirm(`Are you sure you want to dismiss and delete "${title}"? This will permanently remove this recording opportunity.`)) return;
+  dismissedWorkflows.add(title);
+  await chrome.storage.local.set({ dismissedWorkflows: [...dismissedWorkflows] });
+  api('/workflows/dismiss', { method: 'POST', body: JSON.stringify({ title, module: moduleName }) }).catch(() => {});
+  renderModules();
+}
+
 async function refreshAll() {
   const [workflowResult, pylonResult] = await Promise.allSettled([api('/workflows'), api('/pylon/articles')]);
   if (workflowResult.status === 'fulfilled') {
@@ -119,6 +131,10 @@ async function refreshAll() {
     if (Array.isArray(catalog.manualLinks)) {
       for (const t of catalog.manualLinks) manualLinks.add(t);
       chrome.storage.local.set({ manualLinks: [...manualLinks] });
+    }
+    if (Array.isArray(catalog.dismissed)) {
+      for (const t of catalog.dismissed) dismissedWorkflows.add(t);
+      chrome.storage.local.set({ dismissedWorkflows: [...dismissedWorkflows] });
     }
     updateScanStatus(catalog.scan);
   }
@@ -227,11 +243,12 @@ function renderModules() {
   for (const group of orderedGroups) {
     const articles = getModuleArticles(group.module);
 
-    // Only display recording opportunities that do NOT have a linked article
+    // Only display recording opportunities that do NOT have a linked article and are not dismissed
     const unlinkedWorkflows = (group.workflows || []).filter((w) => {
       const isAutoLinked = articles.some((article) => articleMatches(w, article));
       const isManuallyLinked = manualLinks.has(w.title);
-      return !isAutoLinked && !isManuallyLinked;
+      const isDismissed = dismissedWorkflows.has(w.title);
+      return !isAutoLinked && !isManuallyLinked && !isDismissed;
     });
 
     const matchingWorkflows = unlinkedWorkflows.filter((w) => !q || `${w.title} ${w.purpose}`.toLowerCase().includes(q));
@@ -305,14 +322,15 @@ function renderModules() {
 
     for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button></div>`;
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
       item.querySelector('.plan').onclick = () => chooseWorkflow(group.module, workflow, false);
       item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
+      item.querySelector('.dismissWf').onclick = () => dismissWorkflow(workflow.title, group.module);
       body.appendChild(item);
     }
 
-    const manuallyLinkedInModule = (group.workflows || []).filter((w) => manualLinks.has(w.title));
+    const manuallyLinkedInModule = (group.workflows || []).filter((w) => manualLinks.has(w.title) && !dismissedWorkflows.has(w.title));
     if (manuallyLinkedInModule.length > 0) {
       const manualFoot = document.createElement('div');
       manualFoot.className = 'item manual-links-bar muted';
