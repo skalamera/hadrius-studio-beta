@@ -1419,17 +1419,23 @@ const server = http.createServer(async (req, res) => {
           fs.mkdirSync(path.join(REPO_ROOT, 'scripts'), { recursive: true });
           fs.writeFileSync(scriptPath, JSON.stringify(script, null, 2));
         }
-        // Pre-flight: make sure the renderer's profile is still signed in to Hadrius. If not, a visible
-        // window opens for the operator to sign in (the panel shows this in the render log) — instead
-        // of every step "failing" against the sign-in page.
-        const prelude = ['Checking the renderer browser is signed in to Hadrius…'];
-        if (mode === 'pylon') prelude.push('No existing render found — running full walkthrough to capture slides for Pylon…');
+        // Studio Lite renders exclusively from screenshots captured during the user's live session.
+        // Never launch a browser, authenticate, replay steps, or manufacture application state here.
+        const recordingId = String(script.recording?.id || '').replace(/[^\w-]+/g, '');
+        if (!recordingId) throw new Error('script has no live recording id — make a new recording before rendering');
+        const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
+        const renderable = script.steps.filter((step) => step.capture !== false && step.media?.pre);
+        if (!renderable.length) throw new Error('the recording has no captured slides');
+        const missing = renderable.filter((step) => !fs.existsSync(path.join(recordingDir, path.basename(step.media.pre))));
+        if (missing.length) throw new Error(`${missing.length} captured slide(s) are still missing — wait a moment and try Render MP4 again`);
+
+        const prelude = [`Using ${renderable.length} slides captured during the live recording — no replay.`];
         if (renderSaveWarning) prelude.unshift(renderSaveWarning);
         Object.assign(render, {
           running: true,
           name,
-          mode,
-          phase: 'signing-in',
+          mode: 'video',
+          phase: 'assembling',
           log: prelude,
           outDir,
           video: null,
@@ -1438,21 +1444,11 @@ const server = http.createServer(async (req, res) => {
           error: null,
           startedAt: Date.now(),
           finishedAt: null,
-          pylon: mode === 'video' ? null : { status: 'pending' },
+          pylon: null,
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, name, scriptPath }));
-        (async () => {
-          try {
-            const { ensureHadriusLogin } = await loadAiRecord();
-            fs.mkdirSync(PROFILE_DIR, { recursive: true }); // first run on a fresh machine: the sign-in window creates the profile
-            const r = await ensureHadriusLogin({ profileDir: PROFILE_DIR, onLog: (m) => render.log.push(m) });
-            if (r.prompted) render.log.push('Signed in — starting the render.');
-            startRender(scriptPath, name, render.log, mode);
-          } catch (e) {
-            Object.assign(render, { running: false, phase: 'failed', error: String(e?.message || e), finishedAt: Date.now() });
-          }
-        })();
+        startRender(scriptPath, name, render.log, 'video');
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
