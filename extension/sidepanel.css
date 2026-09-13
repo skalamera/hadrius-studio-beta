@@ -80,4 +80,20 @@
 .floating-camera-btn:active{transform:scale(.95)}
 .floating-camera-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .toast{position:fixed;bottom:76px;right:18px;background:#1e1b4b;color:#fff;padding:8px 14px;border-radius:8px;font-size:11px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,.25);border:1px solid #4338ca;z-index:100000;display:flex;align-items:center;gap:6px;animation:fadeIn .2s ease-out;pointer-events:none}
+.pylon-section{margin:14px 10px 12px;background:#f8faff;border:1px solid #dbeafe;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(37,99,235,.04)}
+.pylon-section-header{display:flex;align-items:center;gap:7px;padding:9px 12px;background:#eff6ff;border-bottom:1px solid #dbeafe}
+.pylon-header-icon{width:16px;height:16px;border-radius:3px;object-fit:contain;flex-shrink:0}
+.pylon-header-title{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8;flex:1}
+.pylon-count-badge{font-size:10px;font-weight:700;color:#2563eb;background:#dbeafe;padding:1px 6px;border-radius:999px}
+.pylon-collection-link{font-size:10.5px;font-weight:600;color:#2563eb;text-decoration:none;display:inline-flex;align-items:center;gap:2px}
+.pylon-collection-link:hover{text-decoration:underline;color:#1d4ed8}
+.pylon-articles-list{display:flex;flex-direction:column}
+.pylon-article-item{padding:9px 12px;border-top:1px solid #e0e7ff;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;transition:background-color .12s}
+.pylon-article-item:first-child{border-top:none}
+.pylon-article-item:hover{background:#f8faff}
+.pylon-article-title{font-size:12.5px;font-weight:600;color:#1e293b;line-height:1.35;flex:1;text-decoration:none}
+.pylon-article-title:hover{color:#2563eb;text-decoration:underline}
+.pylon-empty-msg{padding:12px;font-size:11px;color:var(--muted);background:#fff;font-style:italic}
+.badge.draft{background:#ede9fe;color:#4338ca}
+.badge.published{background:#ecfdf5;color:#059669;border:1px solid #a7f3d0}
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}

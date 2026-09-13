@@ -1033,6 +1033,42 @@ const server = http.createServer(async (req, res) => {
                 return { module, workflows };
               });
 
+              // Add "Other" section at the bottom of the 6 modules
+              const otherWorkflows = [];
+              for (const it of sharedCov.items) {
+                const canon = canonicalModule(it.module);
+                if (!canon) {
+                  otherWorkflows.push({
+                    title: it.title,
+                    purpose: it.description || '',
+                    startRoute: it.start_route || '/overview',
+                    trigger: it.trigger || '',
+                    priority: it.priority || 'medium',
+                    steps: [
+                      `Navigate to ${it.module} > ${(it.start_route || '').split('/').filter(Boolean).pop() || 'overview'}`,
+                      `Follow the steps for ${it.title}`
+                    ],
+                    evidence: [],
+                    sources: [it.source_file].filter(Boolean),
+                    linkedScript: it.linked_script || null,
+                    status: it.status || 'missing'
+                  });
+                }
+              }
+              const localOther = (localData.modules || []).find((m) => m.module.toLowerCase() === 'other');
+              if (localOther?.workflows) {
+                for (const w of localOther.workflows) {
+                  if (!otherWorkflows.some((o) => o.title.toLowerCase() === w.title.toLowerCase())) {
+                    otherWorkflows.push(w);
+                  }
+                }
+              }
+
+              mergedModules.push({
+                module: 'Other',
+                workflows: otherWorkflows
+              });
+
               return sendJson(res, 200, {
                 ok: true,
                 scannedAt: sharedCov.summary?.last_scan_at || localData.scannedAt || new Date().toISOString(),
@@ -1168,6 +1204,19 @@ const server = http.createServer(async (req, res) => {
         const canon = ALLOWED_MODULES.find((m) => m.toLowerCase() === module.toLowerCase());
         if (canon) modules[canon] = entry;
       }
+
+      // Collect all articles outside the 6 main module collections into "Other"
+      const knownCollectionIds = new Set(Object.values(PYLON_MODULE_COLLECTION_MAP));
+      const otherArticles = articles.filter((article) => !knownCollectionIds.has(article.collection_id)).map((article) => ({
+        id: article.id, title: article.title, url: pylonArticleUrl(article), isPublished: !!article.is_published,
+        visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at
+      }));
+      modules['Other'] = {
+        collectionId: PYLON_COLLECTION_ID,
+        collectionUrl: `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/collections/${PYLON_COLLECTION_ID}`,
+        articles: otherArticles
+      };
+
       return sendJson(res, 200, { ok: true, modules, syncedAt: new Date().toISOString() });
     } catch (e) { return sendJson(res, 502, { ok: false, error: String(e?.message || e) }); }
   }

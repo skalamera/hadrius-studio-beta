@@ -156,14 +156,42 @@ function articleMatches(workflow, article) {
   return a === w || a.includes(w) || w.includes(a);
 }
 
+const WORKFLOW_MODULE_ORDER = [
+  'Testing program',
+  'People oversight',
+  'Branches',
+  'Communications',
+  'Marketing',
+  'Account surveillance',
+  'Other'
+];
+
 function getModuleArticles(moduleName) {
   if (!pylon?.modules) return [];
-  if (pylon.modules[moduleName]) return pylon.modules[moduleName].articles || [];
   const target = String(moduleName || '').trim().toLowerCase();
+  if (target === 'other') {
+    if (pylon.modules['Other']?.articles) return pylon.modules['Other'].articles;
+    const known = new Set(['testing program', 'people oversight', 'branches', 'communications', 'marketing', 'account surveillance']);
+    const list = [];
+    for (const [k, v] of Object.entries(pylon.modules)) {
+      if (!known.has(k.toLowerCase()) && Array.isArray(v.articles)) list.push(...v.articles);
+    }
+    return list;
+  }
+  if (pylon.modules[moduleName]) return pylon.modules[moduleName].articles || [];
   for (const [k, v] of Object.entries(pylon.modules)) {
     if (k.toLowerCase() === target) return v.articles || [];
   }
   return [];
+}
+
+function getModuleCollectionUrl(moduleName) {
+  if (!pylon?.modules) return null;
+  const target = String(moduleName || '').trim().toLowerCase();
+  for (const [k, v] of Object.entries(pylon.modules)) {
+    if (k.toLowerCase() === target && v.collectionUrl) return v.collectionUrl;
+  }
+  return null;
 }
 
 function moduleIconPath(moduleName) {
@@ -174,7 +202,29 @@ function moduleIconPath(moduleName) {
 function renderModules() {
   const q = $('#search').value.trim().toLowerCase();
   $('#modules').innerHTML = '';
+
+  const moduleMap = new Map();
   for (const group of catalog.modules || []) {
+    moduleMap.set(group.module.toLowerCase(), group);
+  }
+
+  const orderedGroups = [];
+  for (const modName of WORKFLOW_MODULE_ORDER) {
+    const existing = moduleMap.get(modName.toLowerCase());
+    if (existing) {
+      orderedGroups.push(existing);
+      moduleMap.delete(modName.toLowerCase());
+    } else {
+      orderedGroups.push({ module: modName, workflows: [] });
+    }
+  }
+  const otherGroup = orderedGroups.pop();
+  for (const remaining of moduleMap.values()) {
+    orderedGroups.push(remaining);
+  }
+  orderedGroups.push(otherGroup);
+
+  for (const group of orderedGroups) {
     const articles = getModuleArticles(group.module);
 
     // Only display recording opportunities that do NOT have a linked article
@@ -220,14 +270,44 @@ function renderModules() {
       body.appendChild(manualFoot);
     }
 
-    body.insertAdjacentHTML('beforeend','<div class="subhead">Pylon articles</div>');
-    if (!visibleArticles.length) body.insertAdjacentHTML('beforeend','<div class="item muted">No articles currently in this collection.</div>');
-    for (const article of visibleArticles) {
-      const item = document.createElement('div'); item.className = 'item article';
-      item.innerHTML = `<div class="item-title"><a href="#">${esc(article.title)}</a><span class="badge ${article.isPublished?'published':''}">${article.isPublished?'Published':'Draft'}</span></div>`;
-      item.querySelector('a').onclick = (event) => { event.preventDefault(); chrome.tabs.create({url:article.url}); };
-      body.appendChild(item);
+    // Dedicated Pylon Articles container with clear visual separation
+    const pylonBox = document.createElement('section');
+    pylonBox.className = 'pylon-section';
+    const collectionUrl = getModuleCollectionUrl(group.module);
+    const collectionLinkHtml = collectionUrl ? `<a href="${collectionUrl}" class="pylon-collection-link" target="_blank" rel="noopener noreferrer">↗ Open collection</a>` : '';
+
+    pylonBox.innerHTML = `
+      <div class="pylon-section-header">
+        <img class="pylon-header-icon" src="icons/pylon-icon.png" alt="" />
+        <span class="pylon-header-title">PYLON ARTICLES</span>
+        <span class="pylon-count-badge">${visibleArticles.length}</span>
+        ${collectionLinkHtml}
+      </div>
+      <div class="pylon-articles-list"></div>
+    `;
+
+    const pylonList = pylonBox.querySelector('.pylon-articles-list');
+    if (!visibleArticles.length) {
+      pylonList.innerHTML = '<div class="pylon-empty-msg">No articles currently in this collection.</div>';
+    } else {
+      for (const article of visibleArticles) {
+        const item = document.createElement('div');
+        item.className = 'pylon-article-item';
+        const cleanTitle = formatHumanTitle(article.title);
+        const statusClass = article.isPublished ? 'published' : 'draft';
+        const statusLabel = article.isPublished ? 'Published' : 'Draft';
+        item.innerHTML = `
+          <a href="#" class="pylon-article-title">${esc(cleanTitle)}</a>
+          <span class="badge ${statusClass}">${statusLabel}</span>
+        `;
+        item.querySelector('a').onclick = (event) => {
+          event.preventDefault();
+          chrome.tabs.create({ url: article.url });
+        };
+        pylonList.appendChild(item);
+      }
     }
+    body.appendChild(pylonBox);
     const moduleBody = section.querySelector('.module-body');
     moduleBody.hidden = !q;
     section.querySelector('.module-head').onclick = () => moduleBody.hidden = !moduleBody.hidden;
