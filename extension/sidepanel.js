@@ -276,18 +276,31 @@ function renderModules() {
     const collectionUrl = getModuleCollectionUrl(group.module);
     const collectionLinkHtml = collectionUrl ? `<a href="${collectionUrl}" class="pylon-collection-link" target="_blank" rel="noopener noreferrer">↗ Open collection</a>` : '';
     const pylonHeaderTitle = `PYLON ARTICLES - ${group.module.toUpperCase()}`;
+    const isPylonOpen = !!q;
 
     pylonBox.innerHTML = `
-      <div class="pylon-section-header">
+      <div class="pylon-section-header${isPylonOpen ? '' : ' collapsed'}">
+        <span class="pylon-caret">${isPylonOpen ? '▾' : '▸'}</span>
         <img class="pylon-header-icon" src="icons/pylon-icon.png" alt="" />
         <span class="pylon-header-title">${esc(pylonHeaderTitle)}</span>
         <span class="pylon-count-badge">${visibleArticles.length}</span>
         ${collectionLinkHtml}
       </div>
-      <div class="pylon-articles-list"></div>
+      <div class="pylon-articles-list" ${isPylonOpen ? '' : 'hidden'}></div>
     `;
 
+    const pylonHeader = pylonBox.querySelector('.pylon-section-header');
     const pylonList = pylonBox.querySelector('.pylon-articles-list');
+    const pylonCaret = pylonBox.querySelector('.pylon-caret');
+
+    pylonHeader.onclick = (e) => {
+      if (e.target.closest('.pylon-collection-link')) return;
+      const willBeHidden = !pylonList.hidden;
+      pylonList.hidden = willBeHidden;
+      pylonCaret.textContent = willBeHidden ? '▸' : '▾';
+      pylonHeader.classList.toggle('collapsed', willBeHidden);
+    };
+
     if (!visibleArticles.length) {
       pylonList.innerHTML = '<div class="pylon-empty-msg">No articles currently in this collection.</div>';
     } else {
