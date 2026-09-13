@@ -517,6 +517,139 @@ async function runClaude(prompt) {
   }
 }
 
+const GEMINI_MCP_TOOLS = [
+  {
+    functionDeclarations: [
+      {
+        name: 'search_code',
+        description: 'Search the Hadrius frontend codebase (apps/hadrius-app/src/) for page components, route definitions, button labels, modal dialogs, or form inputs.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            query: {
+              type: 'STRING',
+              description: 'Exact text or regex to search for in code (e.g. "Add policy", "datasets", "Create branch")'
+            }
+          },
+          required: ['query']
+        }
+      },
+      {
+        name: 'read_file',
+        description: 'Read the contents of a specific source file under apps/hadrius-app/src/.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            file_path: {
+              type: 'STRING',
+              description: 'Relative path to file, e.g. apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/add_policy_dialog.tsx'
+            }
+          },
+          required: ['file_path']
+        }
+      },
+      {
+        name: 'list_directory',
+        description: 'List the files and subdirectories under a path in apps/hadrius-app/src/.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            path: {
+              type: 'STRING',
+              description: 'Directory path to list, e.g. apps/hadrius-app/src/pages/coreloop/firm_oversight_v2'
+            }
+          },
+          required: ['path']
+        }
+      }
+    ]
+  }
+];
+
+async function executeMcpTool(toolName, args) {
+  const mcpName = `mcp__hadrius-codebase__${toolName}`;
+  const prompt = `Call ${mcpName} with arguments: ${JSON.stringify(args)}. Output only the result.`;
+  const cliArgs = ['-p', prompt, '--allowedTools', mcpName, '--max-turns', '3'];
+  return new Promise((resolve) => {
+    const child = execFile('claude', cliArgs, { maxBuffer: 1024 * 1024 * 10, timeout: 35000, env: claudeEnv() }, (err, stdout) => {
+      if (err || !stdout) return resolve({ error: err?.message || 'Tool execution failed' });
+      resolve({ result: stdout.trim().slice(0, 4000) });
+    });
+    child.stdin?.end();
+  });
+}
+
+async function runGeminiWithTools(prompt, { maxTurns = 8 } = {}) {
+  const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
+  if (!key) throw new Error('GEMINI_API_KEY is not set');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
+
+  const contents = [
+    {
+      role: 'user',
+      parts: [{ text: prompt }]
+    }
+  ];
+
+  for (let turn = 0; turn < maxTurns; turn++) {
+    const payload = {
+      contents,
+      tools: GEMINI_MCP_TOOLS
+    };
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data.error?.message || `Gemini API returned HTTP ${resp.status}`);
+    }
+
+    const candidate = data.candidates?.[0];
+    if (!candidate?.content) {
+      throw new Error('Gemini returned an empty candidate');
+    }
+
+    const modelContent = candidate.content;
+    contents.push(modelContent);
+
+    const functionCalls = (modelContent.parts || []).filter(p => p.functionCall);
+    if (!functionCalls.length) {
+      const nonThought = (modelContent.parts || []).filter(p => p.text && !p.thought);
+      const finalText = (nonThought.length ? nonThought : modelContent.parts).map(p => p.text).filter(Boolean).join('\n').trim();
+      return finalText;
+    }
+
+    const responseParts = [];
+    for (const fcPart of functionCalls) {
+      const { name, args } = fcPart.functionCall;
+      console.log(`[Gemini Tool Call] ${name}(${JSON.stringify(args)})`);
+      let resultObj;
+      try {
+        resultObj = await executeMcpTool(name, args || {});
+      } catch (err) {
+        resultObj = { error: String(err?.message || err) };
+      }
+      responseParts.push({
+        functionResponse: {
+          name,
+          response: resultObj
+        }
+      });
+    }
+
+    contents.push({
+      role: 'user',
+      parts: responseParts
+    });
+  }
+
+  throw new Error('Gemini tool calling exceeded maximum turns');
+}
+
 async function generatePlanFromIdea({ userPrompt, previousPlan, clarification }) {
   let prompt = `You are an expert technical lead and product educator on the Hadrius compliance web app (repo "hadrius_frontend", app code under apps/hadrius-app/src/).
 The user has an idea for a video walkthrough: "${userPrompt}".
@@ -560,8 +693,12 @@ IMPORTANT RULES:
   try {
     rawOutput = await runClaudeCli(prompt);
   } catch (claudeErr) {
-    console.warn(`Claude CLI with MCP failed (${claudeErr.message}), falling back to Gemini with Hadrius knowledge...`);
-    const fallbackPrompt = `You are an expert product educator on the Hadrius compliance web app.
+    console.warn(`Claude CLI with MCP failed (${claudeErr.message}), falling back to Gemini with custom MCP tool calling...`);
+    try {
+      rawOutput = await runGeminiWithTools(prompt);
+    } catch (toolErr) {
+      console.warn(`Gemini with tools failed (${toolErr.message}), falling back to Gemini direct prompt...`);
+      const fallbackPrompt = `You are an expert product educator on the Hadrius compliance web app.
 The user wants a video walkthrough plan for: "${userPrompt}".
 ${previousPlan ? `Previous plan: ${JSON.stringify(previousPlan)}` : ''}
 ${clarification ? `User feedback/clarification: "${clarification}"` : ''}
@@ -589,7 +726,8 @@ Return ONLY a valid JSON object in this exact shape:
     ...
   ]
 }`;
-    rawOutput = await runGeminiPrompt(fallbackPrompt);
+      rawOutput = await runGeminiPrompt(fallbackPrompt);
+    }
   }
 
   const plan = extractJson(String(rawOutput));
