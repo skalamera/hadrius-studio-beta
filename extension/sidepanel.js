@@ -425,6 +425,7 @@ async function renderVideo(mode = 'video') {
   $('#renderStatusRow').hidden = false;
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
+  $('#renderStatus').classList.remove('ready');
   $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : 'Starting render…';
   $('#renderBtn').disabled = true;
   $('#renderBothBtn').disabled = true;
@@ -433,6 +434,7 @@ async function renderVideo(mode = 'video') {
   if (!result?.ok) {
     $('#renderBtn').disabled = false;
     $('#renderBothBtn').disabled = false;
+    $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = result?.error || 'Render failed';
     return;
   }
@@ -447,6 +449,7 @@ async function checkRender() {
     $('#renderStatusRow').hidden = true;
     $('#renderLinks').hidden = true;
     $('#pylonArticleLink').hidden = true;
+    $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = '';
     return;
   }
@@ -458,6 +461,7 @@ async function checkRender() {
       replaying: 'Assembling slides…',
       assembling: 'Generating narration, captions and video…'
     };
+    $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = phaseNames[result.phase] || result.phase || 'Rendering…';
     $('#renderLinks').hidden = true;
     $('#renderBtn').disabled = true;
@@ -467,6 +471,7 @@ async function checkRender() {
 
   // Not running
   if (result.error) {
+    $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = `Failed: ${result.error}`;
     $('#renderBtn').disabled = false;
     $('#renderBothBtn').disabled = false;
@@ -480,6 +485,7 @@ async function checkRender() {
   const pylon = result.pylon;
 
   if (mode === 'both' && pylon?.status === 'pending') {
+    $('#renderStatus').classList.remove('ready');
     $('#renderStatus').textContent = '✓ MP4 ready · Drafting Pylon KB article…';
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
@@ -495,15 +501,18 @@ async function checkRender() {
 
   if (mode === 'both' && pylon?.status === 'done') {
     $('#renderStatus').textContent = '✓ MP4 & Pylon article ready';
+    $('#renderStatus').classList.add('ready');
     if (pylon.url) {
       $('#pylonArticleLink').href = pylon.url;
       $('#pylonArticleLink').hidden = false;
     }
   } else if (mode === 'both' && pylon?.status === 'failed') {
     $('#renderStatus').textContent = `✓ MP4 ready (Pylon article failed: ${pylon.error || 'error'})`;
+    $('#renderStatus').classList.add('ready');
     $('#pylonArticleLink').hidden = true;
   } else {
     $('#renderStatus').textContent = '✓ MP4 ready';
+    $('#renderStatus').classList.add('ready');
     $('#pylonArticleLink').hidden = true;
   }
 }
@@ -522,6 +531,7 @@ async function resetRecordingSession() {
   $('#renderStatusRow').hidden = true;
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
+  $('#renderStatus').classList.remove('ready');
   $('#renderStatus').textContent = '';
   $('#renderBtn').disabled = false;
   $('#renderBothBtn').disabled = false;

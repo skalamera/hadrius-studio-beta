@@ -3,6 +3,7 @@
 .render-status-row{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:6px}
 .status-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .render-status-text{font-size:12px;color:var(--purple2);font-weight:600}
+.render-status-text.ready{color:#15803d;font-weight:700}
 .render-links{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .action-link{color:var(--purple);font-size:12px;font-weight:600;text-decoration:none;cursor:pointer}
 .action-link:hover{text-decoration:underline}
