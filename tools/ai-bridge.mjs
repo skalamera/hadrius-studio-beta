@@ -56,6 +56,19 @@ const WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'workflows.json');
 const MANUAL_LINKS_FILE = path.join(REPO_ROOT, 'data', 'manual-links.json');
 const DISMISSED_WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'dismissed-workflows.json');
 
+let cachedCoverage = { at: 0, data: null };
+function invalidateCoverageCache() {
+  cachedCoverage = { at: 0, data: null };
+}
+async function getCachedCoverage({ maxAgeMs = 90000, fresh = false } = {}) {
+  if (!fresh && cachedCoverage.data && (Date.now() - cachedCoverage.at < maxAgeMs)) {
+    return cachedCoverage.data;
+  }
+  const data = await libraryFetch('GET', null, null, COVERAGE_URL);
+  cachedCoverage = { at: Date.now(), data };
+  return data;
+}
+
 function candSlug(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140);
 }
@@ -1228,7 +1241,7 @@ const server = http.createServer(async (req, res) => {
 
         if (LIBRARY_SECRET) {
           try {
-            const sharedCov = await libraryFetch('GET', null, null, COVERAGE_URL);
+            const sharedCov = await getCachedCoverage({ fresh: u.searchParams.get('fresh') === '1' });
             if (sharedCov && Array.isArray(sharedCov.items)) {
               for (const it of sharedCov.items) {
                 if (it.dismissed || it.status === 'dismissed') {
@@ -1563,6 +1576,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
+        invalidateCoverageCache();
         return sendJson(res, 200, { ok: true });
       } catch (e) {
         return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
@@ -1608,6 +1622,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
+        invalidateCoverageCache();
         return sendJson(res, 200, { ok: true });
       } catch (e) {
         return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
@@ -1628,6 +1643,7 @@ const server = http.createServer(async (req, res) => {
         else links.add(title);
         const arr = [...links];
         writeManualLinks(arr);
+        invalidateCoverageCache();
 
         if (LIBRARY_SECRET) {
           try {
