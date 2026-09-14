@@ -181,37 +181,84 @@
     </div>
   </div>
 
-  <!-- Enhance Plan Modal -->
-  <div id="enhancePlanModal" class="modal-backdrop" hidden>
-    <div class="modal-card enhance-modal-card">
+  <!-- View & Enhance Plan Modal -->
+  <div id="viewPlanModal" class="modal-backdrop" hidden>
+    <div class="modal-card view-plan-modal-card">
       <div class="modal-header">
         <div class="modal-title-group">
-          <div class="enhance-modal-badge">
-            <span class="ai-sparkle">✨</span>
-            <strong id="enhanceModalModule" class="plan-module-name"></strong>
-            <span class="plan-pill">Enhanced Plan Preview</span>
+          <div class="view-plan-badge-row">
+            <strong id="viewPlanModalModule" class="plan-module-name"></strong>
+            <span id="viewPlanModalRoute" class="plan-route-pill" hidden></span>
+            <span id="viewPlanStatusBadge" class="plan-pill" hidden>✨ Proposed Enhancement</span>
           </div>
-          <h3 id="enhanceModalTitle" class="plan-card-title"></h3>
+          <h3 id="viewPlanModalTitle" class="plan-card-title"></h3>
         </div>
-        <button id="closeEnhanceModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
+        <button id="closeViewPlanModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
       </div>
 
-      <div id="enhanceLoadingState" class="ai-plan-loading-view" style="padding: 24px 16px;">
-        <span class="ai-spinner">⏳</span>
-        <div class="ai-loading-text">
-          <strong>Generating detailed, grounded plan with AI…</strong>
-          <span class="muted small">Inspecting routes, forms, and page components via MCP</span>
-        </div>
-      </div>
+      <!-- Main Plan Content -->
+      <div class="view-plan-body">
+        <p id="viewPlanModalSummary" class="plan-card-subtitle"></p>
 
-      <div id="enhanceContentState" class="enhance-content-state" hidden>
-        <p id="enhanceModalSummary" class="plan-card-subtitle" style="margin: 8px 0 12px;"></p>
-        <div class="enhance-steps-container">
-          <ul id="enhanceModalStepsList" class="plan-steps-list"></ul>
+        <div class="view-plan-steps-section">
+          <div class="view-plan-section-header">
+            <strong id="viewPlanStepsHeader">Walkthrough Steps</strong>
+            <span id="viewPlanStepsCount" class="badge"></span>
+          </div>
+          <div class="view-plan-steps-container">
+            <ul id="viewPlanModalStepsList" class="plan-steps-list"></ul>
+          </div>
         </div>
-        <div class="enhance-modal-footer">
-          <button id="enhanceAcceptBtn" class="primary" type="button">✓ Accept & Replace Plan</button>
-          <button id="enhanceDenyBtn" class="secondary" type="button">✕ Deny</button>
+
+        <div id="viewPlanSourcesSection" class="view-plan-sources" hidden>
+          <span class="muted small">Sources: </span>
+          <span id="viewPlanSourcesList" class="muted small"></span>
+        </div>
+
+        <!-- AI Loading View -->
+        <div id="viewPlanLoadingState" class="ai-plan-loading-view" hidden style="padding: 16px 12px; margin-top: 4px; background: #fcfbfe; border: 1px solid #ddd6fe; border-radius: 8px;">
+          <span class="ai-spinner">⏳</span>
+          <div class="ai-loading-text">
+            <strong>Generating detailed, grounded plan with AI…</strong>
+            <span class="muted small">Inspecting routes, forms, and page components via MCP</span>
+          </div>
+        </div>
+
+        <!-- AI Enhance & Iterate Section -->
+        <div id="viewPlanAiSection" class="view-plan-ai-section">
+          <!-- Default Prompt View -->
+          <div id="viewPlanAiPromptBox" class="ai-iterate-box">
+            <div class="ai-plan-head" style="margin-bottom: 6px;">
+              <span class="ai-sparkle">✨</span>
+              <div class="ai-plan-title-group">
+                <strong style="font-size: 12px;">Enhance plan with AI</strong>
+                <p class="muted small" style="margin: 0; line-height: 1.3;">Optionally prompt the AI to focus on specific buttons, dialogs, or workflow requirements.</p>
+              </div>
+            </div>
+            <div class="view-plan-prompt-row">
+              <textarea id="viewPlanAiPromptInput" rows="2" placeholder="e.g. Focus on the bulk action bar and confirmation dialog, or leave blank to auto-ground with codebase..."></textarea>
+              <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                <button id="viewPlanEnhanceBtn" class="primary ai-gen-btn" type="button">✨ Enhance Plan</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reviewing Proposed Enhancement (Accept / Iterate / Discard) -->
+          <div id="viewPlanAiReviewBox" class="view-plan-review-box" hidden>
+            <div class="ai-iterate-box">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <strong style="font-size: 12px; color: var(--purple2);">💬 Refine or Iterate on Plan</strong>
+              </div>
+              <div class="ai-iterate-row" style="margin-top: 4px;">
+                <input id="viewPlanClarifyInput" type="text" placeholder="e.g. Specify the date picker fields and exact toast message…" />
+                <button id="viewPlanIterateBtn" class="secondary" type="button">Refine</button>
+              </div>
+            </div>
+            <div class="view-plan-decision-actions" style="display: flex; gap: 8px; margin-top: 10px;">
+              <button id="viewPlanAcceptBtn" class="primary" type="button" style="flex: 2;">✓ Accept & Replace Plan</button>
+              <button id="viewPlanDiscardBtn" class="secondary" type="button" style="flex: 1;">✕ Discard</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

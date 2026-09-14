@@ -2,10 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const TARGET_MODULES = [
-  'branches',
-  'communications',
-  'marketing',
-  'account surveillance'
+  'testing program',
+  'people oversight'
 ];
 
 const BRIDGE_URL = 'http://localhost:8787';

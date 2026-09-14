@@ -334,10 +334,9 @@ function renderModules() {
 
     for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary enhancePlan" title="Use AI to generate a more detailed, grounded step-by-step plan">✨ Enhance plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
-      item.querySelector('.plan').onclick = () => chooseWorkflow(group.module, workflow, false);
-      item.querySelector('.enhancePlan').onclick = () => openEnhancePlan(group.module, workflow);
+      item.querySelector('.plan').onclick = () => openViewPlanModal(group.module, workflow);
       item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
       item.querySelector('.dismissWf').onclick = () => dismissWorkflow(workflow.title, group.module);
       body.appendChild(item);
@@ -446,50 +445,161 @@ async function chooseWorkflow(module, workflow, start=true) {
   if (start) await startRecording();
 }
 
-let activeEnhancingWorkflow = null; // { module, originalWorkflow, enhancedPlan }
+let activeViewPlanModal = null; // { module, originalWorkflow, currentPlan, enhancedPlan }
 
-async function openEnhancePlan(moduleName, workflow) {
-  activeEnhancingWorkflow = { module: moduleName, originalWorkflow: workflow, enhancedPlan: null };
+function renderViewPlanContent(plan, isProposed = false) {
+  if (!plan) return;
+  const mod = plan.module || activeViewPlanModal?.module || 'Workflow';
+  $('#viewPlanModalModule').textContent = mod;
 
-  const modal = $('#enhancePlanModal');
-  modal.hidden = false;
-  $('#enhanceModalModule').textContent = moduleName;
-  $('#enhanceModalTitle').textContent = workflow.title;
-  $('#enhanceModalSummary').textContent = workflow.purpose || '';
-  $('#enhanceLoadingState').hidden = false;
-  $('#enhanceContentState').hidden = true;
+  const route = plan.startRoute || plan.start_route || '';
+  const routeEl = $('#viewPlanModalRoute');
+  if (route) {
+    routeEl.textContent = route;
+    routeEl.hidden = false;
+  } else {
+    routeEl.hidden = true;
+  }
 
-  try {
-    const res = await api('/workflows/enhance', {
-      method: 'POST',
-      body: JSON.stringify({ module: moduleName, workflow })
-    });
-    if (!res?.ok || !res.plan) throw new Error(res?.error || 'Enhance plan failed');
+  const badgeEl = $('#viewPlanStatusBadge');
+  if (isProposed) {
+    badgeEl.textContent = '✨ Proposed Enhancement';
+    badgeEl.hidden = false;
+  } else {
+    badgeEl.hidden = true;
+  }
 
-    activeEnhancingWorkflow.enhancedPlan = res.plan;
-    $('#enhanceLoadingState').hidden = true;
-    $('#enhanceContentState').hidden = false;
+  $('#viewPlanModalTitle').textContent = plan.title || activeViewPlanModal?.originalWorkflow?.title || '';
+  $('#viewPlanModalSummary').textContent = plan.summary || plan.purpose || '';
 
-    $('#enhanceModalStepsList').innerHTML = (res.plan.steps || []).map((s, i) => `
+  const steps = Array.isArray(plan.steps) ? plan.steps : resolveSteps(mod, plan);
+  $('#viewPlanStepsCount').textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
+
+  const stepsList = $('#viewPlanModalStepsList');
+  if (steps.length > 0) {
+    stepsList.innerHTML = steps.map((s, i) => `
       <li class="plan-step-item">
         <span class="plan-step-num">${i + 1}.</span>
         <span class="plan-step-desc">${formatPlanStep(s)}</span>
       </li>
     `).join('');
-  } catch (err) {
-    alert(`Could not enhance plan: ${err.message}`);
-    closeEnhancePlanModal();
+  } else {
+    stepsList.innerHTML = '<li class="plan-step-item muted">No steps defined yet.</li>';
+  }
+
+  const sources = plan.sources || activeViewPlanModal?.originalWorkflow?.sources || [];
+  const sourcesSection = $('#viewPlanSourcesSection');
+  const sourcesList = $('#viewPlanSourcesList');
+  if (sources.length > 0) {
+    sourcesSection.hidden = false;
+    sourcesList.textContent = sources.map(s => s.split('/').slice(-2).join('/')).join(', ');
+  } else {
+    sourcesSection.hidden = true;
   }
 }
 
-function closeEnhancePlanModal() {
-  $('#enhancePlanModal').hidden = true;
-  activeEnhancingWorkflow = null;
+function openViewPlanModal(moduleName, workflow) {
+  activeViewPlanModal = {
+    module: moduleName,
+    originalWorkflow: workflow,
+    currentPlan: {
+      title: workflow.title,
+      module: moduleName,
+      startRoute: workflow.startRoute || workflow.start_route,
+      summary: workflow.purpose || workflow.summary || '',
+      steps: resolveSteps(moduleName, workflow),
+      sources: workflow.sources || []
+    },
+    enhancedPlan: null
+  };
+
+  renderViewPlanContent(activeViewPlanModal.currentPlan, false);
+
+  $('#viewPlanAiPromptInput').value = '';
+  $('#viewPlanClarifyInput').value = '';
+  $('#viewPlanAiPromptBox').hidden = false;
+  $('#viewPlanAiReviewBox').hidden = true;
+  $('#viewPlanLoadingState').hidden = true;
+  $('#viewPlanModal').hidden = false;
 }
 
-async function acceptEnhancePlan() {
-  if (!activeEnhancingWorkflow?.enhancedPlan) return;
-  const { module: modName, originalWorkflow, enhancedPlan } = activeEnhancingWorkflow;
+function closeViewPlanModal() {
+  $('#viewPlanModal').hidden = true;
+  activeViewPlanModal = null;
+}
+
+async function enhancePlanInModal() {
+  if (!activeViewPlanModal) return;
+  const promptInput = $('#viewPlanAiPromptInput');
+  const clarification = promptInput.value.trim();
+
+  $('#viewPlanLoadingState').hidden = false;
+  $('#viewPlanAiPromptBox').hidden = true;
+  $('#viewPlanAiReviewBox').hidden = true;
+
+  try {
+    const res = await api('/workflows/enhance', {
+      method: 'POST',
+      body: JSON.stringify({
+        module: activeViewPlanModal.module,
+        workflow: activeViewPlanModal.currentPlan || activeViewPlanModal.originalWorkflow,
+        clarification: clarification || null
+      })
+    });
+    if (!res?.ok || !res.plan) throw new Error(res?.error || 'Enhance plan failed');
+
+    activeViewPlanModal.enhancedPlan = res.plan;
+    renderViewPlanContent(res.plan, true);
+
+    $('#viewPlanLoadingState').hidden = true;
+    $('#viewPlanAiReviewBox').hidden = false;
+    $('#viewPlanClarifyInput').value = '';
+  } catch (err) {
+    alert(`Could not enhance plan: ${err.message}`);
+    $('#viewPlanLoadingState').hidden = true;
+    $('#viewPlanAiPromptBox').hidden = false;
+  }
+}
+
+async function refinePlanInModal() {
+  if (!activeViewPlanModal?.enhancedPlan) return;
+  const clarifyInput = $('#viewPlanClarifyInput');
+  const clarification = clarifyInput.value.trim();
+  if (!clarification) {
+    clarifyInput.focus();
+    return alert('Please enter clarification or details on what to change.');
+  }
+
+  $('#viewPlanLoadingState').hidden = false;
+  $('#viewPlanAiReviewBox').hidden = true;
+
+  try {
+    const res = await api('/workflows/enhance', {
+      method: 'POST',
+      body: JSON.stringify({
+        module: activeViewPlanModal.module,
+        workflow: activeViewPlanModal.enhancedPlan,
+        clarification
+      })
+    });
+    if (!res?.ok || !res.plan) throw new Error(res?.error || 'Refining plan failed');
+
+    activeViewPlanModal.enhancedPlan = res.plan;
+    renderViewPlanContent(res.plan, true);
+
+    $('#viewPlanLoadingState').hidden = true;
+    $('#viewPlanAiReviewBox').hidden = false;
+    $('#viewPlanClarifyInput').value = '';
+  } catch (err) {
+    alert(`Could not refine plan: ${err.message}`);
+    $('#viewPlanLoadingState').hidden = true;
+    $('#viewPlanAiReviewBox').hidden = false;
+  }
+}
+
+async function acceptEnhancedPlanInModal() {
+  if (!activeViewPlanModal?.enhancedPlan) return;
+  const { module: modName, originalWorkflow, enhancedPlan } = activeViewPlanModal;
 
   try {
     const res = await api('/workflows/opportunity', {
@@ -511,12 +621,29 @@ async function acceptEnhancePlan() {
       });
     }
 
-    closeEnhancePlanModal();
-    alert(`✓ Plan for "${originalWorkflow.title}" has been enhanced and saved!`);
+    activeViewPlanModal.currentPlan = enhancedPlan;
+    activeViewPlanModal.enhancedPlan = null;
+
+    renderViewPlanContent(enhancedPlan, false);
+    $('#viewPlanAiPromptInput').value = '';
+    $('#viewPlanAiPromptBox').hidden = false;
+    $('#viewPlanAiReviewBox').hidden = true;
+
+    toast(`✓ Plan for "${originalWorkflow.title}" updated!`);
     renderModules();
   } catch (err) {
     alert(`Failed to save enhanced plan: ${err.message}`);
   }
+}
+
+function discardEnhancedPlanInModal() {
+  if (!activeViewPlanModal) return;
+  activeViewPlanModal.enhancedPlan = null;
+  renderViewPlanContent(activeViewPlanModal.currentPlan, false);
+  $('#viewPlanAiPromptBox').hidden = false;
+  $('#viewPlanAiReviewBox').hidden = true;
+  $('#viewPlanLoadingState').hidden = true;
+  $('#viewPlanClarifyInput').value = '';
 }
 
 let activeAiPlan = null; // { userPrompt, plan, previousPlan }
@@ -1396,12 +1523,26 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Enhance Plan Modal
-$('#closeEnhanceModalBtn').onclick = closeEnhancePlanModal;
-$('#enhanceDenyBtn').onclick = closeEnhancePlanModal;
-$('#enhanceAcceptBtn').onclick = acceptEnhancePlan;
-$('#enhancePlanModal').onclick = (e) => {
-  if (e.target.id === 'enhancePlanModal') closeEnhancePlanModal();
+// View & Enhance Plan Modal
+$('#closeViewPlanModalBtn').onclick = closeViewPlanModal;
+$('#viewPlanEnhanceBtn').onclick = enhancePlanInModal;
+$('#viewPlanIterateBtn').onclick = refinePlanInModal;
+$('#viewPlanAcceptBtn').onclick = acceptEnhancedPlanInModal;
+$('#viewPlanDiscardBtn').onclick = discardEnhancedPlanInModal;
+$('#viewPlanModal').onclick = (e) => {
+  if (e.target.id === 'viewPlanModal') closeViewPlanModal();
+};
+$('#viewPlanClarifyInput').onkeydown = (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    refinePlanInModal();
+  }
+};
+$('#viewPlanAiPromptInput').onkeydown = (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    enhancePlanInModal();
+  }
 };
 
 const fileInput = $('#scriptFileInput');

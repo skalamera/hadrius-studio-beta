@@ -167,7 +167,18 @@ button.dismissWf:hover{background:#fef2f2;border-color:#fca5a5;color:#7f1d1d}
 button.enhancePlan{color:var(--purple2);border-color:#ddd6fe;background:#fcfbfe}
 button.enhancePlan:hover{background:#f5f3ff;border-color:#c4b5fd;color:var(--purple)}
 
-/* ── Enhance Plan Modal ── */
+/* ── View & Enhance Plan Modal ── */
+.view-plan-modal-card{max-width:480px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+.view-plan-badge-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap}
+.plan-route-pill{font-size:10.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:1px 6px;border-radius:4px}
+.view-plan-body{flex:1 1 0%;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.view-plan-section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.view-plan-steps-container{max-height:36vh;overflow-y:auto;padding:6px;background:#fff;border:1px solid var(--line);border-radius:8px}
+.view-plan-sources{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:11px;line-height:1.4}
+.view-plan-ai-section{margin-top:4px}
+.view-plan-prompt-row textarea{font-size:12px;width:100%;min-height:50px;border:1px solid #ddd6fe;border-radius:8px;padding:8px 10px;resize:vertical;font-family:inherit}
+.view-plan-prompt-row textarea:focus{border-color:var(--purple);outline:none}
+
 .enhance-modal-card{max-width:440px;max-height:85vh;display:flex;flex-direction:column}
 .enhance-modal-badge{display:flex;align-items:center;gap:6px;margin-bottom:2px}
 .enhance-content-state{display:flex;flex-direction:column;overflow:hidden;flex:1}

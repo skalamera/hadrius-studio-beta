@@ -1661,10 +1661,11 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (c) => (body += c));
     req.on('end', async () => {
       try {
-        const { module: modName, workflow } = JSON.parse(body || '{}');
+        const { module: modName, workflow, clarification } = JSON.parse(body || '{}');
         if (!workflow?.title) throw new Error('workflow title required');
         const targetModule = canonicalModule(modName || workflow.module) || modName || 'Testing program';
 
+        const defaultClarification = 'Inspect the codebase for this specific workflow and formulate an exhaustive, granular step-by-step walkthrough plan referencing exact visible button labels, fields, and dialog controls.';
         const enhancedPlan = await generatePlanFromIdea({
           userPrompt: `${workflow.title} in ${targetModule}`,
           previousPlan: {
@@ -1674,7 +1675,7 @@ const server = http.createServer(async (req, res) => {
             summary: workflow.purpose || workflow.description,
             steps: Array.isArray(workflow.steps) ? workflow.steps : []
           },
-          clarification: 'Inspect the codebase for this specific workflow and formulate an exhaustive, granular step-by-step walkthrough plan referencing exact visible button labels, fields, and dialog controls.'
+          clarification: clarification ? `${clarification}\n\n${defaultClarification}` : defaultClarification
         });
 
         return sendJson(res, 200, { ok: true, plan: enhancedPlan });
