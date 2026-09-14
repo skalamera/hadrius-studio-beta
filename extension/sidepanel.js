@@ -211,12 +211,18 @@ function getModuleCollectionUrl(moduleName) {
 }
 
 function moduleIconPath(moduleName) {
-  const s = slug(moduleName);
+  const s = slug(moduleName || 'other');
   return `icons/modules/${s}.png`;
 }
 
+const openPylonSections = new Set();
+const openModuleBodies = new Set();
+
 function renderModules() {
   const q = $('#search').value.trim().toLowerCase();
+  const scrollTarget = document.scrollingElement || document.documentElement || document.body;
+  const prevScrollTop = scrollTarget ? scrollTarget.scrollTop : 0;
+
   $('#modules').innerHTML = '';
 
   const moduleMap = new Map();
@@ -266,7 +272,8 @@ function renderModules() {
     const collectionUrl = getModuleCollectionUrl(group.module);
     const collectionLinkHtml = collectionUrl ? `<a href="${collectionUrl}" class="pylon-collection-link" target="_blank" rel="noopener noreferrer">↗ Open collection</a>` : '';
     const pylonHeaderTitle = `PYLON ARTICLES - ${group.module.toUpperCase()}`;
-    const isPylonOpen = !!q;
+    const modKey = group.module.toLowerCase();
+    const isPylonOpen = q ? true : openPylonSections.has(modKey);
 
     pylonBox.innerHTML = `
       <div class="pylon-section-header${isPylonOpen ? '' : ' collapsed'}">
@@ -289,6 +296,11 @@ function renderModules() {
       pylonList.hidden = willBeHidden;
       pylonCaret.textContent = willBeHidden ? '▸' : '▾';
       pylonHeader.classList.toggle('collapsed', willBeHidden);
+      if (willBeHidden) {
+        openPylonSections.delete(modKey);
+      } else {
+        openPylonSections.add(modKey);
+      }
     };
 
     if (!visibleArticles.length) {
@@ -344,9 +356,23 @@ function renderModules() {
       body.appendChild(manualFoot);
     }
     const moduleBody = section.querySelector('.module-body');
-    moduleBody.hidden = !q;
-    section.querySelector('.module-head').onclick = () => moduleBody.hidden = !moduleBody.hidden;
+    const isModuleOpen = q ? true : openModuleBodies.has(modKey);
+    moduleBody.hidden = !isModuleOpen;
+    section.querySelector('.module-head').onclick = () => {
+      moduleBody.hidden = !moduleBody.hidden;
+      if (moduleBody.hidden) {
+        openModuleBodies.delete(modKey);
+      } else {
+        openModuleBodies.add(modKey);
+      }
+    };
     $('#modules').appendChild(section);
+  }
+
+  if (scrollTarget && prevScrollTop > 0) {
+    requestAnimationFrame(() => {
+      scrollTarget.scrollTop = prevScrollTop;
+    });
   }
 }
 

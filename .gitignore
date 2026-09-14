@@ -14,3 +14,4 @@ __pycache__/
 scripts/
 data/manual-links.json
 data/dismissed-workflows.json
+data/enhance-progress.json
