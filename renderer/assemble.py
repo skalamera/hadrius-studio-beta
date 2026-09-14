@@ -81,12 +81,8 @@ def caption_png(text, path):
         d.text(((W - font.getlength(l)) / 2, y), l, font=font, fill='white'); y += lh
     img.save(path)
 
-# Full-frame transparent overlay: a red pulsing-style glow + outline around the target, plus the
-# same white/red pointer glyph tools/stage-lib.mjs's CALLOUT_ON draws — same visual language as the
-# baked-in DOM version, just composited at assemble time instead of capture time. Coordinates scale
-# independently per axis (sx = W/sw, sy = H/sh) to land correctly even if a capture isn't exactly
-# 16:9 and got stretched rather than cropped — matching however the base `scale=W:H` step already
-# distorts it, so the highlight tracks the real (if imperfect) content instead of assuming 16:9.
+# Full-frame transparent overlay: a purple pulsing-style glow + outline around the target, plus the
+# white/purple pointer glyph — styled in Hadrius brand purple (#4c3dab / #5b46d6).
 def highlight_png(target, sw, sh, path):
     sx, sy = W / sw, H / sh
     x, y = target['x'] * sx, target['y'] * sy
@@ -94,15 +90,28 @@ def highlight_png(target, sw, sh, path):
     pad = 6
     img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    red = (239, 68, 68)
-    for glow_width, alpha in ((16, 45), (10, 80), (5, 120)):  # soft glow, built from wide+faint to narrow+strong
+    purple_glow = (91, 70, 214)
+    purple_solid = (76, 61, 171)
+    for glow_width, alpha in ((20, 55), (12, 100), (6, 160)):  # soft purple glow, wide+faint to narrow+strong
         o = glow_width / 2
-        d.rounded_rectangle([x - pad - o, y - pad - o, x + w + pad + o, y + h + pad + o], radius=9, outline=red + (alpha,), width=glow_width)
-    d.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad], radius=8, outline=red + (255,), width=3)
-    # pointer glyph, anchored just outside the highlight's bottom-right corner like the DOM version's cursor
-    px, py = x + w + pad + 6, y + h + pad + 6
-    tip = [(px, py), (px, py + 16.5), (px + 3.8, py + 12.9), (px + 5.7, py + 18.7), (px + 8, py + 17.5), (px + 5.4, py + 11.9), (px + 9, py + 11.9)]
-    d.polygon(tip, fill=(255, 255, 255, 255), outline=(239, 68, 68, 255), width=2)
+        d.rounded_rectangle([x - pad - o, y - pad - o, x + w + pad + o, y + h + pad + o], radius=9, outline=purple_glow + (alpha,), width=int(glow_width))
+    d.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad], radius=8, outline=purple_solid + (255,), width=4)
+    # pointer glyph, anchored just outside the highlight's bottom-right corner, scaled up for visibility
+    px, py = x + w + pad + 8, y + h + pad + 8
+    scale = 1.85  # larger pointer glyph
+    tip = [
+        (px, py),
+        (px, py + 16.5 * scale),
+        (px + 3.8 * scale, py + 12.9 * scale),
+        (px + 5.7 * scale, py + 18.7 * scale),
+        (px + 8.2 * scale, py + 17.5 * scale),
+        (px + 5.4 * scale, py + 11.9 * scale),
+        (px + 9.5 * scale, py + 11.9 * scale),
+    ]
+    # subtle drop shadow so pointer pops against any background
+    shadow_tip = [(p[0] + 2, p[1] + 2) for p in tip]
+    d.polygon(shadow_tip, fill=(0, 0, 0, 80))
+    d.polygon(tip, fill=(255, 255, 255, 255), outline=purple_solid + (255,), width=3)
     img.save(path)
 
 # ---------- 3. per-slide video segment ----------
