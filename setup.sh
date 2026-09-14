@@ -3,8 +3,60 @@ set -euo pipefail
 cd "$(dirname "$0")"
 REPO_DIR="$(pwd)"
 
-command -v node >/dev/null || { echo 'Node 20+ is required.' >&2; exit 1; }
-command -v python3 >/dev/null || { echo 'Python 3 is required.' >&2; exit 1; }
+# 1. Ensure Node.js 20+ is installed (auto-install standalone or via brew if missing)
+if ! command -v node >/dev/null; then
+  echo "Node.js not found. Installing Node.js LTS automatically..."
+  OS="$(uname -s)"
+  ARCH="$(uname -m)"
+
+  if [[ "$OS" == "Darwin" && $(command -v brew) ]]; then
+    echo "Installing Node via Homebrew..."
+    brew install node
+  elif [[ "$OS" == "Darwin" ]]; then
+    echo "Installing standalone Node.js LTS into $HOME/.local/node..."
+    NODE_ARCH="arm64"
+    if [[ "$ARCH" == "x86_64" ]]; then NODE_ARCH="x64"; fi
+    NODE_VER="v22.14.0"
+    TARBALL="node-${NODE_VER}-darwin-${NODE_ARCH}.tar.gz"
+    mkdir -p "$HOME/.local/node"
+    curl -fsSL "https://nodejs.org/dist/${NODE_VER}/${TARBALL}" | tar -xz -C "$HOME/.local/node" --strip-components=1
+    export PATH="$HOME/.local/node/bin:$PATH"
+
+    SHELL_PROFILE="$HOME/.zshrc"
+    if [[ ! -f "$SHELL_PROFILE" && -f "$HOME/.bash_profile" ]]; then SHELL_PROFILE="$HOME/.bash_profile"; fi
+    if ! grep -qs '/.local/node/bin' "$SHELL_PROFILE" 2>/dev/null; then
+      echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$SHELL_PROFILE"
+    fi
+  elif [[ "$OS" == "Linux" ]]; then
+    echo "Installing standalone Node.js LTS into $HOME/.local/node..."
+    NODE_ARCH="x64"
+    if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then NODE_ARCH="arm64"; fi
+    NODE_VER="v22.14.0"
+    TARBALL="node-${NODE_VER}-linux-${NODE_ARCH}.tar.xz"
+    mkdir -p "$HOME/.local/node"
+    curl -fsSL "https://nodejs.org/dist/${NODE_VER}/${TARBALL}" | tar -xJ -C "$HOME/.local/node" --strip-components=1
+    export PATH="$HOME/.local/node/bin:$PATH"
+    if ! grep -qs '/.local/node/bin' "$HOME/.bashrc" 2>/dev/null; then
+      echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$HOME/.bashrc"
+    fi
+  fi
+fi
+
+command -v node >/dev/null || { echo 'Error: Could not install Node.js automatically. Please install Node 20+ from https://nodejs.org' >&2; exit 1; }
+echo "✓ Node.js $(node -v) is ready."
+
+# 2. Python 3 check
+command -v python3 >/dev/null || {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "Python 3 not found. Installing Xcode Command Line Tools..."
+    xcode-select --install || true
+  else
+    echo "Python 3 is required. Please install python3." >&2
+    exit 1
+  fi
+}
+
+# 3. FFmpeg check (for MP4 renders)
 if ! command -v ffmpeg >/dev/null; then
   echo '⚠ Warning: FFmpeg is required to render MP4 files.'
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -13,7 +65,14 @@ if ! command -v ffmpeg >/dev/null; then
     echo '  Install with: sudo apt-get install -y ffmpeg'
   fi
 fi
-command -v claude >/dev/null || { echo 'Install Claude CLI: npm install -g @anthropic-ai/claude-code' >&2; exit 1; }
+
+# 4. Claude CLI check (auto-install if missing)
+if ! command -v claude >/dev/null; then
+  echo "Claude CLI not found. Installing @anthropic-ai/claude-code..."
+  npm install -g @anthropic-ai/claude-code 2>/dev/null || npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code 2>/dev/null || {
+    echo "⚠ Could not auto-install Claude CLI globally. Run: npm install -g @anthropic-ai/claude-code"
+  }
+fi
 
 # Migrate .env if needed from prior Hadrius Studio installs
 if [[ ! -f .env ]]; then
