@@ -2654,7 +2654,7 @@ const render = { running: false, name: null, mode: 'both', phase: 'idle', log: [
 
 function startRender(scriptPath, name, prelude = [], mode = 'both') {
   Object.assign(render, { running: true, name, mode, phase: 'replaying', log: [...prelude], outDir: path.join(REPO_ROOT, 'out', name), video: null, interactive: null, report: null, error: null, startedAt: render.startedAt || Date.now(), finishedAt: null, pylon: null });
-  const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...process.env, PATH: `${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
+  const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.npm-global/bin:${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
   const onLine = (chunk) => {
     for (const raw of String(chunk).split('\n')) {
       const line = raw.replace(/\x1b\[[0-9;]*m/g, '').trimEnd();

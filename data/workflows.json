@@ -180,7 +180,8 @@
             "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/index.tsx",
             "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/components/update_sections_dialog.tsx"
           ],
-          "status": "missing"
+          "status": "covered",
+          "linkedScript": "How-to-correct-how-a-policy-s-sections-were-parsed"
         },
         {
           "title": "How to change which entities a policy covers",

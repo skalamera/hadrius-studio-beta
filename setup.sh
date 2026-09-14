@@ -72,14 +72,50 @@ command -v python3 >/dev/null || {
   fi
 }
 
-# 3. FFmpeg check (for MP4 renders)
-if ! command -v ffmpeg >/dev/null; then
-  echo '⚠ Warning: FFmpeg is required to render MP4 files.'
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo '  Install with: brew install ffmpeg'
-  elif [[ "$(uname -s)" == "Linux" ]]; then
-    echo '  Install with: sudo apt-get install -y ffmpeg'
+# 3. FFmpeg & FFprobe check (auto-install if missing)
+if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+  echo "FFmpeg/FFprobe not found. Installing automatically..."
+  OS="$(uname -s)"
+  mkdir -p "$HOME/.local/bin"
+  export PATH="$HOME/.local/bin:$PATH"
+
+  if [[ "$OS" == "Darwin" && $(command -v brew) ]]; then
+    echo "Installing FFmpeg via Homebrew..."
+    brew install ffmpeg 2>/dev/null || true
   fi
+
+  if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+    if [[ "$OS" == "Darwin" ]]; then
+      echo "Downloading prebuilt FFmpeg & FFprobe for macOS into $HOME/.local/bin..."
+      TMP_FFMPEG="/tmp/ffmpeg-dl.zip"
+      TMP_FFPROBE="/tmp/ffprobe-dl.zip"
+      curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/zip" -o "$TMP_FFMPEG" 2>/dev/null || true
+      if [[ -f "$TMP_FFMPEG" ]]; then
+        unzip -q -o "$TMP_FFMPEG" -d "$HOME/.local/bin" 2>/dev/null || true
+        rm -f "$TMP_FFMPEG"
+      fi
+      curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o "$TMP_FFPROBE" 2>/dev/null || true
+      if [[ -f "$TMP_FFPROBE" ]]; then
+        unzip -q -o "$TMP_FFPROBE" -d "$HOME/.local/bin" 2>/dev/null || true
+        rm -f "$TMP_FFPROBE"
+      fi
+      chmod +x "$HOME/.local/bin/ffmpeg" "$HOME/.local/bin/ffprobe" 2>/dev/null || true
+    elif [[ "$OS" == "Linux" ]]; then
+      sudo apt-get update && sudo apt-get install -y ffmpeg 2>/dev/null || true
+    fi
+  fi
+
+  SHELL_PROFILE="$HOME/.zshrc"
+  if [[ ! -f "$SHELL_PROFILE" && -f "$HOME/.bash_profile" ]]; then SHELL_PROFILE="$HOME/.bash_profile"; fi
+  if ! grep -qs '/.local/bin' "$SHELL_PROFILE" 2>/dev/null; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_PROFILE"
+  fi
+fi
+
+if command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null; then
+  echo "✓ FFmpeg & FFprobe are ready."
+else
+  echo '⚠ Warning: FFmpeg/FFprobe could not be installed automatically.'
 fi
 
 # 4. Claude CLI check (auto-install if missing)

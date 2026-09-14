@@ -63,6 +63,8 @@ async def tts():
 asyncio.run(tts())
 
 def dur(f):
+    if not shutil.which('ffprobe'):
+        sys.exit('Error: ffprobe was not found. Please install FFmpeg (brew install ffmpeg).')
     return float(subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nk=1:nw=1', f]).decode())
 for s in slides:
     s['adur'] = dur(s['audio']) if s['audio'] else 0.0
