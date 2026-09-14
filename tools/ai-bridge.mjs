@@ -23,6 +23,9 @@ const PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browse
 // other tools and carries ANTHROPIC_API_KEY etc.; if those reached process.env they would be
 // inherited by every `claude` we spawn and override the operator's `claude login` session.
 const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID']);
+let LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
+let GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
+
 function loadDotEnv() {
   const parseEnv = (p) => {
     if (!fs.existsSync(p)) return;
@@ -33,17 +36,17 @@ function loadDotEnv() {
       const k = line.slice(0, eq).trim(); let v = line.slice(eq + 1).trim();
       if (!DOTENV_KEYS.has(k) && !k.startsWith('KBS_')) continue;
       if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-      if (!(k in process.env)) process.env[k] = v;
+      if (v) process.env[k] = v;
     }
   };
   parseEnv(path.join(REPO_ROOT, '.env'));
   const home = process.env.HOME || process.env.USERPROFILE;
   if (home) parseEnv(path.join(home, '.hermes/.env'));
+  LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
+  GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 }
 loadDotEnv();
 const LIBRARY_URL = process.env.STUDIO_LIBRARY_URL || 'https://pylon-webhook-service.vercel.app/api/studio-beta-scripts';
-const LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
-const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const WHOAMI = process.env.STUDIO_USER || process.env.USER || process.env.USERNAME || 'unknown';
 // Dedicated beta endpoints in Neon so beta workflows never overlap with the original studio tables.
 const COVERAGE_URL = LIBRARY_URL.includes('studio-beta-scripts')
@@ -1367,6 +1370,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   const u = new URL(req.url, 'http://x');
+  loadDotEnv();
 
   // ---- record-time capture ("Staged Studio" Phase 0): one slide per step, written as the person
   // clicks through, keyed by the step's captureId (stable across later edits/reordering) rather
