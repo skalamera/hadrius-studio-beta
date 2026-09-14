@@ -1066,6 +1066,13 @@ async function checkRender() {
       $('#pylonArticleLink').href = pylon.url;
       $('#pylonArticleLink').hidden = false;
     }
+
+    const finishedTitle = $('#scriptName').value.trim() || selected?.title || state.script?.name || '';
+    if (finishedTitle) {
+      manualLinks.add(finishedTitle);
+      chrome.storage.local.set({ manualLinks: [...manualLinks] });
+    }
+    refreshAll().catch(() => {});
   } else if (mode === 'both' && pylon?.status === 'failed') {
     $('#renderStatus').textContent = `✓ MP4 ready (Pylon article failed: ${pylon.error || 'error'})`;
     $('#renderStatus').classList.add('ready');
@@ -1084,6 +1091,9 @@ async function resetRecordingSession() {
   renderTimer = null;
   isRenderingActive = false;
   selected = null;
+  activeAiPlan = null;
+
+  // 1. Immediately reset DOM inputs and notices
   $('#selectedWorkflow').hidden = true;
   $('#selectedWorkflow').innerHTML = '';
   $('#scriptName').value = '';
@@ -1094,8 +1104,22 @@ async function resetRecordingSession() {
   $('#pylonArticleLink').hidden = true;
   $('#renderStatus').classList.remove('ready');
   $('#renderStatus').textContent = '';
-  await send({ type: 'PANEL_CLEAR' });
-  await send({ type: 'PANEL_RENDER_CLEAR' });
+  showAiPlanView('prompt');
+
+  // 2. Clear local in-memory state and redraw empty list immediately
+  state.steps = [];
+  state.script = { name: '' };
+  state.recordingId = null;
+  renderSteps();
+  updateRenderButtons();
+  updateRecordingButtons();
+
+  // 3. Clear background worker, bridge render state, and draft storage
+  try { await send({ type: 'PANEL_CLEAR' }); } catch (_) {}
+  try { await send({ type: 'PANEL_RENDER_CLEAR' }); } catch (_) {}
+  try { await chrome.storage.local.remove('kbDraft'); } catch (_) {}
+
+  // 4. Reload verified state
   await loadState();
 }
 

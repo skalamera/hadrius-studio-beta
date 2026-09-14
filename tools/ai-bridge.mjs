@@ -1093,17 +1093,76 @@ async function publishRenderToPylon(name, outDir) {
 
   const article = await pylonCreateArticle({ title, bodyHtml, collectionId: pylonCollectionForModule(module) });
 
-  // Sync link to shared team repository if configured
-  if (LIBRARY_SECRET && module && title) {
+  const targetModule = canonicalModule(module) || module || 'Testing program';
+
+  // 1. Record in local manual links
+  try {
+    const links = new Set(readManualLinks());
+    links.add(title);
+    writeManualLinks([...links]);
+    invalidateCoverageCache();
+  } catch (_) {}
+
+  // 2. Sync to shared team repository (Neon)
+  if (LIBRARY_SECRET && targetModule && title) {
     try {
-      const candKey = candSlug(`${module}--${title}`);
+      const candKey = candSlug(`${targetModule}-${title}`);
+      // Ensure candidate exists in Neon table
+      await libraryFetch('POST', null, {
+        candidates: [{
+          key: candKey,
+          module: targetModule,
+          title: title,
+          description: `Walkthrough video: ${name}`,
+          start_route: script.environment?.startUrl || script.steps?.[0]?.route || '/overview',
+          source_file: script.steps?.[0]?.sources?.[0] || null,
+          priority: 'medium',
+          updated_by: WHOAMI
+        }],
+        full_scan: false
+      }, COVERAGE_URL);
+
+      // Mark candidate as linked to this walkthrough script
       await libraryFetch('PATCH', null, {
         key: candKey,
         linked_script: name,
         updated_by: WHOAMI
       }, COVERAGE_URL);
-    } catch (_) {}
+    } catch (e) {
+      console.warn('[pylon] Could not sync link to shared repository:', e.message);
+    }
   }
+
+  // 3. Update local workflows.json
+  try {
+    if (fs.existsSync(WORKFLOWS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8'));
+      if (Array.isArray(data.modules)) {
+        let modObj = data.modules.find(m => m.module.toLowerCase() === targetModule.toLowerCase());
+        if (!modObj) {
+          modObj = { module: targetModule, workflows: [] };
+          data.modules.push(modObj);
+        }
+        let wf = (modObj.workflows || []).find(w => w.title.toLowerCase() === title.toLowerCase());
+        if (wf) {
+          wf.linkedScript = name;
+          wf.status = 'covered';
+        } else {
+          modObj.workflows.unshift({
+            title,
+            purpose: `Walkthrough video: ${name}`,
+            startRoute: script.environment?.startUrl || script.steps?.[0]?.route || '/overview',
+            priority: 'medium',
+            steps: (script.steps || []).map(s => s.instruction || s.caption || s.narration || '').filter(Boolean),
+            sources: [],
+            linkedScript: name,
+            status: 'covered'
+          });
+        }
+        fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify(data, null, 2));
+      }
+    }
+  } catch (_) {}
 
   return article;
 }
@@ -2335,12 +2394,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'GET' && req.url === '/render/status') {
+  if (req.method === 'GET' && (u.pathname === '/render/status' || req.url === '/render/status')) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ ok: true, ...render, log: render.log.slice(-40) }));
   }
 
-  if (req.method === 'POST' && (req.url === '/render/clear' || req.url === '/render/dismiss')) {
+  if (req.method === 'POST' && (u.pathname === '/render/clear' || u.pathname === '/render/dismiss' || req.url === '/render/clear' || req.url === '/render/dismiss')) {
     Object.assign(render, {
       running: false,
       name: null,
