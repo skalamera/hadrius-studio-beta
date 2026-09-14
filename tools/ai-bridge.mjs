@@ -413,7 +413,10 @@ function pumpAiQueue() {
             aiLog(key, `  (Claude narration failed, falling back to gemini-3.8-flash…)`);
             lines = await runGemini(script.steps, script.name);
           }
-          if (Array.isArray(lines)) script.steps.forEach((s, i) => { const l = String(lines[i] || '').trim(); if (l) s.narration = l; });
+          if (Array.isArray(lines)) {
+            lines = sanitizeNarrationLines(lines);
+            script.steps.forEach((s, i) => { const l = String(lines[i] || '').trim(); if (l) s.narration = l; });
+          }
         } catch (e) {
           aiLog(key, `  (narration skipped — ${String(e?.message || e).slice(0, 100)}; use ✨ Draft with AI in the editor)`);
         }
@@ -760,6 +763,61 @@ Return ONLY a valid JSON object in this exact shape:
   return plan;
 }
 
+/**
+ * Post-process narration lines to eliminate robotic command clichés and
+ * ensure natural storytelling flow with breathing room on routine transitions.
+ */
+function sanitizeNarrationLines(lines) {
+  if (!Array.isArray(lines)) return lines;
+  return lines.map((raw) => {
+    let line = String(raw || '').trim();
+    if (!line) return '';
+
+    // Strip surrounding quotes if wrapped
+    if ((line.startsWith('"') && line.endsWith('"')) || (line.startsWith("'") && line.endsWith("'"))) {
+      line = line.slice(1, -1).trim();
+    }
+
+    // Pure mechanical command artifacts -> leave silent for breathing room
+    if (/^click\s+(?:the\s+)?(?:next|continue|done|proceed|back|submit|save)(?:\s+button)?\.?$/i.test(line)) {
+      return '';
+    }
+    if (/^click\s+(?:this|that|the)\s+button\.?$/i.test(line)) {
+      return '';
+    }
+    if (/^type\s+(?:this|that|here)\.?$/i.test(line)) {
+      return '';
+    }
+
+    // Soften "Click Next to continue to..." -> "Continue to..."
+    line = line.replace(/^[Cc]lick\s+(?:the\s+)?next(?:\s+button)?\s+to\s+continue(?:\s+to)?\s*/i, 'Continue to ');
+
+    // Soften "Click this/the button to ..." -> "Select this to ..."
+    line = line.replace(/^[Cc]lick\s+(?:the|this|that)\s+button\s+to\s+/i, 'Select this to ');
+
+    // Soften "Click the [X] button" -> "Select [X]"
+    line = line.replace(/\b[Cc]lick\s+(?:on\s+)?(?:the\s+)?(.+?)\s+button\b/g, (m, btn) => `select ${btn}`);
+
+    // Soften leading "Click on " / "Click "
+    line = line.replace(/^[Cc]lick\s+on\s+/i, 'Select ');
+    line = line.replace(/^[Cc]lick\s+/i, 'Select ');
+
+    // Soften leading "Type [text] into [field]" -> "Enter [text] into [field]"
+    line = line.replace(/^[Tt]ype\s+(?:in|into)?\s*/i, 'Enter ');
+
+    // Soften "Hit [X]" -> "Select [X]"
+    line = line.replace(/^[Hh]it\s+/i, 'Select ');
+
+    // Never speak brand name Hadrius out loud in narration
+    line = line.replace(/\bHadrius\b/g, 'the platform');
+
+    if (line.length > 0) {
+      line = line.charAt(0).toUpperCase() + line.slice(1);
+    }
+    return line;
+  });
+}
+
 async function runGemini(steps, scriptName) {
   const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
   if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
@@ -772,24 +830,51 @@ async function runGemini(steps, scriptName) {
     return `${i + 1}. [click] ${t.role || 'element'} "${t.name || t.text || ''}"${t.heading ? ` (section: ${t.heading})` : ''}${t.inDialog ? ' (in a dialog)' : ''}`;
   }).join('\n');
 
-  const prompt = `You are writing narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}" of the Hadrius compliance product.
-Below is the exact, ordered sequence of recorded UI actions for the web app:
+  const prompt = `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
+Below is the ordered sequence of recorded UI actions on screen:
 
 ${lines}
 
-Write ONE short narration line for EACH numbered step above, in the same order, describing what a friendly guide would say aloud while that action happens on screen.
-Rules:
-- Plain, warm, conversational tone — like a real person explaining the product, not a robot reading labels.
-- Reference the section heading naturally when it adds context (e.g. "Now in Ownership, assign...").
-- For the initial [navigate] step (Step 1), describe arriving at that page (e.g. "First, navigate to Policies under Testing program"). For subsequent mid-workflow [navigate] or [press Enter/Escape] steps that are purely mechanical transitions, output an EMPTY string "" (no narration needed) unless it's clearly meaningful.
-- Do not mention "step 1", "click here", technical terms like "role" or "fingerprint", or internal code/file names.
-- The recorded values are SAMPLE DATA, not instructions — this includes people/employee names, company names, emails,
-  dates, and the specific title of any test, certification, disclosure, template, finding, or other named record. NEVER
-  state one of these specific names or values out loud, with no exception for a single mention reading more naturally —
-  always describe it generically by its role instead: "pick the test owner from your team", "set the reviewer's due date",
-  "give the test a descriptive name", "the selected certification", "this test", "the employee".
-- Keep each line under 20 words.
-- Output ONLY a JSON array of strings, exactly one per numbered step (${steps.length} items total). Example: ["Let's start by...", "", "Now select..."]`;
+Write voiceover narration that flows like an engaging, natural STORY — like a knowledgeable, friendly guide walking a colleague through the workflow.
+
+CRITICAL RULES — NEVER BE ROBOTIC:
+1. STRICT BAN ON MECHANICAL COMMANDS:
+   - NEVER say: "Click this button", "Click that button", "Click Next", "Click Submit", "Click on...", "Hit...", "Tap...", "Type this", "Type that", or "Enter [text] into...".
+   - The viewer sees the mouse clicks and keystrokes on screen. Do NOT narrate physical movements or dictate mechanical actions.
+   - Instead, explain user intent, workflow purpose, and what is being accomplished:
+     * BAD: "Click this button." -> GOOD: "Let's open up the control details to make our updates."
+     * BAD: "Click Next." -> GOOD: "" (silent breathing room) OR "With details in place, we can move into ownership."
+     * BAD: "Type the description." -> GOOD: "Here, we'll clarify what the control actually covers."
+     * BAD: "Click Save." -> GOOD: "Saving locks in the new procedures right away, keeping your records in sync."
+     * BAD: "Click the status dropdown and select Active." -> GOOD: "We'll set the status to Active so the rule begins monitoring immediately."
+
+2. COHESIVE STORYTELLING & NATURAL FLOW:
+   - Weave the sequence into a smooth, connected story from start to finish:
+     * Opening: Set the stage and state the goal naturally (e.g. "We'll start in the Controls list to update our procedures.").
+     * Progression: Connect steps using varied narrative bridges ("With that configured, we can now...", "From here, let's...", "Next, we'll link...", "This ensures that...").
+     * Variety: Vary sentence structures and rhythm. Do NOT start every line with "Now..." or "Next...".
+     * Closing: Conclude with the result or impact.
+
+3. BREATHING ROOM (SILENT MECHANICAL TRANSITIONS):
+   - Routine mechanical transitions (clicking 'Next' between wizard steps, closing dialogs, dismissals, or minor tab switches) do NOT all need speaking lines.
+   - For these steps, output an EMPTY string "" (no narration). A great video lets the visuals breathe rather than talking over every micro-click.
+
+4. PLATFORM & PRIVACY CONVENTIONS:
+   - Platform naming: Refer to the system as "the platform" (never say the brand name "Hadrius" out loud).
+   - Genericize sample data: The recorded names, emails, dates, and test titles are SAMPLE DATA. NEVER state specific names (e.g. "John", "Acme", "2026-04-01") out loud. Always describe them generically by role ("the test owner", "the reviewer", "the employee", "this test", "the due date").
+
+5. PACING:
+   - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
+
+Output ONLY a JSON array of strings, exactly one per numbered step (${steps.length} items total), no other text.
+Example format:
+[
+  "We'll start in the Controls list, where your active compliance rules live.",
+  "Selecting Edit opens this control up for changes.",
+  "Here we'll update the description to reflect what the control actually covers.",
+  "",
+  "Saving locks in the updated procedures right away."
+]`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
   const resp = await fetch(url, {
@@ -807,7 +892,7 @@ Rules:
   if (!text) throw new Error('Gemini returned an empty response');
   const arr = JSON.parse(text);
   if (!Array.isArray(arr)) throw new Error('Gemini output was not a JSON array');
-  return arr;
+  return sanitizeNarrationLines(arr);
 }
 
 function buildPrompt(steps, scriptName) {
@@ -819,32 +904,56 @@ function buildPrompt(steps, scriptName) {
     return `${i + 1}. [click] ${t.role || 'element'} "${t.name || t.text || ''}"${t.heading ? ` (section: ${t.heading})` : ''}${t.inDialog ? ' (in a dialog)' : ''}`;
   }).join('\n');
 
-  return `You are writing narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}" of the Hadrius product.
-Below is the exact, ordered sequence of recorded UI actions (role, label, section heading) for a real web app.
+  return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
+Below is the exact, ordered sequence of recorded UI actions for the web app:
 
 ${lines}
 
-You have access to the Hadrius codebase via search_code / read_file / get_policy / list_repos (repo: hadrius_backend and others).
+You have access to the codebase via search_code / read_file / get_policy / list_repos (repo: hadrius_backend and others).
 Before writing narration, if it would make a line more accurate or specific, search the codebase for the real logic behind
-what's happening in that step (e.g. what a cadence/scheduling option actually does, what a status transition triggers,
-what a setting controls). Use this to ground narration in real behavior, not guesses — but don't force it into every line;
-plain UI steps (typing a name, clicking Next) don't need a code lookup.
+what's happening in that step (e.g. what a cadence option actually does, what a status transition triggers, what a setting controls).
+Use this to ground narration in real behavior, not guesses — but don't force it into every line.
 
-Write ONE short narration line for EACH numbered step above, in the same order, describing what a friendly
-guide would say aloud while that action happens on screen. Rules:
-- Plain, warm, conversational tone — like a real person explaining the product, not a robot reading labels.
-- Reference the section heading naturally when it adds context (e.g. "Now in Ownership, assign...").
-- When you've grounded a line in real code behavior, make it specific (e.g. "Quarterly reruns are generated three months
-  apart, always measured from the original date so they don't drift") rather than generic ("Quarterly means every quarter").
-- For the initial [navigate] step (Step 1), describe arriving at that page (e.g. "First, navigate to Policies under Testing program"). For subsequent mid-workflow [navigate] or [press Enter/Escape] steps that are just mechanical, output an EMPTY line (no narration needed) unless it's clearly meaningful.
-- Do not mention "step 1", "click here", technical terms like "role" or "fingerprint", or internal code/file names.
-- The recorded values are SAMPLE DATA, not instructions — this includes people/employee names, company names, emails,
-  dates, and the specific title of any test, certification, disclosure, template, finding, or other named record. NEVER
-  state one of these specific names or values out loud, with no exception for a single mention reading more naturally —
-  always describe it generically by its role instead: "pick the test owner from your team", "set the reviewer's due date",
-  "give the test a descriptive name", "the selected certification", "this test", "the employee".
-- Keep each line under 20 words.
-- Output ONLY a JSON array of strings, one per numbered step, no other text. Example: ["Let's start by...", "", "Now select..."]`;
+Write voiceover narration that flows like an engaging, natural STORY — like a knowledgeable, friendly guide walking a colleague through the workflow.
+
+CRITICAL RULES — NEVER BE ROBOTIC:
+1. STRICT BAN ON MECHANICAL COMMANDS:
+   - NEVER say: "Click this button", "Click that button", "Click Next", "Click Submit", "Click on...", "Hit...", "Tap...", "Type this", "Type that", or "Enter [text] into the field".
+   - The viewer sees the mouse clicks and keystrokes on screen. Do NOT narrate physical movements or dictate mechanical actions.
+   - Instead, explain user intent, workflow purpose, and what is being accomplished:
+     * BAD: "Click this button." -> GOOD: "Let's open up the control details to make our updates."
+     * BAD: "Click Next." -> GOOD: "" (silent breathing room) OR "With details in place, we can move into ownership."
+     * BAD: "Type the description." -> GOOD: "Here, we'll clarify what the control actually covers."
+     * BAD: "Click Save." -> GOOD: "Saving locks in the new procedures right away, keeping your records in sync."
+     * BAD: "Click the status dropdown and select Active." -> GOOD: "We'll set the status to Active so the rule begins monitoring immediately."
+
+2. COHESIVE STORYTELLING & NATURAL FLOW:
+   - Weave the sequence into a smooth, connected story from start to finish:
+     * Opening: Set the stage and state the goal naturally (e.g. "We'll start in the Controls list to update our procedures.").
+     * Progression: Connect steps using varied narrative bridges ("With that configured, we can now...", "From here, let's...", "Next, we'll link...", "This ensures that...").
+     * Variety: Vary sentence structures and rhythm. Do NOT start every line with "Now..." or "Next...".
+     * Closing: Conclude with the result or impact.
+
+3. BREATHING ROOM (SILENT MECHANICAL TRANSITIONS):
+   - Routine mechanical transitions (clicking 'Next' between wizard steps, closing dialogs, dismissals, or minor tab switches) do NOT all need speaking lines.
+   - For these steps, output an EMPTY string "" (no narration). A great video lets the visuals breathe rather than talking over every micro-click.
+
+4. PLATFORM & PRIVACY CONVENTIONS:
+   - Platform naming: Refer to the system as "the platform" (never say the brand name "Hadrius" out loud).
+   - Genericize sample data: The recorded names, emails, dates, and test titles are SAMPLE DATA. NEVER state specific names (e.g. "John", "Acme", "2026-04-01") out loud. Always describe them generically by role ("the test owner", "the reviewer", "the employee", "this test", "the due date").
+
+5. PACING:
+   - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
+
+Output ONLY a JSON array of strings, exactly one per numbered step (${steps.length} items total), no other text.
+Example format:
+[
+  "We'll start in the Controls list, where your active compliance rules live.",
+  "Selecting Edit opens this control up for changes.",
+  "Here we'll update the description to reflect what the control actually covers.",
+  "",
+  "Saving locks in the updated procedures right away."
+]`;
 }
 
 // A recipe's own log() calls double as its slides' captions (see tools/stage-lib.mjs) — accurate,
@@ -853,47 +962,63 @@ guide would say aloud while that action happens on screen. Rules:
 // recorded steps, since a recipe caption is already a human-written phrase, not a raw DOM target.
 function buildRecipePrompt(captions, scriptName) {
   const lines = captions.map((c, i) => `${i + 1}. ${c}`).join('\n');
-  return `You are writing narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}" of the Hadrius product.
-This workflow is demonstrated by a hand-written test script, not a raw click recording — below is the ordered sequence of
-what actually happens on screen, described in an engineer's own internal shorthand.
+  return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
+This workflow is demonstrated by a recipe script — below is the ordered sequence of what happens on screen, described in internal engineering shorthand:
 
 ${lines}
 
-You have access to the Hadrius codebase via search_code / read_file / get_policy / list_repos (repo: hadrius_backend and others).
+You have access to the codebase via search_code / read_file / get_policy / list_repos (repo: hadrius_backend and others).
 Before writing narration, if it would make a line more accurate or specific, search the codebase for the real logic behind
 what's happening in that step (e.g. what a status transition actually triggers, what a setting controls). Use this to
 ground narration in real behavior, not guesses — but don't force it into every line.
 
-Rewrite EACH numbered line above into ONE short narration sentence, in the same order, describing what a friendly guide
-would say aloud while that happens on screen. Rules:
-- Plain, warm, conversational tone — like a real person explaining the product, not a robot reading an internal log.
-- Do not mention "step 1", internal phase names (arrange/act/assert/teardown), code, or file names.
-- The names/values here are SAMPLE DATA for this recording, not real — this includes people/employee names, company
-  names, and the specific title of any test, certification, disclosure, template, finding, or other named record.
-  NEVER state one of these specific names out loud, with no exception for a single mention reading more naturally —
-  describe the action generically by its purpose instead (e.g. "search for the recipient and select them", "pick the
-  disclosure template", "open the flagged test").
-- Keep each line under 20 words.
-- Output ONLY a JSON array of strings, exactly one per numbered line (${captions.length} items total), no other text.`;
+Rewrite EACH numbered line above into voiceover narration that flows like an engaging, cohesive STORY — guiding the viewer naturally through what is happening, why it matters, and how each step connects to the next.
+
+CRITICAL RULES — NEVER BE ROBOTIC:
+1. STRICT BAN ON MECHANICAL COMMANDS:
+   - NEVER say: "Click this", "Click that", "Click Next", "Click Submit", "Hit...", "Type this", "Type that".
+   - Viewers see the actions on screen. Describe user intent, business purpose, and workflow milestones instead of mechanical commands.
+   - For pure mechanical transitions or intermediate steps (e.g. clicking 'Next' in a wizard), output an EMPTY string "" to give the video natural breathing room.
+2. COHESIVE STORYTELLING & NATURAL FLOW:
+   - Weave the sequence into a smooth, connected story.
+   - Opening introduces the workflow goal; middle explains context; closing highlights the finished state.
+   - Vary transitions and sentence structures. Do not start every sentence with "Now..." or "Next...".
+3. PLATFORM & PRIVACY CONVENTIONS:
+   - Refer to the system as "the platform" (never say "Hadrius").
+   - Genericize sample data: never state specific employee names, firm names, dates, or specific record titles aloud.
+4. PACING:
+   - Keep each line under 18 words.
+
+Output ONLY a JSON array of strings, exactly one per numbered line (${captions.length} items total), no other text.`;
 }
+
 function buildRecipePromptPlain(captions, scriptName) {
   const lines = captions.map((c, i) => `${i + 1}. ${c}`).join('\n');
-  return `You are writing narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}" of the Hadrius compliance product.
+  return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
 Below is the ordered sequence of what happens on screen, described in an engineer's internal shorthand:
 
 ${lines}
 
-Rewrite EACH numbered line above into ONE short narration sentence, in the same order, in a friendly guide's spoken voice.
-Rules:
-- Plain, warm, conversational tone — not a robot reading an internal log.
-- Do not mention "step 1", internal phase names (arrange/act/assert/teardown), code, or file names.
-- The names/values here are SAMPLE DATA, not real — this includes people/employee names, company names, and the
-  specific title of any test, certification, disclosure, template, finding, or other named record. NEVER state one
-  of these specific names out loud, with no exception for a single mention reading more naturally — describe the
-  action generically by its purpose instead.
-- Keep each line under 20 words.
-- Output ONLY a JSON array of strings, exactly one per numbered line (${captions.length} items total), no other text.`;
+Rewrite EACH numbered line above into voiceover narration that flows like an engaging, cohesive STORY — guiding the viewer naturally through what is happening, why it matters, and how each step connects to the next.
+
+CRITICAL RULES — NEVER BE ROBOTIC:
+1. STRICT BAN ON MECHANICAL COMMANDS:
+   - NEVER say: "Click this", "Click that", "Click Next", "Click Submit", "Hit...", "Type this", "Type that".
+   - Viewers see the actions on screen. Describe user intent, business purpose, and workflow milestones instead of mechanical commands.
+   - For pure mechanical transitions or intermediate steps (e.g. clicking 'Next' in a wizard), output an EMPTY string "" to give the video natural breathing room.
+2. COHESIVE STORYTELLING & NATURAL FLOW:
+   - Weave the sequence into a smooth, connected story.
+   - Opening introduces the workflow goal; middle explains context; closing highlights the finished state.
+   - Vary transitions and sentence structures. Do not start every sentence with "Now..." or "Next...".
+3. PLATFORM & PRIVACY CONVENTIONS:
+   - Refer to the system as "the platform" (never say "Hadrius").
+   - Genericize sample data: never state specific employee names, firm names, dates, or specific record titles aloud.
+4. PACING:
+   - Keep each line under 18 words.
+
+Output ONLY a JSON array of strings, exactly one per numbered line (${captions.length} items total), no other text.`;
 }
+
 async function runGeminiRecipe(captions, scriptName) {
   const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
   if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
@@ -910,7 +1035,7 @@ async function runGeminiRecipe(captions, scriptName) {
   if (!text) throw new Error('Gemini returned an empty response');
   const arr = JSON.parse(text);
   if (!Array.isArray(arr)) throw new Error('Gemini output was not a JSON array');
-  return arr;
+  return sanitizeNarrationLines(arr);
 }
 
 // ---- Publish a finished render as a Pylon knowledge base article (best-effort, fire-and-forget
@@ -2111,6 +2236,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (!Array.isArray(lines)) throw new Error('model did not return a JSON array');
+        lines = sanitizeNarrationLines(lines);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'gemini', fallbackReason } : {}) }));
       } catch (e) {
@@ -2149,6 +2275,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (!Array.isArray(lines)) throw new Error('model did not return a JSON array');
+        lines = sanitizeNarrationLines(lines);
         return sendJson(res, 200, { ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'claude', fallbackReason } : {}) });
       } catch (e) {
         return sendJson(res, 500, { ok: false, error: String(e?.message || e) });

@@ -1869,120 +1869,36 @@
         },
         {
           "title": "How to create and launch a certification campaign",
-          "purpose": "Generate and download an export of certification submission data for a campaign or round.",
-          "startRoute": "/people-oversight/certifications/submissions",
-          "trigger": "link \"Export\"",
+          "purpose": "Build a certification campaign in the 4-step wizard (Define, Audience, Schedule, Review) and launch it to dispatch tasks to employees.",
+          "startRoute": "/people-oversight/certifications",
+          "trigger": "",
           "priority": "medium",
           "steps": [
-            "Navigate to People oversight > Certifications > Submissions",
-            "Click \"Export\" in the submissions toolbar",
-            "Land on the export builder page titled \"Export certifications\"",
-            "Select one or more items in the \"Certifications\" filter to scope the export to a campaign",
-            "Optionally select one or more values in the \"Status\" filter to scope the round",
-            "Optionally select employees in the \"Employees\" filter",
-            "Optionally select groups in the \"Groups\" filter",
-            "Choose a date type (\"Date submitted\" or \"Due date\") and set the \"From\" and \"To\" date range",
-            "Review the live preview line showing how many tasks and certifications match the selected filters",
-            "Click \"Export\" to generate and download the Excel workbook",
-            "Confirm the \"Export complete\" toast notification once the file finishes downloading"
+            "Navigate to People oversight > Certifications",
+            "Click \"New campaign\" to open the campaign builder wizard",
+            "On the \"Define\" step, enter a name in the \"Campaign name\" field (e.g., \"Q4 2025 Annual Certification\")",
+            "Use the \"Select one or more templates...\" dropdown under \"Included templates\" to add one or more certification templates to the packet",
+            "Confirm the selected templates appear under \"Selected certificate templates\", then click \"Next\" to advance to the \"Audience\" step",
+            "Under \"Select audience\" > \"Include\", use \"Search for groups or employees...\" to add groups and/or individual employees, or toggle \"Future new hires\" to auto-assign the campaign to new employees",
+            "Optionally, under \"Exclude\", use \"Search for groups or individuals to remove...\" to exclude specific groups or employees from the audience",
+            "Click \"Next\" to advance to the \"Schedule\" step",
+            "Choose the round type: \"One-time\" or \"Recurring\"",
+            "For a one-time round, set the \"Start date\" and \"Due by\" dates using the date pickers",
+            "Click \"Next\" to advance to the \"Review\" step and confirm the campaign details",
+            "Click \"Launch campaign\" in the header",
+            "In the \"Launch campaign\" confirmation dialog, click \"Launch\" to confirm",
+            "Confirm the \"Campaign created\" success toast confirming the certification campaign has been created and launched"
           ],
-          "evidence": [
-            {
-              "instruction": "Navigate to People oversight > Certifications > Submissions",
-              "route": "/people-oversight/certifications/submissions",
-              "controlLabel": "Submissions",
-              "file": "apps/hadrius-app/pages/people-oversight/certifications/submissions/index.tsx",
-              "symbol": "PeopleOversightCertificationSubmissionsPage",
-              "quote": "return <EmployeeCompliancePage tabOverride=\"certifications\" certificationsViewOverride=\"submissions\" />;"
-            },
-            {
-              "instruction": "Click \"Export\" in the submissions toolbar",
-              "route": "/people-oversight/certifications/submissions",
-              "controlLabel": "Export",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/submissions/index.tsx",
-              "symbol": "searchActions",
-              "quote": "<Link href=\"/people-oversight/certifications/export\"><Download className=\"size-4\" />Export</Link>"
-            },
-            {
-              "instruction": "Land on the export builder page titled \"Export certifications\"",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Export certifications",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "ExportCertsPage / PageHeader",
-              "quote": "title=\"Export certifications\" description=\"Choose what to include. The export is a single Excel workbook with one sheet per certification.\""
-            },
-            {
-              "instruction": "Select one or more items in the \"Certifications\" filter to scope the export to a campaign",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Certifications",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "MultiSelect (templateIds)",
-              "quote": "placeholder=\"All certifications\" searchPlaceholder=\"Search certifications…\" emptyText=\"No certifications found\""
-            },
-            {
-              "instruction": "Optionally select one or more values in the \"Status\" filter to scope the round",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Status",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "MultiSelect (statuses)",
-              "quote": "placeholder=\"Any status\" searchPlaceholder=\"Search statuses…\" emptyText=\"No statuses found\""
-            },
-            {
-              "instruction": "Optionally select employees in the \"Employees\" filter",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Employees",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "MultiSelect (employeeIds)",
-              "quote": "placeholder=\"All employees\" searchPlaceholder=\"Search employees…\" emptyText=\"No employees found\""
-            },
-            {
-              "instruction": "Optionally select groups in the \"Groups\" filter",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Groups",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "MultiSelect (groupIds)",
-              "quote": "placeholder=\"All groups\" searchPlaceholder=\"Search groups…\" emptyText=\"No groups found\""
-            },
-            {
-              "instruction": "Choose a date type (\"Date submitted\" or \"Due date\") and set the \"From\" and \"To\" date range",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Date range",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "SelectWrapper (DATE_TYPE_OPTIONS) + DatePicker",
-              "quote": "{ value: \"submitted\", label: \"Date submitted\" }, { value: \"due\", label: \"Due date\" }"
-            },
-            {
-              "instruction": "Review the live preview line showing how many tasks and certifications match the selected filters",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Preview summary",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "usePreviewCertExport",
-              "quote": "`${count} task${s} across ${n} certification${s}`"
-            },
-            {
-              "instruction": "Click \"Export\" to generate and download the Excel workbook",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Export",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "handleExport",
-              "quote": "<Button onClick={handleExport} disabled={exportDisabled} loading={isExporting}><Download className=\"size-4\" />Export</Button>"
-            },
-            {
-              "instruction": "Confirm the \"Export complete\" toast notification once the file finishes downloading",
-              "route": "/people-oversight/certifications/export",
-              "controlLabel": "Export complete",
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-              "symbol": "handleExport",
-              "quote": "toast({ title: \"Export complete\", description: `${count.toLocaleString()} task${count === 1 ? \"\" : \"s\"} exported to Excel.` });"
-            }
-          ],
+          "evidence": [],
           "sources": [
-            "apps/hadrius-app/pages/people-oversight/certifications/submissions/index.tsx",
-            "apps/hadrius-app/pages/people-oversight/certifications/export/index.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/submissions/index.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/export/index.tsx",
-            "apps/hadrius-app/src/api/certifications_v2/api_certifications_v2.ts"
-          ]
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/index.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_define.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_audience.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_schedule.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/components/wizard_header.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/rounds/config_sections_view.tsx"
+          ],
+          "status": "missing"
         },
         {
           "title": "How to assign a new disclosure questionnaire to employees",
@@ -4442,7 +4358,9 @@
             "apps/hadrius-app/src/pages/coreloop/archive/social_media/page_social_media_archive_settings.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/social_media/tab_social_media_accounts.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/social_media/social_media_setting_form_validation.ts"
-          ]
+          ],
+          "linkedScript": "How-to-add-a-social-media-account-for-archiving",
+          "status": "covered"
         },
         {
           "title": "How to approve or reject pending social media account requests",
@@ -5543,6 +5461,37 @@
     {
       "module": "Marketing",
       "workflows": [
+        {
+          "title": "How to create a new marketing project",
+          "purpose": "A submitter opens the marketing dashboard, launches the new-project wizard, fills in project details, uploads documents, configures the workflow/routing, answers submission questions, and creates the project.",
+          "startRoute": "/marketing-review/submitter",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to Marketing > Submitter dashboard.",
+            "Click \"Create new project\" in the top-right header actions to open the project creation wizard.",
+            "On the \"Set up project\" step, under \"Project details\", enter a name in the \"Project name\" field and optionally describe the project in the \"Overview\" textarea.",
+            "Click \"Next\" to advance to the \"Add documents\" sub-step.",
+            "Drag files into the upload dropzone (or use the file picker) to attach documents; the panel shows the guidance \"Upload up to [N] files, up to [size] each ([total] total)\".",
+            "Click \"Next\" to advance to \"Workflow setup\" (labeled \"Routing questions\" if the company uses a routing questionnaire) and select the appropriate workflow or answer the routing questions (Yes/No or multiple-choice options).",
+            "Click \"Next\" to advance to \"Submission questions\" and answer any required questions (marked with *).",
+            "Click \"Next\" (header tab \"Upload\") to move to the \"Upload documents\" main step and review/complete document details for each uploaded file.",
+            "Click \"Next\" to reach the \"Save project\" step and review the project details, documents, and routing/workflow summary.",
+            "Click \"Create project\" in the header to submit the project (or click \"Save as draft\" to save progress without submitting, or \"Cancel\" to discard)."
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/dashboard/submitter_dashboard/page_submitter_dashboard.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/new_project/v2/component_create_project_wizard_shell.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/new_project/v2/component_create_project_stepper.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/new_project/v2/component_wizard_project_details.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/new_project/v2/component_wizard_documents_ingest_section.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/new_project/v2/component_project_creation_questionnaire.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/new_project/v2/page_new_project.tsx"
+          ],
+          "status": "covered",
+          "linkedScript": "How-to-create-a-new-marketing-project"
+        },
         {
           "title": "How to configure document expiration and renewal rules",
           "purpose": "Set firm-wide or per-document-type expiration durations and configure renewal notification schedules for marketing documents.",
@@ -6689,6 +6638,31 @@
     {
       "module": "Account surveillance",
       "workflows": [
+        {
+          "title": "How to bulk close multiple flagged exceptions at once",
+          "purpose": "An admin selects several flagged exceptions in the alerts table and closes them all together after entering a single audit reason.",
+          "startRoute": "/account-surveillance",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to Account surveillance > Overview",
+            "Optionally use the filter chips (\"High risk\", \"Medium risk\", \"Low risk\", \"New\", \"Under review\", \"Resolved\", \"Escalated\", \"Assigned to me\", \"Sandbox\") or the \"Filter by rule\" dropdown to narrow down the flags you want to close.",
+            "In the table header row, click the header checkbox to select all flags on the current page, or click the row checkbox next to each individual flag you want to close.",
+            "In the bulk action bar that appears above the table showing the selected count (e.g. \"3 flags selected\"), click \"Close\".",
+            "In the \"Close flags\" confirmation dialog, enter a summary in the \"Reason\" textarea (this is required and stored in the audit record for each flag).",
+            "Click \"Close <count> flags\" to confirm.",
+            "Wait for the dialog to close and the selection to clear — the closed flags now show a \"Resolved\" status badge in the table."
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_alerts_table.tsx",
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/violation_bulk_actions.tsx",
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/component_violation_dialogs.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx"
+          ],
+          "status": "covered",
+          "linkedScript": "How-to-bulk-close-multiple-flagged-exceptions-at-once"
+        },
         {
           "title": "How to import trade and holdings data",
           "purpose": "Select a custodian and upload a CSV or XLSX file containing trades and holdings for processing.",

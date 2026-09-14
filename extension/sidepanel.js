@@ -800,10 +800,10 @@ async function startRecording() {
         navText = selected.steps[0];
       } else if (selected?.module) {
         const tabName = currentPath.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
-        navText = `Navigate to ${selected.module} > ${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+        navText = `We'll start in ${selected.module} > ${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
       } else {
         const tabName = currentPath.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
-        navText = `Navigate to ${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+        navText = `First, let's head over to ${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
       }
 
       initialNav = {
