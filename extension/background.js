@@ -80,7 +80,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 
       // ---- side panel API ----
       case 'PANEL_GET_STATE': return reply({ recording: state.recording, steps: state.steps, script: state.script, tabId: state.tabId, recordingId: state.recordingId, rerecord: state.rerecord ? { replaceIndex: state.rerecord.replaceIndex, count: state.rerecord.buffer.length } : null });
-      case 'PANEL_START': return reply(await startRecording(msg.tabId, msg.fresh));
+      case 'PANEL_START': return reply(await startRecording(msg.tabId, msg.fresh, msg.initialNav));
       case 'PANEL_STOP': await stopRecording(); return reply({ ok: true });
       case 'PANEL_UPDATE_STEP': {
         const i = state.steps.findIndex((s) => s.index === msg.index);
@@ -389,7 +389,7 @@ async function ensureContentScript(tabId) {
   } catch (_) { return false; }
 }
 
-async function startRecording(tabId, fresh) {
+async function startRecording(tabId, fresh, initialNav = null) {
   state.tabId = tabId;
   if (fresh) {
     state.steps = [];
@@ -411,12 +411,40 @@ async function startRecording(tabId, fresh) {
     } catch (_) {}
     if (!ok) return { ok: false, error: 'Could not start recording on this tab. Make sure it is a staging.hadrius.com page and try again.' };
   }
+
+  // If this is a fresh recording and initialNav was provided, capture initial navigate slide as Step 0
+  if (fresh && initialNav) {
+    try {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      const navUrl = initialNav.url || tab?.url || '';
+      let navRoute = initialNav.route;
+      if (!navRoute && navUrl) {
+        try { navRoute = new URL(navUrl).pathname; } catch (_) { navRoute = navUrl; }
+      }
+      const navStep = {
+        index: 0,
+        action: 'navigate',
+        value: navUrl,
+        url: navUrl,
+        route: navRoute || '/',
+        captureId: crypto.randomUUID(),
+        narration: initialNav.narration || '',
+        caption: initialNav.caption || initialNav.narration || ''
+      };
+      state.steps.push(navStep);
+      await captureStep(navStep);
+    } catch (navErr) {
+      console.warn('Initial navigate slide capture failed:', navErr);
+    }
+  }
+
   let r = null;
   try { r = await chrome.tabs.sendMessage(tabId, { type: 'KB_START', fromIndex: state.steps.length }); } catch (_) {}
   if (!r?.ok) return { ok: false, error: 'The recorder did not respond on this tab. Reload the page and try again.' };
   state.recording = true;
   await persist();
   broadcast({ type: 'KB_RECORDING', recording: true });
+  broadcast({ type: 'KB_STEPS_UPDATED', steps: state.steps });
   return { ok: true };
 }
 

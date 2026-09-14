@@ -1293,6 +1293,58 @@
       "module": "People oversight",
       "workflows": [
         {
+          "title": "How to close a check as compliant or non-compliant",
+          "purpose": "Open a logged check record in the Check blotter and resolve it by marking it Compliant or Non-compliant with an optional or required resolution note.",
+          "startRoute": "/people-oversight/check-blotter",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to People oversight > Check blotter",
+            "Click on a check record row in the list to open its detail view.",
+            "In the top action bar of the check detail view, confirm the check is resolvable: if it is archived or has been escalated to another admin, the \"Compliant\" and \"Non-compliant\" buttons will be disabled with a tooltip explaining why.",
+            "To close as compliant, click the \"Compliant\" button (shield-check icon) in the top action bar.",
+            "In the \"Close as compliant\" dialog, optionally enter a note in the \"Resolution note (Optional)\" field, e.g. \"Approved by compliance review.\"",
+            "Click \"Save\" to resolve and stay on the same check, or click \"Save & next\" (or \"Save & Close\" if this is the last item in the list) to resolve and automatically advance to the next check.",
+            "To close as non-compliant instead, click the \"Non-compliant\" button (shield-ban icon) in the top action bar.",
+            "In the \"Close as non-compliant\" dialog, enter a note in the \"Resolution note (Required)\" field, e.g. \"Violation of 24h rule confirmed.\" — the Save buttons stay disabled until this field is filled in.",
+            "Click \"Save\" to resolve and stay on the same check, or click \"Save & next\" / \"Save & Close\" to resolve and advance.",
+            "Confirm the resolution: a success toast reading \"Check resolved.\" appears, and the check's status badge updates to reflect the compliant or non-compliant outcome; the note is also recorded in the check's audit trail."
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/pages/people-oversight/check-blotter/index.tsx",
+            "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
+            "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/dialog_close_compliant.tsx",
+            "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/dialog_close_non_compliant.tsx",
+            "apps/hadrius-app/src/api/check_blotter/api_check_blotter.ts"
+          ],
+          "status": "missing"
+        },
+        {
+          "title": "How to bulk-update the review status of flagged trades",
+          "purpose": "Compliance officers select multiple trades in the Trade monitoring table and set them all to Not flagged, Flagged, Compliant, or Non-compliant in a single confirmed action instead of updating each trade individually.",
+          "startRoute": "/people-oversight/trade-monitoring",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to People oversight > Trade monitoring",
+            "(Optional) Use the \"Status\" filter dropdown to narrow the table to \"Flagged\" trades first.",
+            "Check the row checkboxes next to each trade you want to update (or use the table's select-all checkbox) to select multiple flagged trades.",
+            "Confirm the bulk actions bar appears above the table, showing a chip labeled \"<N> trades selected\".",
+            "Open the \"Select status\" dropdown in the bulk actions bar.",
+            "Choose the new review status: \"Not flagged\", \"Flagged\", \"Compliant\", or \"Non-compliant\".",
+            "Click \"Update Status\" (enabled once a status is chosen) to open the confirmation dialog.",
+            "Review the dialog titled \"Update <N> Trades\", which confirms you're setting the selected trades to the chosen status.",
+            "Click \"Confirm\" to apply the update, or \"Cancel\" to back out without changes.",
+            "Wait for the \"Trades updated\" success toast confirming the trades were updated; the selection and status dropdown reset automatically."
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx"
+          ],
+          "status": "missing"
+        },
+        {
           "title": "How to upload or manually enter an employee's account holdings",
           "purpose": "Upload a holdings statement file or manually enter initial holdings line items for an employee's brokerage account.",
           "startRoute": "/people-oversight/accounts",

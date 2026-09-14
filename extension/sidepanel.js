@@ -779,15 +779,46 @@ async function startRecording() {
           chrome.tabs.onUpdated.addListener(onUpdated);
           setTimeout(() => { chrome.tabs.onUpdated.removeListener(onUpdated); resolve(); }, 8000);
         });
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, 600));
       }
     } catch (err) {
       console.warn('Auto-navigation failed:', err);
     }
   }
 
+  // Construct initial navigation step for fresh recording
+  let initialNav = null;
+  if (state.steps.length === 0) {
+    try {
+      const [refreshedTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const currentTabUrl = refreshedTab?.url || tab.url;
+      let currentPath = '/';
+      try { currentPath = new URL(currentTabUrl).pathname; } catch (_) {}
+
+      let navText = '';
+      if (selected?.steps?.length && /^(navigate to|open|go to)\s+/i.test(selected.steps[0])) {
+        navText = selected.steps[0];
+      } else if (selected?.module) {
+        const tabName = currentPath.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
+        navText = `Navigate to ${selected.module} > ${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+      } else {
+        const tabName = currentPath.split('/').filter(Boolean).pop()?.replace(/[-_]/g, ' ') || 'Overview';
+        navText = `Navigate to ${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+      }
+
+      initialNav = {
+        url: currentTabUrl,
+        route: selected?.startRoute || currentPath,
+        narration: navText,
+        caption: navText
+      };
+    } catch (navErr) {
+      console.warn('Could not build initialNav:', navErr);
+    }
+  }
+
   await send({type:'PANEL_UPDATE_SCRIPT',patch:{name:$('#scriptName').value.trim() || selected?.title || 'Untitled walkthrough',module:selected?.module || '',environmentName:envInfo.env}});
-  const result = await send({type:'PANEL_START',tabId:tab.id,fresh:state.steps.length===0});
+  const result = await send({type:'PANEL_START',tabId:tab.id,fresh:state.steps.length===0,initialNav});
   if (!result?.ok) return alert(result?.error || 'Could not start recording.');
   await loadState();
 }
