@@ -45,6 +45,22 @@ fi
 command -v node >/dev/null || { echo 'Error: Could not install Node.js automatically. Please install Node 20+ from https://nodejs.org' >&2; exit 1; }
 echo "✓ Node.js $(node -v) is ready."
 
+# Configure user-level npm prefix if default global directory is not writable (prevents EACCES sudo errors)
+if command -v npm >/dev/null; then
+  NPM_PREFIX="$(npm config get prefix 2>/dev/null || echo '/usr/local')"
+  if [[ ! -w "$NPM_PREFIX" || ( -d "$NPM_PREFIX/lib" && ! -w "$NPM_PREFIX/lib" ) ]]; then
+    mkdir -p "$HOME/.npm-global/bin" "$HOME/.npm-global/lib"
+    npm config set prefix "$HOME/.npm-global" 2>/dev/null || true
+    export PATH="$HOME/.npm-global/bin:$PATH"
+
+    SHELL_PROFILE="$HOME/.zshrc"
+    if [[ ! -f "$SHELL_PROFILE" && -f "$HOME/.bash_profile" ]]; then SHELL_PROFILE="$HOME/.bash_profile"; fi
+    if ! grep -qs '/.npm-global/bin' "$SHELL_PROFILE" 2>/dev/null; then
+      echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$SHELL_PROFILE"
+    fi
+  fi
+fi
+
 # 2. Python 3 check
 command -v python3 >/dev/null || {
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -69,8 +85,9 @@ fi
 # 4. Claude CLI check (auto-install if missing)
 if ! command -v claude >/dev/null; then
   echo "Claude CLI not found. Installing @anthropic-ai/claude-code..."
-  npm install -g @anthropic-ai/claude-code 2>/dev/null || npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code 2>/dev/null || {
-    echo "⚠ Could not auto-install Claude CLI globally. Run: npm install -g @anthropic-ai/claude-code"
+  npm install -g @anthropic-ai/claude-code || {
+    echo "⚠ Could not auto-install Claude CLI globally. Please run:"
+    echo "  npm install -g @anthropic-ai/claude-code"
   }
 fi
 
