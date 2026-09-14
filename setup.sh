@@ -5,7 +5,14 @@ REPO_DIR="$(pwd)"
 
 command -v node >/dev/null || { echo 'Node 20+ is required.' >&2; exit 1; }
 command -v python3 >/dev/null || { echo 'Python 3 is required.' >&2; exit 1; }
-command -v ffmpeg >/dev/null || echo 'Warning: FFmpeg is required to render MP4 files.'
+if ! command -v ffmpeg >/dev/null; then
+  echo '⚠ Warning: FFmpeg is required to render MP4 files.'
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo '  Install with: brew install ffmpeg'
+  elif [[ "$(uname -s)" == "Linux" ]]; then
+    echo '  Install with: sudo apt-get install -y ffmpeg'
+  fi
+fi
 command -v claude >/dev/null || { echo 'Install Claude CLI: npm install -g @anthropic-ai/claude-code' >&2; exit 1; }
 
 # Migrate .env if needed from prior Hadrius Studio installs
@@ -74,12 +81,38 @@ if ! claude mcp list 2>/dev/null | grep -q '^hadrius-codebase:'; then
   claude mcp add --transport http hadrius-codebase https://mcp.hadriusapi.com/codebase --scope user
 fi
 
+# Ensure local workspace directories exist
+mkdir -p scripts out audio data .browser-profile .test-browser-profile
+
 if [[ ! -d .venv ]]; then
+  echo "Creating Python virtual environment (.venv)..."
   python3 -m venv .venv
 fi
+echo "Installing Python dependencies (edge-tts, Pillow)..."
 .venv/bin/pip install -q -r requirements.txt
+
+echo "Installing Node dependencies..."
 npm install
-npx playwright install chromium 2>/dev/null || true
+
+echo "Installing Playwright Chromium browser for AI recording..."
+npx playwright install chromium
+if [[ "$(uname -s)" == "Linux" ]]; then
+  echo "Installing Linux browser system dependencies..."
+  npx playwright install-deps chromium 2>/dev/null || true
+fi
+
+echo "Verifying Playwright Chromium executable..."
+node -e "
+import('playwright').then(async ({ chromium }) => {
+  const p = chromium.executablePath();
+  const fs = await import('node:fs');
+  if (fs.existsSync(p)) {
+    console.log('✓ Playwright Chromium verified at:', p);
+  } else {
+    console.warn('⚠ Playwright Chromium not found at:', p);
+  }
+}).catch(e => console.warn('⚠ Playwright check warning:', e.message));
+"
 
 NODE_PATH_BIN="$(command -v node)"
 NODE_BIN_DIR="$(dirname "$NODE_PATH_BIN")"

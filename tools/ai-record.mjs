@@ -172,15 +172,20 @@ export const SNAPSHOT_FN = new Function(`
   // where a workflow's real trigger often lives. A row is "clickable" if it's styled as such.
   const clickableRow = (tr) => getComputedStyle(tr).cursor === 'pointer' || tr.hasAttribute('tabindex') || tr.hasAttribute('data-href') || typeof tr.onclick === 'function';
   const nodes = Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr'))
-    .filter((el) => visible(el) && (el.tagName !== 'TR' || el.getAttribute('role') || clickableRow(el)));
+    .filter((el) => visible(el) && !el.closest('#__hadrius_hud__,#__hadrius_spotlight_overlay__') && (el.tagName !== 'TR' || el.getAttribute('role') || clickableRow(el)));
   const out = [];
   nodes.slice(0, 320).forEach((el, i) => {
     el.setAttribute('data-kb-ai-id', String(i));
+    const dh = dateHint(el);
+    let elName = accessibleName(el);
+    if (!elName && dh) {
+      elName = 'Calendar day ' + dh.day + (dh.today ? ' (Today)' : '');
+    }
     out.push({
       id: i,
       tag: el.tagName.toLowerCase(),
       role: roleOf(el),
-      name: accessibleName(el).slice(0, 90),
+      name: (elName || '').slice(0, 90),
       datePicker: isDatePickerButton(el) || undefined,
       disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
       inDialog: !!el.closest('[role="dialog"],[role="alertdialog"]'),
@@ -238,6 +243,228 @@ const FINGERPRINT_FN = new Function('id', `
     viewport: { w: innerWidth, h: innerHeight },
   };
 `);
+
+// ---- Visual Feedback & Human Takeover Helpers (Step 6) ----
+async function ensureVisualHud(page, { title = 'Walkthrough', stepNum = 1, totalSteps = 10, actionDesc = '' } = {}) {
+  await page.evaluate(({ title, stepNum, totalSteps, actionDesc }) => {
+    if (!window.__hadrius_hud_injected__) {
+      window.__hadrius_hud_injected__ = true;
+      window.__hadrius_takeover_paused__ = false;
+      window.__hadrius_skip_step__ = false;
+
+      // 1. Animated Spotlight Overlay & Simulated Cursor
+      const overlay = document.createElement('div');
+      overlay.id = '__hadrius_spotlight_overlay__';
+      overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483646;inset:0;overflow:hidden;';
+
+      const box = document.createElement('div');
+      box.id = '__hadrius_spotlight_box__';
+      box.style.cssText = 'position:fixed;border-radius:8px;border:3px solid #8b5cf6;box-shadow:0 0 0 9999px rgba(15,23,42,0.38), 0 0 24px rgba(139,92,246,0.95);opacity:0;transition:all 0.35s cubic-bezier(0.16,1,0.3,1);pointer-events:none;';
+
+      const label = document.createElement('span');
+      label.id = '__hadrius_spotlight_label__';
+      label.style.cssText = 'position:absolute;bottom:calc(100% + 6px);left:0;background:#4c3dab;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:5px;white-space:nowrap;font-family:-apple-system,system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,0.35);pointer-events:none;';
+      box.appendChild(label);
+      overlay.appendChild(box);
+
+      const cursor = document.createElement('div');
+      cursor.id = '__hadrius_sim_cursor__';
+      cursor.style.cssText = 'position:fixed;width:24px;height:24px;pointer-events:none;transition:all 0.35s cubic-bezier(0.16,1,0.3,1);opacity:0;z-index:2147483647;';
+      cursor.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#8b5cf6" stroke="white" stroke-width="2"><polygon points="3 3 10 21 14 13 21 10 3 3"/></svg>';
+      overlay.appendChild(cursor);
+
+      document.body.appendChild(overlay);
+
+      // 2. Floating HUD Widget
+      const hud = document.createElement('div');
+      hud.id = '__hadrius_hud__';
+      hud.style.cssText = 'position:fixed;top:16px;right:20px;z-index:2147483647;width:330px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:12px;box-shadow:0 16px 36px rgba(0,0,0,0.55);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:12px 14px;';
+      hud.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span id="__hadrius_hud_dot__" style="width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;display:inline-block;"></span>
+            <strong id="__hadrius_hud_status__" style="font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#cbd5e1;">AI Driving Live</strong>
+          </div>
+          <span id="__hadrius_hud_step__" style="font-size:11px;font-weight:700;color:#93c5fd;background:#1e293b;padding:2px 8px;border-radius:999px;">Step ${stepNum}</span>
+        </div>
+        <div id="__hadrius_hud_title__" style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;">${title}</div>
+        <div id="__hadrius_hud_action__" style="font-size:13px;font-weight:600;color:#f8fafc;line-height:1.35;margin-bottom:10px;">${actionDesc || 'Analyzing page…'}</div>
+        <div style="display:flex;gap:6px;">
+          <button id="__hadrius_hud_takeover_btn__" type="button" style="flex:1;background:#334155;color:#fff;border:none;border-radius:6px;padding:7px 8px;font-size:11.5px;font-weight:700;cursor:pointer;">⏸ Take Over</button>
+          <button id="__hadrius_hud_skip_btn__" type="button" style="background:transparent;color:#94a3b8;border:1px solid #475569;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:600;cursor:pointer;">⏭ Skip Step</button>
+          <button id="__hadrius_hud_cancel_btn__" type="button" style="background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:700;cursor:pointer;">✕ Cancel</button>
+        </div>
+      `;
+      document.body.appendChild(hud);
+
+      const takeoverBtn = document.getElementById('__hadrius_hud_takeover_btn__');
+      const dot = document.getElementById('__hadrius_hud_dot__');
+      const statusText = document.getElementById('__hadrius_hud_status__');
+
+      takeoverBtn.onclick = () => {
+        window.__hadrius_takeover_paused__ = !window.__hadrius_takeover_paused__;
+        if (window.__hadrius_takeover_paused__) {
+          takeoverBtn.textContent = '▶ Resume AI';
+          takeoverBtn.style.background = '#059669';
+          dot.style.background = '#f59e0b';
+          dot.style.boxShadow = '0 0 8px #f59e0b';
+          statusText.textContent = 'Paused (You Have Control)';
+          const b = document.getElementById('__hadrius_spotlight_box__'); if (b) b.style.opacity = '0';
+          const c = document.getElementById('__hadrius_sim_cursor__'); if (c) c.style.opacity = '0';
+        } else {
+          takeoverBtn.textContent = '⏸ Take Over';
+          takeoverBtn.style.background = '#334155';
+          dot.style.background = '#ef4444';
+          dot.style.boxShadow = '0 0 8px #ef4444';
+          statusText.textContent = 'AI Driving Live';
+        }
+      };
+
+      const skipBtn = document.getElementById('__hadrius_hud_skip_btn__');
+      if (skipBtn) {
+        skipBtn.onclick = (e) => {
+          e.stopPropagation();
+          window.__hadrius_skip_step__ = true;
+          skipBtn.textContent = '⏭ Skipping…';
+          skipBtn.style.color = '#38bdf8';
+          setTimeout(() => {
+            skipBtn.textContent = '⏭ Skip Step';
+            skipBtn.style.color = '#94a3b8';
+          }, 1500);
+        };
+      }
+
+      const cancelBtn = document.getElementById('__hadrius_hud_cancel_btn__');
+      if (cancelBtn) {
+        cancelBtn.onclick = (e) => {
+          e.stopPropagation();
+          window.__hadrius_cancel_record__ = true;
+          cancelBtn.textContent = 'Stopping…';
+          cancelBtn.style.background = '#7f1d1d';
+        };
+      }
+
+      // Drag HUD to move anywhere on screen
+      let isDragging = false;
+      let startX = 0, startY = 0, origX = 0, origY = 0;
+      hud.style.cursor = 'grab';
+
+      hud.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        isDragging = true;
+        hud.style.cursor = 'grabbing';
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = hud.getBoundingClientRect();
+        origX = rect.left;
+        origY = rect.top;
+        hud.style.right = 'auto';
+        hud.style.left = `${origX}px`;
+        hud.style.top = `${origY}px`;
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const maxLeft = Math.max(10, window.innerWidth - hud.offsetWidth - 10);
+        const maxTop = Math.max(10, window.innerHeight - hud.offsetHeight - 10);
+        hud.style.left = `${Math.max(10, Math.min(maxLeft, origX + dx))}px`;
+        hud.style.top = `${Math.max(10, Math.min(maxTop, origY + dy))}px`;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          hud.style.cursor = 'grab';
+        }
+      });
+    }
+
+    const stepEl = document.getElementById('__hadrius_hud_step__');
+    if (stepEl) stepEl.textContent = `Step ${stepNum}${totalSteps ? ' of ' + totalSteps : ''}`;
+    const actionEl = document.getElementById('__hadrius_hud_action__');
+    if (actionEl && actionDesc) actionEl.textContent = actionDesc;
+  }, { title, stepNum, totalSteps, actionDesc }).catch(() => {});
+}
+
+async function highlightTargetElement(page, elementId, label, actionType) {
+  await page.evaluate(({ elementId, label, actionType }) => {
+    const el = document.querySelector(`[data-kb-ai-id="${elementId}"]`);
+    const box = document.getElementById('__hadrius_spotlight_box__');
+    const badge = document.getElementById('__hadrius_spotlight_label__');
+    const cursor = document.getElementById('__hadrius_sim_cursor__');
+    const actionEl = document.getElementById('__hadrius_hud_action__');
+
+    if (actionEl) actionEl.textContent = `${actionType === 'type' ? 'Enter' : 'Select'} "${label}"`;
+
+    if (!el || !box || !cursor) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.top < 50 || rect.bottom > window.innerHeight - 50 || rect.left < 20 || rect.right > window.innerWidth - 20) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      box.style.top = `${Math.max(0, r.top - 4)}px`;
+      box.style.left = `${Math.max(0, r.left - 4)}px`;
+      box.style.width = `${r.width + 8}px`;
+      box.style.height = `${r.height + 8}px`;
+      box.style.opacity = '1';
+
+      if (badge) badge.textContent = `${actionType === 'type' ? 'Enter' : 'Select'} "${label}"`;
+
+      cursor.style.top = `${r.top + r.height / 2}px`;
+      cursor.style.left = `${r.left + r.width / 2}px`;
+      cursor.style.opacity = '1';
+    }, 60);
+  }, { elementId, label, actionType }).catch(() => {});
+
+  await page.waitForTimeout(450);
+}
+
+async function clearSpotlight(page) {
+  await page.evaluate(() => {
+    const box = document.getElementById('__hadrius_spotlight_box__');
+    if (box) box.style.opacity = '0';
+    const cursor = document.getElementById('__hadrius_sim_cursor__');
+    if (cursor) cursor.style.opacity = '0';
+  }).catch(() => {});
+}
+
+async function handleTakeOverPause(page, onLog) {
+  let logged = false;
+  while (true) {
+    const status = await page.evaluate(() => ({
+      paused: !!window.__hadrius_takeover_paused__,
+      skip: !!window.__hadrius_skip_step__,
+      cancel: !!window.__hadrius_cancel_record__
+    })).catch(() => ({ paused: false, skip: false, cancel: false }));
+
+    if (status.cancel) {
+      onLog('✕ Recording cancelled by user via on-screen HUD.');
+      throw new Error('cancelled by user');
+    }
+
+    if (status.skip) {
+      await page.evaluate(() => { window.__hadrius_skip_step__ = false; }).catch(() => {});
+      onLog('⏭ Skip step clicked — proceeding immediately.');
+      return 'skip';
+    }
+
+    if (!status.paused) {
+      if (logged) onLog('▶ Human takeover concluded — AI automation resumed.');
+      break;
+    }
+    if (!logged) {
+      onLog('⏸ Automation paused by user — you now have full control in the browser window.');
+      logged = true;
+    }
+    await page.waitForTimeout(300);
+  }
+  return 'ok';
+}
 
 function buildTurnPrompt(item, snap, history, turnsLeft, guidance = null) {
   const elLines = snap.elements
@@ -408,7 +635,15 @@ export function renderPlan(plan) {
   if (plan.exists === false) lines.push(`WARNING — the source suggests this workflow does not exist as described: ${plan.summary}`);
   else if (plan.summary) lines.push(plan.summary);
   if (plan.prerequisites?.length) lines.push('Prerequisites: ' + plan.prerequisites.join('; '));
-  plan.steps.forEach((s, i) => lines.push(`${i + 1}. ${s.instruction}${s.label ? ` — "${s.label}"` : ''}${s.route ? ` → ${s.route}` : ''}`));
+  if (Array.isArray(plan.steps)) {
+    plan.steps.forEach((s, i) => {
+      if (typeof s === 'string') {
+        lines.push(`${i + 1}. ${s}`);
+      } else if (s && typeof s === 'object') {
+        lines.push(`${i + 1}. ${s.instruction || s.action || s.title || ''}${s.label ? ` — "${s.label}"` : ''}${s.route ? ` → ${s.route}` : ''}`);
+      }
+    });
+  }
   if (plan.completion) lines.push('Done when: ' + plan.completion);
   if (plan.notes) lines.push('Notes: ' + plan.notes);
   if (plan.consults?.length) lines.push('Answers from the source code during this run:\n' + plan.consults.map((c) => `Q: ${c.question}\nA: ${c.answer}`).join('\n'));
@@ -431,8 +666,12 @@ THE AGENT'S QUESTION:
 ${question}
 
 Answer in at most 6 short plain-text lines with exact UI labels in double quotes: what to click/fill next, or why the step cannot be done here (missing data, permissions, feature flag).`;
-  const out = await runClaude(prompt, { maxTurns: 15, timeout: 180000, model: planModel(), signal });
-  return String(out || '').trim().slice(0, 1200);
+  try {
+    const out = await runClaude(prompt, { maxTurns: 5, timeout: 25000, model: planModel(), signal });
+    return String(out || '').trim().slice(0, 1200);
+  } catch (err) {
+    return `Source lookup unavailable (${err.message}). Proceed using visible elements on the page.`;
+  }
 }
 
 // One line describing what the last action changed, so the model's history is grounded in the
@@ -514,22 +753,63 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     let guidance = plan; // source-derived plan (pre-generated by the bridge, or built below), shown to the model every turn
     let consults = 0;
 
-    // Same shape content.js `emit()` produces; url/route/title are the PRE-action page, like the
-    // recorder's pointerdown capture, and `capture: true` so the renderer takes a slide for it.
-    const pushStep = (snap, fields) => steps.push({
-      index: steps.length,
-      ...fields,
-      url: snap.url,
-      route: pathOf(snap.url),
-      title: snap.title,
-      ts: Date.now(),
-      capture: true,
-    });
-    const noteNavigation = () => {
+    const recordingId = crypto.randomUUID();
+    const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
+    fs.mkdirSync(recordingDir, { recursive: true });
+
+    const captureSlide = async (step) => {
+      try {
+        const captureId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+        const filename = `step_${captureId}.png`;
+        const filePath = path.join(recordingDir, filename);
+
+        // Hide HUD and cursor briefly while taking the clean screenshot of the page
+        await page.evaluate(() => {
+          const hud = document.getElementById('__hadrius_hud__');
+          const overlay = document.getElementById('__hadrius_spotlight_overlay__');
+          if (hud) hud.style.display = 'none';
+          if (overlay) overlay.style.display = 'none';
+        }).catch(() => {});
+
+        await page.screenshot({ path: filePath, timeout: 5000 });
+
+        // Restore HUD and cursor
+        await page.evaluate(() => {
+          const hud = document.getElementById('__hadrius_hud__');
+          const overlay = document.getElementById('__hadrius_spotlight_overlay__');
+          if (hud) hud.style.display = '';
+          if (overlay) overlay.style.display = '';
+        }).catch(() => {});
+
+        step.captureId = captureId;
+        step.media = { pre: filename };
+      } catch (e) {
+        onLog(`  (slide capture warning: ${e.message})`);
+      }
+    };
+
+    const pushStep = async (snap, fields) => {
+      const step = {
+        index: steps.length,
+        ...fields,
+        url: snap.url,
+        route: pathOf(snap.url),
+        title: snap.title,
+        ts: Date.now(),
+        capture: true,
+      };
+      await captureSlide(step);
+      steps.push(step);
+      return step;
+    };
+
+    const noteNavigation = async () => {
       const now = page.url();
       if (now !== lastUrl) {
         lastUrl = now;
-        steps.push({ index: steps.length, action: 'navigate', value: now, url: now, route: pathOf(now), title: '', ts: Date.now(), capture: true });
+        const navStep = { index: steps.length, action: 'navigate', value: now, url: now, route: pathOf(now), title: '', ts: Date.now(), capture: true };
+        await captureSlide(navStep);
+        steps.push(navStep);
       }
     };
 
@@ -538,8 +818,31 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     const runAttempt = async () => {
     steps = []; history = []; finished = false; failReason = null; lastUrl = page.url(); consults = 0;
     let prevSnap = null;
+
+    // Capture Step 0 initial navigate slide
+    const initialStep = {
+      index: 0,
+      action: 'navigate',
+      value: page.url(),
+      url: page.url(),
+      route: pathOf(page.url()),
+      title: await page.title().catch(() => item.title),
+      ts: Date.now(),
+      capture: true
+    };
+    await captureSlide(initialStep);
+    steps.push(initialStep);
     for (let turn = 0; turn < MAX_STEPS; turn++) {
       throwIfCancelled();
+      const pauseStatus = await handleTakeOverPause(page, onLog);
+      if (pauseStatus === 'skip') {
+        onLog(`⏭ Turn ${turn + 1} skipped by user via HUD control.`);
+        await clearSpotlight(page);
+        continue;
+      }
+      const totalPlanSteps = (guidance?.steps?.length) || 10;
+      const currentPlanStep = Math.min(turn + 1, totalPlanSteps);
+      await ensureVisualHud(page, { title: item.title, stepNum: currentPlanStep, totalSteps: totalPlanSteps });
       const snap = await page.evaluate(SNAPSHOT_FN);
       // Ground the previous action's history entry in what actually changed on the page.
       const last = history[history.length - 1];
@@ -552,15 +855,27 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         onLog(`  ! page said: ${said.slice(0, 160)}`);
       }
       prevSnap = snap;
-      let decision;
-      try {
-        const raw = await runClaude(buildTurnPrompt(item, snap, history, MAX_STEPS - turn, guidance), { maxTurns: 2, timeout: 60000, noTools: true, systemPrompt: DECISION_SYSTEM_PROMPT, model: decisionModel(), signal });
-        decision = extractJson(raw);
-      } catch (e) {
-        if (signal?.aborted) throw new Error('cancelled');
-        onLog(`turn ${turn + 1}: model error — ${e.message}`);
-        failReason = `model error: ${e.message}`;
-        break;
+      let decision = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const raw = await runClaude(buildTurnPrompt(item, snap, history, MAX_STEPS - turn, guidance), { maxTurns: 2, timeout: 60000, noTools: true, systemPrompt: DECISION_SYSTEM_PROMPT, model: decisionModel(), signal });
+          decision = extractJson(raw);
+          if (decision?.action) break;
+        } catch (e) {
+          if (signal?.aborted) throw new Error('cancelled');
+          if (attempt === 0) {
+            onLog(`turn ${turn + 1}: model output invalid JSON (${e.message}), retrying turn…`);
+            await page.waitForTimeout(600);
+            continue;
+          }
+          onLog(`turn ${turn + 1}: model error — ${e.message}`);
+          failReason = `model error: ${e.message}`;
+          break;
+        }
+      }
+      if (!decision) {
+        if (failReason) break;
+        continue;
       }
       throwIfCancelled();
       const elementId = decision.elementId == null ? null : Number(decision.elementId);
@@ -593,11 +908,11 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
 
       if (decision.action === 'press') {
         const key = decision.key || 'Enter';
-        pushStep(snap, { action: 'press', key, aiReason: decision.reason || undefined });
+        await pushStep(snap, { action: 'press', key, aiReason: decision.reason || undefined });
         try { await page.keyboard.press(key); } catch (e) { steps.pop(); history.push({ action: 'press', error: String(e.message || e) }); continue; }
         history.push({ action: 'press', name: key });
         await page.waitForTimeout(400);
-        noteNavigation();
+        await noteNavigation();
         continue;
       }
 
@@ -650,20 +965,55 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         : undefined;
       // The agent's reasoning is NOT narration (it names sample users/dates); keep it for debugging
       // only. Real narration is written by the bridge after the run, with the codebase-grounded writer.
-      pushStep(snap, { action: decision.action, target: fp, ...(text !== undefined ? { value: text } : {}), aiReason: decision.reason || undefined });
+      await pushStep(snap, { action: decision.action, target: fp, ...(text !== undefined ? { value: text } : {}), aiReason: decision.reason || undefined });
+
+      // Visual feedback & human takeover check (Step 6)
+      const actionPauseStatus = await handleTakeOverPause(page, onLog);
+      if (actionPauseStatus === 'skip') {
+        steps.pop();
+        onLog(`⏭ Action skipped by user via HUD control.`);
+        await clearSpotlight(page);
+        continue;
+      }
+      await ensureVisualHud(page, { title: item.title, stepNum: currentPlanStep, totalSteps: totalPlanSteps, actionDesc: label });
+      await highlightTargetElement(page, elementId, el.name, decision.action);
 
       try {
         if (decision.action === 'click') {
-          await loc.click({ timeout: 6000 });
+          let clicked = false;
+          try {
+            await loc.click({ timeout: 2500 });
+            clicked = true;
+          } catch (_) {}
+
+          if (!clicked) {
+            const b = await loc.boundingBox().catch(() => null);
+            if (b && b.width > 0 && b.height > 0) {
+              await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+              clicked = true;
+            }
+          }
+
+          if (!clicked) {
+            await page.evaluate((id) => {
+              const target = document.querySelector(`[data-kb-ai-id="${id}"]`);
+              if (target) {
+                target.scrollIntoView({ block: 'nearest' });
+                target.click();
+                target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+              }
+            }, elementId).catch(() => {});
+          }
         } else if (decision.action === 'upload') {
           const { how, file } = await attachFile(page, loc, text);
           onLog(`  attached ${path.basename(file)} (${how})`);
         } else {
-          await loc.click({ timeout: 6000 }).catch(() => {});
-          await loc.fill('').catch(() => {});
+          try { await loc.click({ timeout: 2500 }); } catch (_) {}
+          try { await loc.fill(''); } catch (_) {}
           await loc.type(text, { delay: 15 });
         }
       } catch (e) {
+        await clearSpotlight(page);
         if (signal?.aborted) throw new Error('cancelled');
         steps.pop(); // the action didn't happen — don't record it
         const msg = String(e.message || e).split('\n')[0].slice(0, 200);
@@ -671,9 +1021,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         onLog(`  ! action failed: ${msg}`);
         continue;
       }
+      await clearSpotlight(page);
       history.push({ action: decision.action, name: el.name, text, sig });
       await page.waitForTimeout(600);
-      noteNavigation();
+      await noteNavigation();
     }
     };
 
@@ -715,6 +1066,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       name: item.title,
       description: item.description || '',
       environment: { startUrl },
+      recording: {
+        id: recordingId,
+        recordedAt: now,
+      },
       steps,
       createdAt: now,
       updatedAt: now,

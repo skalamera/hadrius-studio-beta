@@ -219,13 +219,20 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
  */
 function runGeminiCli(prompt, { timeout = 600000, signal, onMeta } = {}) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', prompt, '--output-format', 'json', '--approval-mode', 'yolo'];
-    const child = execFile('gemini', args, { maxBuffer: 1024 * 1024 * 40, timeout, signal, env: process.env }, (err, stdout, stderr) => {
+    const args = ['-p', prompt, '--output-format', 'json', '--approval-mode', 'plan', '--skip-trust'];
+    const env = { ...process.env, GEMINI_CLI_TRUST_WORKSPACE: 'true' };
+    const child = execFile('gemini', args, { maxBuffer: 1024 * 1024 * 40, timeout, signal, env }, (err, stdout, stderr) => {
       if (err?.name === 'AbortError') return reject(new Error('cancelled'));
       if (err && !stdout) return reject(new Error(`Gemini CLI failed: ${String(stderr || err.message).trim().slice(0, 500)}`));
       try {
-        const parsed = JSON.parse(stdout);
-        const text = parsed.response || parsed.result || parsed.content || '';
+        let clean = stdout;
+        const start = stdout.indexOf('{');
+        const end = stdout.lastIndexOf('}');
+        if (start !== -1 && end > start) {
+          clean = stdout.slice(start, end + 1);
+        }
+        const parsed = JSON.parse(clean);
+        const text = parsed.response || parsed.result || parsed.content || parsed.text || parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
         if (!text) throw new Error('Gemini CLI returned no response text');
         const toolCalls = parsed.stats?.tools?.totalCalls ?? parsed.tool_calls?.length ?? null;
         onMeta?.({ model: parsed.model || 'gemini-cli', turns: toolCalls, costUsd: null });
@@ -250,12 +257,26 @@ export async function runClaude(prompt, opts = {}) {
 }
 
 export function extractJson(text) {
-  if (!text) throw new Error('empty model output');
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (!text || typeof text !== 'string') throw new Error('empty model output');
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const raw = fence ? fence[1] : text;
-  const start = raw.indexOf('['), end = raw.lastIndexOf(']');
-  const obj = raw.indexOf('{'), objEnd = raw.lastIndexOf('}');
-  const slice = (start !== -1 && (obj === -1 || start < obj)) ? raw.slice(start, end + 1) : raw.slice(obj, objEnd + 1);
+  const startObj = raw.indexOf('{');
+  const endObj = raw.lastIndexOf('}');
+  const startArr = raw.indexOf('[');
+  const endArr = raw.lastIndexOf(']');
+
+  let slice = null;
+  if (startObj !== -1 && endObj > startObj) {
+    if (startArr !== -1 && startArr < startObj && endArr > endObj) {
+      slice = raw.slice(startArr, endArr + 1);
+    } else {
+      slice = raw.slice(startObj, endObj + 1);
+    }
+  } else if (startArr !== -1 && endArr > startArr) {
+    slice = raw.slice(startArr, endArr + 1);
+  }
+
+  if (!slice) throw new Error(`no JSON structure found in output (received: "${text.slice(0, 80)}...")`);
   return JSON.parse(slice);
 }
 

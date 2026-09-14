@@ -12,7 +12,7 @@
 </head>
 <body>
   <header><img src="icons/wordmark.png" class="wordmark" alt="Hadrius Studio"><span class="beta-badge">Beta</span><span id="bridgeDot" class="dot"></span></header>
-  <nav><button class="tab active" data-view="recording">Recording <span id="stepCount" hidden></span></button><button class="tab" data-view="workflows">Workflows</button></nav>
+  <nav><button class="tab active" data-view="record">Record <span id="stepCount" hidden></span></button><button class="tab" data-view="toRecord">To Record <span id="toRecordCount" class="badge" hidden></span></button><button class="tab" data-view="recorded">Recorded <span id="pylonArticleCount" class="badge" hidden></span></button></nav>
 
   <div id="statusBarContainer" class="top-status-container">
     <div id="recordingBanner" class="top-banner recording-banner" hidden>
@@ -37,77 +37,6 @@
 
   <main id="recordingView">
     <section id="selectedWorkflow" class="selected" hidden></section>
-    <!-- AI Walkthrough Plan Generator -->
-    <section id="aiPlanBox" class="ai-plan-box">
-      <div id="aiPlanPromptView" class="ai-plan-prompt-view">
-        <div class="ai-plan-head">
-          <span class="ai-sparkle">✨</span>
-          <div class="ai-plan-title-group">
-            <strong>Generate walkthrough plan with AI</strong>
-            <p class="muted small">Have an idea for a video walkthrough? Describe what you want to achieve to generate a grounded plan from the codebase.</p>
-          </div>
-        </div>
-        <div class="ai-plan-input-row">
-          <textarea id="aiPlanPromptInput" rows="2" placeholder="e.g. How to invite a new employee and assign them a compliance officer role…"></textarea>
-          <div class="ai-plan-actions-row">
-            <button id="aiPlanGenerateBtn" class="primary ai-gen-btn" type="button">✨ Generate plan</button>
-          </div>
-        </div>
-      </div>
-
-      <div id="aiPlanLoadingView" class="ai-plan-loading-view" hidden>
-        <span class="ai-spinner">⏳</span>
-        <div class="ai-loading-text">
-          <strong>Formulating grounded plan with AI…</strong>
-          <span class="muted small">Inspecting routes, pages, and components via Hadrius MCP</span>
-        </div>
-      </div>
-
-      <div id="aiPlanReviewView" class="ai-plan-review-view" hidden>
-        <div class="ai-plan-review-header">
-          <div class="ai-plan-tag">
-            <span class="ai-sparkle">✨</span>
-            <span id="aiPlanModuleTag" class="plan-module-name"></span>
-            <span class="plan-pill">Proposed Plan</span>
-          </div>
-          <span class="ai-mcp-badge">✓ Grounded in Code</span>
-        </div>
-
-        <h3 id="aiPlanProposedTitle" class="plan-card-title"></h3>
-        <p id="aiPlanProposedSummary" class="plan-card-subtitle"></p>
-
-        <ul id="aiPlanProposedStepsList" class="plan-steps-list"></ul>
-
-        <div class="ai-plan-decision-area">
-          <div class="ai-decision-buttons">
-            <div class="ai-dropdown-wrapper">
-              <button id="aiPlanAcceptBtn" class="primary ai-dropdown-trigger" type="button">
-                Accept <span class="dropdown-caret">▾</span>
-              </button>
-              <div id="aiPlanAcceptMenu" class="ai-dropdown-menu" hidden>
-                <button id="aiPlanAcceptNowBtn" class="ai-dropdown-item" type="button">
-                  <span class="ai-dropdown-item-title">Accept & Use Now</span>
-                  <span class="ai-dropdown-item-desc">Load plan now to start recording</span>
-                </button>
-                <button id="aiPlanAcceptLaterBtn" class="ai-dropdown-item" type="button">
-                  <span class="ai-dropdown-item-title">Accept & Use Later</span>
-                  <span class="ai-dropdown-item-desc">Add as an opportunity on Workflows tab</span>
-                </button>
-              </div>
-            </div>
-            <button id="aiPlanDismissBtn" class="secondary" type="button">✕ Dismiss</button>
-          </div>
-
-          <div class="ai-iterate-box">
-            <label class="small muted">Need changes? Provide clarification or more details to refine:</label>
-            <div class="ai-iterate-row">
-              <input id="aiPlanClarifyInput" type="text" placeholder="e.g. Make sure to specify which dropdown to select first…" />
-              <button id="aiPlanIterateBtn" class="secondary" type="button">💬 Refine Plan</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
     <section class="record-controls">
       <input id="scriptName" placeholder="Walkthrough name">
       <div class="record-button-row">
@@ -141,14 +70,33 @@
 
   <main id="workflowsView" hidden>
     <section class="toolbar">
-      <input id="search" type="search" placeholder="Search workflows and articles…">
+      <input id="search" type="search" placeholder="Search workflows…">
       <button id="scanBtn" class="secondary">Scan codebase</button>
     </section>
-    <p id="syncStatus" class="muted">Loading workflows and Pylon articles…</p>
+    <p id="syncStatus" class="muted">Loading workflows…</p>
     <div id="modules"></div>
     <footer id="workflowsFooter" class="workflows-footer">
-      <span id="lastPylonSync" class="sync-timestamp">Last Pylon sync: --</span>
-      <button id="refreshWorkflowsBtn" class="icon-btn refresh-btn" type="button" title="Refresh workflows and Pylon sync">
+      <span id="workflowsCountFooter" class="sync-timestamp"></span>
+      <button id="refreshWorkflowsBtn" class="icon-btn refresh-btn" type="button" title="Refresh workflows">
+        <svg class="refresh-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2v4h-4"/>
+          <path d="M2 14v-4h4"/>
+          <path d="M13.5 10a5.5 5.5 0 0 1-9.3 2.3L2 10"/>
+          <path d="M2.5 6a5.5 5.5 0 0 1 9.3-2.3L14 6"/>
+        </svg>
+      </button>
+    </footer>
+  </main>
+
+  <main id="pylonArticlesView" hidden>
+    <section class="toolbar">
+      <input id="pylonSearch" type="search" placeholder="Search Pylon articles…">
+    </section>
+    <p id="pylonSyncStatus" class="muted">Loading Pylon articles…</p>
+    <div id="pylonModules"></div>
+    <footer id="pylonFooter" class="workflows-footer">
+      <span id="pylonLastSync" class="sync-timestamp">Last Pylon sync: --</span>
+      <button id="refreshPylonBtn" class="icon-btn refresh-btn" type="button" title="Refresh Pylon articles">
         <svg class="refresh-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2v4h-4"/>
           <path d="M2 14v-4h4"/>
@@ -202,8 +150,11 @@
 
         <div class="view-plan-steps-section">
           <div class="view-plan-section-header">
-            <strong id="viewPlanStepsHeader">Walkthrough Steps</strong>
-            <span id="viewPlanStepsCount" class="badge"></span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <strong id="viewPlanStepsHeader">Walkthrough Steps</strong>
+              <span id="viewPlanStepsCount" class="badge"></span>
+            </div>
+            <button id="viewPlanAiRecordBtn" class="primary ai-gen-btn" type="button" title="Launch AI browser automation to perform and record this plan live">⚡ Auto-record with AI</button>
           </div>
           <div class="view-plan-steps-container">
             <ul id="viewPlanModalStepsList" class="plan-steps-list"></ul>
@@ -257,6 +208,141 @@
             <div class="view-plan-decision-actions" style="display: flex; gap: 8px; margin-top: 10px;">
               <button id="viewPlanAcceptBtn" class="primary" type="button" style="flex: 2;">✓ Accept & Replace Plan</button>
               <button id="viewPlanDiscardBtn" class="secondary" type="button" style="flex: 1;">✕ Discard</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Record Start Prompt Modal -->
+  <div id="recordStartModal" class="modal-backdrop" hidden>
+    <div class="modal-card record-start-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="record-start-badge">
+            <span class="rec-dot">●</span>
+            <strong>Start Recording</strong>
+          </div>
+          <h3 id="recordModalHeading" class="plan-card-title">How would you like to begin?</h3>
+        </div>
+        <button id="closeRecordModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
+      </div>
+
+      <div class="record-modal-body">
+        <!-- Step 1: Choice / Prompt View -->
+        <div id="recordModalChoiceView" class="record-modal-choice-view">
+          <!-- Loaded Plan Shortcut (if one is already selected) -->
+          <div id="recordModalCurrentPlanBox" class="record-current-plan-box" hidden style="margin-bottom: 12px; background: #f5f3ff; border: 1px solid #ddd6fe; border-left: 4px solid var(--purple); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div>
+              <span class="plan-pill" style="font-size: 10px;">Loaded Plan</span>
+              <strong id="recordModalCurrentPlanTitle" style="font-size: 12.5px; color: var(--purple2); display: block; margin-top: 2px;"></strong>
+            </div>
+            <button id="recordModalCurrentPlanBtn" class="primary" type="button" style="white-space: nowrap; padding: 7px 14px; font-weight: 700;">▶ Record this plan →</button>
+          </div>
+
+          <!-- Option A: Generate with AI -->
+          <div class="ai-plan-box" style="margin-bottom: 12px;">
+            <div class="ai-plan-head">
+              <span class="ai-sparkle">✨</span>
+              <div class="ai-plan-title-group">
+                <strong>Generate walkthrough plan with AI</strong>
+                <p class="muted small">Describe what you want to achieve to generate a grounded plan from the codebase before recording.</p>
+              </div>
+            </div>
+            <div class="ai-plan-input-row">
+              <textarea id="recordAiPromptInput" rows="2" placeholder="e.g. How to invite a new employee and assign them a compliance officer role…"></textarea>
+              <div class="ai-plan-actions-row">
+                <button id="recordAiGenerateBtn" class="primary ai-gen-btn" type="button">✨ Generate plan</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="record-or-divider">
+            <span>or</span>
+          </div>
+
+          <!-- Option B: Continue with no plan -->
+          <div class="record-no-plan-box">
+            <div class="record-no-plan-info">
+              <strong>Record with no plan</strong>
+              <p class="muted small">Jump straight into capturing browser clicks and navigation immediately.</p>
+            </div>
+            <button id="recordNoPlanBtn" class="secondary" type="button">Continue with no plan →</button>
+          </div>
+
+          <!-- Divider -->
+          <div class="record-or-divider">
+            <span>or choose an opportunity</span>
+          </div>
+
+          <!-- Option C: Choose an existing recording opportunity -->
+          <div class="record-opportunities-box">
+            <div class="record-opps-header">
+              <span class="opps-icon">📋</span>
+              <div class="record-opps-title-group">
+                <strong>Record an existing opportunity</strong>
+                <p class="muted small">Select a module to view unrecorded opportunities and jump straight into recording with its plan loaded.</p>
+              </div>
+            </div>
+            <div class="record-opps-selector-row">
+              <select id="recordModuleSelect" class="record-module-select">
+                <option value="">Select a module…</option>
+              </select>
+            </div>
+            <div id="recordModalOppsList" class="record-modal-opps-list" hidden></div>
+          </div>
+        </div>
+
+        <!-- Step 2: Loading State -->
+        <div id="recordModalLoadingView" class="ai-plan-loading-view" hidden style="padding: 28px 16px; flex-direction: column; text-align: center; gap: 12px;">
+          <span class="ai-spinner" style="font-size: 28px;">⏳</span>
+          <div class="ai-loading-text">
+            <strong style="font-size: 14px;">Formulating grounded plan with AI…</strong>
+            <span class="muted small">Inspecting routes, pages, and components via Hadrius MCP</span>
+          </div>
+        </div>
+
+        <!-- Step 3: Review / Approve / Iterate State -->
+        <div id="recordModalReviewView" class="ai-plan-review-view" hidden>
+          <div class="ai-plan-review-header">
+            <div class="ai-plan-tag">
+              <span class="ai-sparkle">✨</span>
+              <span id="recordPlanModuleTag" class="plan-module-name"></span>
+              <span class="plan-pill">Proposed Plan</span>
+            </div>
+            <span class="ai-mcp-badge">✓ Grounded in Code</span>
+          </div>
+
+          <h3 id="recordPlanProposedTitle" class="plan-card-title"></h3>
+          <p id="recordPlanProposedSummary" class="plan-card-subtitle"></p>
+
+          <div class="view-plan-steps-container" style="max-height: 32vh; margin: 8px 0;">
+            <ul id="recordPlanProposedStepsList" class="plan-steps-list"></ul>
+          </div>
+
+          <div class="ai-plan-decision-area" style="margin-top: 8px; padding-top: 8px;">
+            <!-- Iteration box -->
+            <div class="ai-iterate-box" style="margin-bottom: 10px;">
+              <label class="small muted">Need changes? Provide clarification or more details to refine:</label>
+              <div class="ai-iterate-row">
+                <input id="recordPlanClarifyInput" type="text" placeholder="e.g. Make sure to specify which dropdown to select first…" />
+                <button id="recordPlanIterateBtn" class="secondary" type="button">💬 Refine Plan</button>
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="ai-decision-buttons" style="display: flex; gap: 8px;">
+              <button id="recordPlanAcceptAndRecordBtn" class="primary" type="button" style="flex: 2; font-weight: 700; padding: 10px 14px;">
+                ● Accept & Record
+              </button>
+              <button id="recordPlanSaveLaterBtn" class="secondary" type="button" style="flex: 1;" title="Save as a recording opportunity on the Workflows tab">
+                Save for Later
+              </button>
+              <button id="recordPlanDismissBtn" class="secondary" type="button" style="flex: 0.7;">
+                ✕ Cancel
+              </button>
             </div>
           </div>
         </div>

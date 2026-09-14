@@ -12,7 +12,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson } from './coverage-scan.mjs';
 import { STUDIO_TENANT_COMPANY_ID } from './stage-lib.mjs';
-import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID } from './pylon.mjs';
+import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID } from './pylon.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,7 +22,7 @@ const PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browse
 // Only the keys the bridge itself uses are imported. ~/.hermes/.env in particular is shared with
 // other tools and carries ANTHROPIC_API_KEY etc.; if those reached process.env they would be
 // inherited by every `claude` we spawn and override the operator's `claude login` session.
-const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID']);
+const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID']);
 function loadDotEnv() {
   const parseEnv = (p) => {
     if (!fs.existsSync(p)) return;
@@ -1853,6 +1853,108 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ---- Workflow AI Recording: drive browser with Playwright using the enhanced plan ----
+  if (u.pathname === '/workflows/ai-record') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', async () => {
+        try {
+          const { module: modName, workflow } = JSON.parse(body || '{}');
+          if (!workflow?.title) throw new Error('workflow title required');
+          const targetModule = canonicalModule(modName || workflow.module) || modName || 'Testing program';
+          const title = workflow.title.trim();
+          const startRoute = workflow.startRoute || workflow.start_route || '/overview';
+          const key = candSlug(`${targetModule}-${title}`);
+
+          const item = {
+            key,
+            title,
+            module: targetModule,
+            start_route: startRoute,
+            description: workflow.purpose || workflow.summary || '',
+            trigger: workflow.trigger || '',
+            steps: Array.isArray(workflow.steps) ? workflow.steps : []
+          };
+
+          const existing = aiJobs.get(key);
+          if (existing && aiBusy(existing)) {
+            return sendJson(res, 200, { ok: true, key, message: 'AI recording already running', job: aiJobView(existing) });
+          }
+
+          if (item.steps.length) {
+            const normSteps = item.steps.map((s) => (typeof s === 'string' ? { instruction: s } : s));
+            setPlan(key, { title, module: targetModule, steps: normSteps, summary: item.description }, title);
+          }
+
+          aiJobs.set(key, {
+            state: 'queued',
+            startedAt: null,
+            finishedAt: null,
+            log: [`Queued AI browser recording for "${title}"…`],
+            error: null,
+            result: null,
+            item,
+            controller: new AbortController()
+          });
+
+          aiQueue.push(key);
+          pumpAiQueue();
+
+          return sendJson(res, 202, { ok: true, key, message: `Queued AI recording for "${title}"` });
+        } catch (e) {
+          return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && u.pathname === '/workflows/ai-record/stop') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', async () => {
+        try {
+          const { key } = JSON.parse(body || '{}');
+          let stoppedAny = false;
+          if (key) {
+            const job = aiJobs.get(key);
+            if (job && aiBusy(job)) {
+              job.controller?.abort();
+              job.state = 'failed';
+              job.error = 'Cancelled by user';
+              stoppedAny = true;
+            }
+          } else {
+            for (const [k, job] of aiJobs.entries()) {
+              if (aiBusy(job)) {
+                job.controller?.abort();
+                job.state = 'failed';
+                job.error = 'Cancelled by user';
+                stoppedAny = true;
+              }
+            }
+          }
+          return sendJson(res, 200, { ok: true, message: stoppedAny ? 'AI recording stopped' : 'No running job' });
+        } catch (e) {
+          return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'GET') {
+      const key = u.searchParams.get('key');
+      if (!key) {
+        const jobs = {};
+        for (const [k, v] of aiJobs.entries()) jobs[k] = aiJobView(v);
+        return sendJson(res, 200, { ok: true, jobs });
+      }
+      const job = aiJobs.get(key);
+      if (!job) return sendJson(res, 404, { ok: false, error: 'Job not found' });
+      return sendJson(res, 200, { ok: true, job: aiJobView(job) });
+    }
+  }
+
   if (req.method === 'GET' && u.pathname === '/pylon/articles') {
     try {
       const articles = await pylonListArticles();
@@ -1866,22 +1968,9 @@ const server = http.createServer(async (req, res) => {
             visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at
           }))
         };
-        modules[module] = entry;
-        const canon = ALLOWED_MODULES.find((m) => m.toLowerCase() === module.toLowerCase());
-        if (canon) modules[canon] = entry;
+        const canon = ALLOWED_MODULES.find((m) => m.toLowerCase() === module.toLowerCase()) || module;
+        modules[canon] = entry;
       }
-
-      // Collect all articles outside the 6 main module collections into "Other"
-      const knownCollectionIds = new Set(Object.values(PYLON_MODULE_COLLECTION_MAP));
-      const otherArticles = articles.filter((article) => !knownCollectionIds.has(article.collection_id)).map((article) => ({
-        id: article.id, title: article.title, url: pylonArticleUrl(article), isPublished: !!article.is_published,
-        visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at
-      }));
-      modules['Other'] = {
-        collectionId: PYLON_COLLECTION_ID,
-        collectionUrl: `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/collections/${PYLON_COLLECTION_ID}`,
-        articles: otherArticles
-      };
 
       return sendJson(res, 200, { ok: true, modules, syncedAt: new Date().toISOString() });
     } catch (e) { return sendJson(res, 502, { ok: false, error: String(e?.message || e) }); }

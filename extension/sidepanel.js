@@ -22,10 +22,24 @@ async function api(path, options) {
 }
 
 function switchView(name) {
-  $('#workflowsView').hidden = name !== 'workflows';
-  $('#recordingView').hidden = name !== 'recording';
-  $$('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.view === name));
-  if (name === 'workflows') {
+  const isRecord = name === 'record' || name === 'recording';
+  const isToRecord = name === 'toRecord' || name === 'workflows';
+  const isRecorded = name === 'recorded' || name === 'pylonArticles';
+
+  $('#recordingView').hidden = !isRecord;
+  $('#workflowsView').hidden = !isToRecord;
+  $('#pylonArticlesView').hidden = !isRecorded;
+
+  $$('.tab').forEach((tab) => {
+    const v = tab.dataset.view;
+    const active = (v === name) ||
+      (isRecord && (v === 'record' || v === 'recording')) ||
+      (isToRecord && (v === 'toRecord' || v === 'workflows')) ||
+      (isRecorded && (v === 'recorded' || v === 'pylonArticles'));
+    tab.classList.toggle('active', active);
+  });
+
+  if (isToRecord || isRecorded) {
     refreshAll();
   }
 }
@@ -109,10 +123,11 @@ async function markWorkflowLinked(title, moduleName) {
   renderModules();
 }
 
-async function unmarkWorkflowLinked(title) {
+async function unmarkWorkflowLinked(title, moduleName) {
   manualLinks.delete(title);
   await chrome.storage.local.set({ manualLinks: [...manualLinks] });
-  api('/workflows/link', { method: 'POST', body: JSON.stringify({ title, unmark: true }) }).catch(() => {});
+  api('/workflows/link', { method: 'POST', body: JSON.stringify({ title, module: moduleName, unmark: true }) }).catch(() => {});
+  toast(`✓ Reverted "${title}" back to To Record`);
   renderModules();
 }
 
@@ -129,11 +144,11 @@ async function refreshAll() {
   if (workflowResult.status === 'fulfilled') {
     catalog = workflowResult.value;
     if (Array.isArray(catalog.manualLinks)) {
-      for (const t of catalog.manualLinks) manualLinks.add(t);
+      manualLinks = new Set(catalog.manualLinks);
       chrome.storage.local.set({ manualLinks: [...manualLinks] });
     }
     if (Array.isArray(catalog.dismissed)) {
-      for (const t of catalog.dismissed) dismissedWorkflows.add(t);
+      dismissedWorkflows = new Set(catalog.dismissed);
       chrome.storage.local.set({ dismissedWorkflows: [...dismissedWorkflows] });
     }
     updateScanStatus(catalog.scan);
@@ -142,11 +157,11 @@ async function refreshAll() {
     pylon = pylonResult.value;
     if (pylon?.syncedAt) {
       const syncTime = new Date(pylon.syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-      const el = $('#lastPylonSync');
+      const el = $('#pylonLastSync');
       if (el) el.textContent = `Last Pylon sync: ${syncTime}`;
     }
   } else {
-    const el = $('#lastPylonSync');
+    const el = $('#pylonLastSync');
     if (el) el.textContent = 'Last Pylon sync: unavailable';
   }
   const workflowOk = workflowResult.status === 'fulfilled';
@@ -154,7 +169,10 @@ async function refreshAll() {
   if (workflowOk && pylonOk) {
     if (!catalog.scan?.running) {
       const sourceLabel = catalog.shared ? 'Shared team repository' : 'Local repository';
-      $('#syncStatus').textContent = `${sourceLabel} · ${catalog.modules.reduce((n,m)=>n+m.workflows.length,0)} workflows`;
+      const totalWfs = catalog.modules.reduce((n,m)=>n+m.workflows.length,0);
+      $('#syncStatus').textContent = `${sourceLabel} · ${totalWfs} workflows`;
+      const wfFooter = $('#workflowsCountFooter');
+      if (wfFooter) wfFooter.textContent = `${sourceLabel} · ${totalWfs} total workflows`;
     } else {
       $('#syncStatus').textContent = 'Codebase scan in progress…';
     }
@@ -164,6 +182,7 @@ async function refreshAll() {
     $('#syncStatus').textContent = `Workflow plans loaded · Pylon unavailable: ${pylonResult.reason?.message || 'bridge error'}`;
   }
   renderModules();
+  renderPylonArticles();
 }
 
 function normalizeTitle(value) { return slug(value).replace(/^(how-to|how-do-i)-/,''); }
@@ -185,18 +204,8 @@ const WORKFLOW_MODULE_ORDER = [
 function getModuleArticles(moduleName) {
   if (!pylon?.modules) return [];
   const target = String(moduleName || '').trim().toLowerCase();
-  if (target === 'other') {
-    if (pylon.modules['Other']?.articles) return pylon.modules['Other'].articles;
-    const known = new Set(['testing program', 'people oversight', 'branches', 'communications', 'marketing', 'account surveillance']);
-    const list = [];
-    for (const [k, v] of Object.entries(pylon.modules)) {
-      if (!known.has(k.toLowerCase()) && Array.isArray(v.articles)) list.push(...v.articles);
-    }
-    return list;
-  }
-  if (pylon.modules[moduleName]) return pylon.modules[moduleName].articles || [];
   for (const [k, v] of Object.entries(pylon.modules)) {
-    if (k.toLowerCase() === target) return v.articles || [];
+    if (k.toLowerCase() === target && Array.isArray(v.articles)) return v.articles;
   }
   return [];
 }
@@ -217,6 +226,7 @@ function moduleIconPath(moduleName) {
 
 const openPylonSections = new Set();
 const openModuleBodies = new Set();
+const openDoneSections = new Set();
 
 function renderModules() {
   const q = $('#search').value.trim().toLowerCase();
@@ -246,7 +256,26 @@ function renderModules() {
   }
   orderedGroups.push(otherGroup);
 
+  let totalOpportunities = 0;
   for (const group of orderedGroups) {
+    const articles = getModuleArticles(group.module);
+    const unlinked = (group.workflows || []).filter((w) => {
+      const isAutoLinked = articles.some((article) => articleMatches(w, article));
+      const isManuallyLinked = manualLinks.has(w.title);
+      const isDismissed = dismissedWorkflows.has(w.title);
+      return !isAutoLinked && !isManuallyLinked && !isDismissed;
+    });
+    totalOpportunities += unlinked.length;
+  }
+
+  const toRecordTabBadge = $('#toRecordCount');
+  if (toRecordTabBadge) {
+    toRecordTabBadge.textContent = totalOpportunities;
+    toRecordTabBadge.hidden = totalOpportunities === 0;
+  }
+
+  for (const group of orderedGroups) {
+    const modKey = group.module.toLowerCase();
     const articles = getModuleArticles(group.module);
 
     // Only display recording opportunities that do NOT have a linked article and are not dismissed
@@ -261,50 +290,195 @@ function renderModules() {
     const visibleArticles = articles.filter((a) => !q || a.title.toLowerCase().includes(q));
     if (q && !matchingWorkflows.length && !visibleArticles.length) continue;
 
+    const isModuleOpen = q ? true : openModuleBodies.has(modKey);
     const iconSrc = moduleIconPath(group.module);
     const section = document.createElement('section'); section.className = 'module';
-    section.innerHTML = `<div class="module-head"><img class="module-icon" src="${iconSrc}" alt="" /><h2>${esc(group.module)}</h2><span class="counts">${unlinkedWorkflows.length} opportunities · ${visibleArticles.length} articles</span></div><div class="module-body"></div>`;
+    section.innerHTML = `<div class="module-head"><span class="module-caret">${isModuleOpen ? '▾' : '▸'}</span><img class="module-icon" src="${iconSrc}" alt="" /><h2>${esc(group.module)}</h2><span class="counts">${unlinkedWorkflows.length} ${unlinkedWorkflows.length === 1 ? 'opportunity' : 'opportunities'}</span></div><div class="module-body" ${isModuleOpen ? '' : 'hidden'}></div>`;
     const body = section.querySelector('.module-body');
 
-    // 1. Dedicated Pylon Articles container (above recording opportunities)
-    const pylonBox = document.createElement('section');
-    pylonBox.className = 'pylon-section';
-    const collectionUrl = getModuleCollectionUrl(group.module);
-    const collectionLinkHtml = collectionUrl ? `<a href="${collectionUrl}" class="pylon-collection-link" target="_blank" rel="noopener noreferrer">↗ Open collection</a>` : '';
-    const pylonHeaderTitle = `PYLON ARTICLES - ${group.module.toUpperCase()}`;
-    const modKey = group.module.toLowerCase();
-    const isPylonOpen = q ? true : openPylonSections.has(modKey);
+    if (!matchingWorkflows.length) {
+      body.insertAdjacentHTML('beforeend', '<div class="item muted">All workflows in this module have linked articles ✓</div>');
+    }
 
-    pylonBox.innerHTML = `
-      <div class="pylon-section-header${isPylonOpen ? '' : ' collapsed'}">
-        <span class="pylon-caret">${isPylonOpen ? '▾' : '▸'}</span>
-        <img class="pylon-header-icon" src="icons/pylon-icon.png" alt="" />
-        <span class="pylon-header-title">${esc(pylonHeaderTitle)}</span>
-        <span class="pylon-count-badge">${visibleArticles.length}</span>
+    for (const workflow of matchingWorkflows) {
+      const item = document.createElement('div'); item.className = 'item';
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary aiRecord" title="Launch AI browser automation to perform and record this workflow live">⚡ Auto-record</button><button class="secondary choose" title="Record this workflow manually">Record manually</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
+      item.querySelector('.aiRecord').onclick = () => startAiBrowserRecording(group.module, workflow);
+      item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
+      item.querySelector('.plan').onclick = () => openViewPlanModal(group.module, workflow);
+      item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
+      item.querySelector('.dismissWf').onclick = () => dismissWorkflow(workflow.title, group.module);
+      body.appendChild(item);
+    }
+
+    const manuallyLinkedInModule = (group.workflows || []).filter((w) => manualLinks.has(w.title) && !dismissedWorkflows.has(w.title));
+    if (manuallyLinkedInModule.length > 0) {
+      const isDoneOpen = q ? true : openDoneSections.has(modKey);
+      const manualSec = document.createElement('div');
+      manualSec.className = 'module-done-section';
+      manualSec.innerHTML = `
+        <div class="module-done-head">
+          <span class="done-caret">${isDoneOpen ? '▾' : '▸'}</span>
+          <span class="done-title">✓ Marked as Done (${manuallyLinkedInModule.length})</span>
+          <button class="link-btn resetAllDoneBtn" type="button" title="Revert all marked as done in this module">Revert all</button>
+        </div>
+        <div class="module-done-body" ${isDoneOpen ? '' : 'hidden'}></div>
+      `;
+
+      const doneBody = manualSec.querySelector('.module-done-body');
+      for (const w of manuallyLinkedInModule) {
+        const dItem = document.createElement('div');
+        dItem.className = 'item done-item';
+        dItem.innerHTML = `
+          <div class="item-title">${esc(w.title)}<span class="badge done-badge">✓ Marked as done</span></div>
+          <p>${esc(w.purpose || '')}</p>
+          <div class="item-actions">
+            <button class="secondary revertBtn" title="Revert this workflow back to To Record">↩ Revert to To Record</button>
+            <button class="secondary plan">View plan</button>
+          </div>
+        `;
+        dItem.querySelector('.revertBtn').onclick = () => unmarkWorkflowLinked(w.title, group.module);
+        dItem.querySelector('.plan').onclick = () => openViewPlanModal(group.module, w);
+        doneBody.appendChild(dItem);
+      }
+
+      manualSec.querySelector('.module-done-head').onclick = (e) => {
+        if (e.target.closest('button')) return;
+        doneBody.hidden = !doneBody.hidden;
+        const caret = manualSec.querySelector('.done-caret');
+        if (caret) caret.textContent = doneBody.hidden ? '▸' : '▾';
+        if (doneBody.hidden) openDoneSections.delete(modKey);
+        else openDoneSections.add(modKey);
+      };
+
+      manualSec.querySelector('.resetAllDoneBtn').onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Revert all ${manuallyLinkedInModule.length} workflows in ${group.module} back to To Record?`)) return;
+        for (const w of manuallyLinkedInModule) {
+          manualLinks.delete(w.title);
+          api('/workflows/link', { method: 'POST', body: JSON.stringify({ title: w.title, module: group.module, unmark: true }) }).catch(() => {});
+        }
+        await chrome.storage.local.set({ manualLinks: [...manualLinks] });
+        toast(`✓ Reverted ${manuallyLinkedInModule.length} workflows back to To Record`);
+        renderModules();
+      };
+
+      body.appendChild(manualSec);
+    }
+
+    const moduleBody = section.querySelector('.module-body');
+    section.querySelector('.module-head').onclick = () => {
+      moduleBody.hidden = !moduleBody.hidden;
+      const caret = section.querySelector('.module-caret');
+      if (caret) caret.textContent = moduleBody.hidden ? '▸' : '▾';
+      if (moduleBody.hidden) {
+        openModuleBodies.delete(modKey);
+      } else {
+        openModuleBodies.add(modKey);
+      }
+    };
+    $('#modules').appendChild(section);
+  }
+
+  if (scrollTarget && prevScrollTop > 0) {
+    requestAnimationFrame(() => {
+      scrollTarget.scrollTop = prevScrollTop;
+    });
+  }
+}
+
+const openPylonArticleModules = new Set();
+
+function renderPylonArticles() {
+  const q = ($('#pylonSearch')?.value || '').trim().toLowerCase();
+  const listEl = $('#pylonModules');
+  if (!listEl) return;
+
+  const scrollTarget = document.scrollingElement || document.documentElement || document.body;
+  const prevScrollTop = scrollTarget ? scrollTarget.scrollTop : 0;
+
+  listEl.innerHTML = '';
+
+  const uniqueCollections = new Map();
+  if (pylon?.modules) {
+    for (const [k, v] of Object.entries(pylon.modules)) {
+      uniqueCollections.set(k.toLowerCase(), { module: k, ...v });
+    }
+  }
+
+  let totalArticles = 0;
+  for (const v of uniqueCollections.values()) {
+    if (Array.isArray(v?.articles)) totalArticles += v.articles.length;
+  }
+
+  const syncStatusEl = $('#pylonSyncStatus');
+  if (syncStatusEl) {
+    const collCount = uniqueCollections.size;
+    syncStatusEl.textContent = `${totalArticles} recorded Pylon ${totalArticles === 1 ? 'article' : 'articles'} across ${collCount} module collections`;
+  }
+
+  const tabBadge = $('#pylonArticleCount');
+  if (tabBadge) {
+    tabBadge.textContent = totalArticles;
+    tabBadge.hidden = totalArticles === 0;
+  }
+
+  const orderedGroups = [];
+  for (const modName of WORKFLOW_MODULE_ORDER) {
+    const existing = uniqueCollections.get(modName.toLowerCase());
+    if (existing) {
+      orderedGroups.push(existing);
+      uniqueCollections.delete(modName.toLowerCase());
+    } else {
+      orderedGroups.push({ module: modName, articles: getModuleArticles(modName) });
+    }
+  }
+  for (const remaining of uniqueCollections.values()) {
+    orderedGroups.push(remaining);
+  }
+
+  for (const group of orderedGroups) {
+    const articles = group.articles || getModuleArticles(group.module);
+    const visibleArticles = articles.filter((a) => !q || a.title.toLowerCase().includes(q));
+    if (q && !visibleArticles.length) continue;
+
+    const iconSrc = moduleIconPath(group.module);
+    const modKey = group.module.toLowerCase();
+    const isModuleOpen = q ? true : openPylonArticleModules.has(modKey);
+
+    const collectionUrl = getModuleCollectionUrl(group.module);
+    const collectionLinkHtml = collectionUrl ? `<a href="${collectionUrl}" class="pylon-collection-link" target="_blank" rel="noopener noreferrer" style="margin-left: 8px;">↗ Collection</a>` : '';
+
+    const section = document.createElement('section');
+    section.className = 'module';
+    section.innerHTML = `
+      <div class="module-head">
+        <span class="module-caret">${isModuleOpen ? '▾' : '▸'}</span>
+        <img class="module-icon" src="${iconSrc}" alt="" />
+        <h2>${esc(group.module)}</h2>
+        <span class="counts">${visibleArticles.length} ${visibleArticles.length === 1 ? 'article' : 'articles'}</span>
         ${collectionLinkHtml}
       </div>
-      <div class="pylon-articles-list" ${isPylonOpen ? '' : 'hidden'}></div>
+      <div class="module-body" ${isModuleOpen ? '' : 'hidden'}></div>
     `;
 
-    const pylonHeader = pylonBox.querySelector('.pylon-section-header');
-    const pylonList = pylonBox.querySelector('.pylon-articles-list');
-    const pylonCaret = pylonBox.querySelector('.pylon-caret');
+    const moduleHead = section.querySelector('.module-head');
+    const moduleBody = section.querySelector('.module-body');
 
-    pylonHeader.onclick = (e) => {
+    moduleHead.onclick = (e) => {
       if (e.target.closest('.pylon-collection-link')) return;
-      const willBeHidden = !pylonList.hidden;
-      pylonList.hidden = willBeHidden;
-      pylonCaret.textContent = willBeHidden ? '▸' : '▾';
-      pylonHeader.classList.toggle('collapsed', willBeHidden);
-      if (willBeHidden) {
-        openPylonSections.delete(modKey);
+      moduleBody.hidden = !moduleBody.hidden;
+      const caret = section.querySelector('.module-caret');
+      if (caret) caret.textContent = moduleBody.hidden ? '▸' : '▾';
+      if (moduleBody.hidden) {
+        openPylonArticleModules.delete(modKey);
       } else {
-        openPylonSections.add(modKey);
+        openPylonArticleModules.add(modKey);
       }
     };
 
     if (!visibleArticles.length) {
-      pylonList.innerHTML = '<div class="pylon-empty-msg">No articles currently in this collection.</div>';
+      moduleBody.innerHTML = '<div class="item muted">No articles in this collection yet.</div>';
     } else {
       for (const article of visibleArticles) {
         const item = document.createElement('div');
@@ -316,59 +490,18 @@ function renderModules() {
           <a href="#" class="pylon-article-title">${esc(cleanTitle)}</a>
           <span class="badge ${statusClass}">${statusLabel}</span>
         `;
-        item.querySelector('a').onclick = (event) => {
-          event.preventDefault();
+        item.querySelector('a').onclick = (e) => {
+          e.preventDefault();
           chrome.tabs.create({ url: article.url });
         };
-        pylonList.appendChild(item);
+        moduleBody.appendChild(item);
       }
     }
-    body.appendChild(pylonBox);
 
-    // 2. Recording opportunities below Pylon articles
-    body.insertAdjacentHTML('beforeend', '<div class="subhead">Recording opportunities</div>');
-
-    if (!matchingWorkflows.length) {
-      body.insertAdjacentHTML('beforeend', '<div class="item muted">All workflows in this module have linked articles ✓</div>');
-    }
-
-    for (const workflow of matchingWorkflows) {
-      const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary choose">Record this</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
-      item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
-      item.querySelector('.plan').onclick = () => openViewPlanModal(group.module, workflow);
-      item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
-      item.querySelector('.dismissWf').onclick = () => dismissWorkflow(workflow.title, group.module);
-      body.appendChild(item);
-    }
-
-    const manuallyLinkedInModule = (group.workflows || []).filter((w) => manualLinks.has(w.title) && !dismissedWorkflows.has(w.title));
-    if (manuallyLinkedInModule.length > 0) {
-      const manualFoot = document.createElement('div');
-      manualFoot.className = 'item manual-links-bar muted';
-      manualFoot.innerHTML = `<span>${manuallyLinkedInModule.length} manually marked as done</span> <button class="link-btn undoLinks" type="button">Reset</button>`;
-      manualFoot.querySelector('.undoLinks').onclick = async () => {
-        for (const w of manuallyLinkedInModule) manualLinks.delete(w.title);
-        await chrome.storage.local.set({ manualLinks: [...manualLinks] });
-        renderModules();
-      };
-      body.appendChild(manualFoot);
-    }
-    const moduleBody = section.querySelector('.module-body');
-    const isModuleOpen = q ? true : openModuleBodies.has(modKey);
-    moduleBody.hidden = !isModuleOpen;
-    section.querySelector('.module-head').onclick = () => {
-      moduleBody.hidden = !moduleBody.hidden;
-      if (moduleBody.hidden) {
-        openModuleBodies.delete(modKey);
-      } else {
-        openModuleBodies.add(modKey);
-      }
-    };
-    $('#modules').appendChild(section);
+    listEl.appendChild(section);
   }
 
-  if (scrollTarget && prevScrollTop > 0) {
+  if (scrollTarget && prevScrollTop > 0 && !$('#pylonArticlesView').hidden) {
     requestAnimationFrame(() => {
       scrollTarget.scrollTop = prevScrollTop;
     });
@@ -646,28 +779,286 @@ function discardEnhancedPlanInModal() {
   $('#viewPlanClarifyInput').value = '';
 }
 
-let activeAiPlan = null; // { userPrompt, plan, previousPlan }
+let activeAiRecordKey = null;
+let activeAiPollInterval = null;
 
-function showAiPlanView(viewName) {
-  $('#aiPlanPromptView').hidden = viewName !== 'prompt';
-  $('#aiPlanLoadingView').hidden = viewName !== 'loading';
-  $('#aiPlanReviewView').hidden = viewName !== 'review';
+async function startAiBrowserRecording(moduleName, workflow) {
+  if (!workflow) return;
+  const title = workflow.title;
+  const steps = resolveSteps(moduleName, workflow);
+  const stepsCount = steps.length;
+  const confirmed = confirm(`⚡ Launch AI Browser Automation for:\n"${title}" (${stepsCount} steps)?\n\nA visible browser window will open on your screen and execute the steps live with on-screen spotlight and takeover controls.`);
+  if (!confirmed) return;
+
+  // Close modals
+  closeViewPlanModal();
+  closeRecordStartModal();
+
+  // Load the plan into the Record tab and switch to it immediately
+  selected = { module: moduleName, ...workflow, steps };
+  renderPlanCard(moduleName, workflow, steps);
+  $('#scriptName').value = title;
+  switchView('recording');
+
+  state.recording = true;
+  updateRecordingButtons();
+  const banner = $('#recordingBanner');
+  if (banner) {
+    banner.hidden = false;
+    $('#recordingStepIndicator').textContent = `⚡ AI recording live: "${title}"…`;
+  }
+
+  toast(`Launching AI browser automation for "${title}"…`);
+  try {
+    const res = await api('/workflows/ai-record', {
+      method: 'POST',
+      body: JSON.stringify({ module: moduleName, workflow: { ...workflow, steps } })
+    });
+    if (!res?.ok) throw new Error(res?.error || 'Failed to start AI recording');
+
+    activeAiRecordKey = res.key;
+    pollAiRecordJob(res.key, title, steps);
+  } catch (err) {
+    state.recording = false;
+    activeAiRecordKey = null;
+    if (activeAiPollInterval) { clearInterval(activeAiPollInterval); activeAiPollInterval = null; }
+    updateRecordingButtons();
+    alert(`Could not start AI recording: ${err.message}`);
+  }
 }
 
-async function generateAiPlan(clarification = null) {
-  const promptInput = $('#aiPlanPromptInput');
-  const userPrompt = activeAiPlan?.userPrompt || promptInput.value.trim();
+function pollAiRecordJob(key, title, planSteps = []) {
+  if (activeAiPollInterval) clearInterval(activeAiPollInterval);
+
+  function updateSidepanelPlanProgress(currentStepIdx) {
+    const items = document.querySelectorAll('#selectedWorkflow .plan-step-item');
+    items.forEach((item, idx) => {
+      if (idx < currentStepIdx) {
+        item.classList.add('done');
+        item.classList.remove('ai-active');
+      } else if (idx === currentStepIdx) {
+        item.classList.add('ai-active');
+        item.classList.remove('done');
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        item.classList.remove('done', 'ai-active');
+      }
+    });
+  }
+
+  activeAiPollInterval = setInterval(async () => {
+    try {
+      const res = await api(`/workflows/ai-record?key=${encodeURIComponent(key)}`);
+      if (!res?.ok || !res.job) return;
+      const job = res.job;
+
+      if (job.state === 'running') {
+        const lastLog = job.log?.[job.log.length - 1] || 'Driving browser…';
+        const cleanMsg = lastLog.replace(/^turn \d+:\s*/i, '');
+        const banner = $('#recordingBanner');
+        if (banner) {
+          banner.hidden = false;
+          $('#recordingStepIndicator').textContent = `⚡ ${cleanMsg}`;
+        }
+
+        let stepIdx = 0;
+        const turnMatch = lastLog.match(/turn\s+(\d+)/i);
+        if (turnMatch) {
+          stepIdx = Math.min(Math.max(0, parseInt(turnMatch[1], 10) - 1), Math.max(0, planSteps.length - 1));
+        }
+        updateSidepanelPlanProgress(stepIdx);
+      } else if (job.state === 'done') {
+        if (activeAiPollInterval) { clearInterval(activeAiPollInterval); activeAiPollInterval = null; }
+        activeAiRecordKey = null;
+        state.recording = false;
+        updateRecordingButtons();
+        document.querySelectorAll('#selectedWorkflow .plan-step-item').forEach((item) => {
+          item.classList.add('done');
+          item.classList.remove('ai-active');
+        });
+
+        const scriptName = job.result?.scriptName;
+        if (scriptName) {
+          try {
+            const r = await send({ type: 'PANEL_LIBRARY_GET', name: scriptName });
+            if (r?.ok && r.item?.script) {
+              await send({ type: 'PANEL_LOAD_SCRIPT', script: r.item.script });
+              await loadState();
+              const humanTitle = r.item.script.title || formatHumanTitle(r.item.script.name) || title;
+              $('#scriptName').value = humanTitle;
+              switchView('recording');
+            }
+          } catch (loadErr) {
+            console.warn('Could not auto-load script into sidebar:', loadErr);
+          }
+        }
+
+        toast(`✓ AI recording complete for "${title}"!`);
+        alert(`✓ AI browser recording complete for "${title}"!\n\nCaptured script has been loaded into the sidebar with drafted narration, ready to review and render.`);
+        await refreshAll();
+      } else if (job.state === 'failed') {
+        if (activeAiPollInterval) { clearInterval(activeAiPollInterval); activeAiPollInterval = null; }
+        activeAiRecordKey = null;
+        state.recording = false;
+        updateRecordingButtons();
+        alert(`AI recording stopped: ${job.error || 'unknown error'}`);
+      }
+    } catch (_) {}
+  }, 1500);
+}
+
+let activeRecordAiPlan = null; // { userPrompt, plan, previousPlan }
+
+function getModuleUnlinkedWorkflows(modName) {
+  if (!catalog?.modules) return [];
+  const modGroup = catalog.modules.find((m) => m.module.toLowerCase() === modName.toLowerCase());
+  if (!modGroup) return [];
+  const articles = getModuleArticles(modName);
+  return (modGroup.workflows || []).filter((w) => {
+    const isAutoLinked = articles.some((article) => articleMatches(w, article));
+    const isManuallyLinked = manualLinks.has(w.title);
+    const isDismissed = dismissedWorkflows.has(w.title);
+    return !isAutoLinked && !isManuallyLinked && !isDismissed;
+  });
+}
+
+function populateRecordModalModules() {
+  const select = $('#recordModuleSelect');
+  if (!select) return;
+
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">Select a module…</option>';
+
+  const moduleMap = new Map();
+  for (const group of catalog.modules || []) {
+    moduleMap.set(group.module.toLowerCase(), group);
+  }
+
+  const orderedModules = [];
+  for (const modName of WORKFLOW_MODULE_ORDER) {
+    if (moduleMap.has(modName.toLowerCase())) {
+      orderedModules.push(modName);
+      moduleMap.delete(modName.toLowerCase());
+    }
+  }
+  for (const remaining of moduleMap.values()) {
+    orderedModules.push(remaining.module);
+  }
+
+  for (const modName of orderedModules) {
+    const unlinked = getModuleUnlinkedWorkflows(modName);
+    const opt = document.createElement('option');
+    opt.value = modName;
+    opt.textContent = `${modName} (${unlinked.length} opportunities)`;
+    select.appendChild(opt);
+  }
+
+  if (currentVal) {
+    select.value = currentVal;
+    renderRecordModalOpportunities(currentVal);
+  } else {
+    $('#recordModalOppsList').hidden = true;
+    $('#recordModalOppsList').innerHTML = '';
+  }
+}
+
+function renderRecordModalOpportunities(moduleName) {
+  const list = $('#recordModalOppsList');
+  if (!list) return;
+
+  if (!moduleName) {
+    list.hidden = true;
+    list.innerHTML = '';
+    return;
+  }
+
+  const unlinked = getModuleUnlinkedWorkflows(moduleName);
+  list.hidden = false;
+
+  if (!unlinked.length) {
+    list.innerHTML = '<div class="muted small" style="padding: 10px; text-align: center;">All workflows in this module have linked articles ✓</div>';
+    return;
+  }
+
+  list.innerHTML = unlinked.map((w) => {
+    const stepCount = (w.steps?.length || 0);
+    const route = w.startRoute || w.start_route || '';
+    return `
+      <div class="record-opp-item">
+        <div class="record-opp-info">
+          <div class="record-opp-title">${esc(w.title)}</div>
+          <div class="record-opp-purpose">${esc(w.purpose || '')}</div>
+          <div class="record-opp-meta">
+            <span class="badge">${stepCount} step${stepCount === 1 ? '' : 's'}</span>
+            ${route ? `<span class="plan-route-pill">${esc(route)}</span>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:5px;">
+          <button class="primary record-opp-ai-btn" type="button" title="Launch AI browser automation to perform and record this workflow live">⚡ Auto-record</button>
+          <button class="secondary record-opp-action-btn" type="button" title="Record this workflow manually">● Manual</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.record-opp-item').forEach((itemEl, i) => {
+    const w = unlinked[i];
+    itemEl.querySelector('.record-opp-ai-btn').onclick = () => {
+      startAiBrowserRecording(moduleName, w);
+    };
+    itemEl.querySelector('.record-opp-action-btn').onclick = async () => {
+      closeRecordStartModal();
+      await chooseWorkflow(moduleName, w, true);
+    };
+  });
+}
+
+function openRecordStartModal() {
+  activeRecordAiPlan = null;
+  const currentTitle = $('#scriptName').value.trim();
+  $('#recordAiPromptInput').value = currentTitle;
+  $('#recordPlanClarifyInput').value = '';
+
+  const currentPlanBox = $('#recordModalCurrentPlanBox');
+  if (selected?.steps && selected.steps.length > 0) {
+    if (currentPlanBox) currentPlanBox.hidden = false;
+    const planTitleEl = $('#recordModalCurrentPlanTitle');
+    if (planTitleEl) planTitleEl.textContent = `${selected.title || 'Selected Workflow'} (${selected.steps.length} steps)`;
+  } else {
+    if (currentPlanBox) currentPlanBox.hidden = true;
+  }
+
+  showRecordModalView('choice');
+  populateRecordModalModules();
+  $('#recordStartModal').hidden = false;
+  setTimeout(() => $('#recordAiPromptInput').focus(), 50);
+}
+
+function closeRecordStartModal() {
+  $('#recordStartModal').hidden = true;
+  activeRecordAiPlan = null;
+}
+
+function showRecordModalView(viewName) {
+  $('#recordModalChoiceView').hidden = viewName !== 'choice';
+  $('#recordModalLoadingView').hidden = viewName !== 'loading';
+  $('#recordModalReviewView').hidden = viewName !== 'review';
+}
+
+async function generateRecordAiPlan(clarification = null) {
+  const promptInput = $('#recordAiPromptInput');
+  const userPrompt = activeRecordAiPlan?.userPrompt || promptInput.value.trim();
 
   if (!userPrompt) {
     promptInput.focus();
     return alert('Please describe what you want to achieve in the walkthrough.');
   }
 
-  showAiPlanView('loading');
+  showRecordModalView('loading');
 
   const payload = {
     userPrompt,
-    previousPlan: clarification ? activeAiPlan?.plan : null,
+    previousPlan: clarification ? activeRecordAiPlan?.plan : null,
     clarification: clarification || null
   };
 
@@ -675,29 +1066,26 @@ async function generateAiPlan(clarification = null) {
 
   if (!res?.ok || !res.plan) {
     alert(res?.error || 'Could not generate walkthrough plan. Please try again.');
-    if (activeAiPlan?.plan) {
-      showAiPlanView('review');
+    if (activeRecordAiPlan?.plan) {
+      showRecordModalView('review');
     } else {
-      showAiPlanView('prompt');
+      showRecordModalView('choice');
     }
     return;
   }
 
   const plan = res.plan;
-  activeAiPlan = {
+  activeRecordAiPlan = {
     userPrompt,
     plan,
-    previousPlan: activeAiPlan?.plan || null
+    previousPlan: activeRecordAiPlan?.plan || null
   };
 
-  // Render review card
-  $('#aiPlanModuleTag').textContent = plan.module || 'Workflow';
-  $('#aiPlanProposedTitle').textContent = plan.title || 'Proposed Walkthrough';
-  $('#aiPlanProposedSummary').textContent = plan.summary || '';
-  $('#scriptName').value = plan.title || '';
-  send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: plan.title } });
+  $('#recordPlanModuleTag').textContent = plan.module || 'Workflow';
+  $('#recordPlanProposedTitle').textContent = plan.title || 'Proposed Walkthrough';
+  $('#recordPlanProposedSummary').textContent = plan.summary || '';
 
-  const stepsList = $('#aiPlanProposedStepsList');
+  const stepsList = $('#recordPlanProposedStepsList');
   stepsList.innerHTML = (plan.steps || []).map((s, i) => `
     <li class="plan-step-item">
       <span class="plan-step-num">${i + 1}.</span>
@@ -705,23 +1093,22 @@ async function generateAiPlan(clarification = null) {
     </li>
   `).join('');
 
-  $('#aiPlanClarifyInput').value = '';
-  toggleAiAcceptMenu(false);
-  showAiPlanView('review');
+  $('#recordPlanClarifyInput').value = '';
+  showRecordModalView('review');
 }
 
-function toggleAiAcceptMenu(open) {
-  const menu = $('#aiPlanAcceptMenu');
-  if (!menu) return;
-  const shouldOpen = typeof open === 'boolean' ? open : menu.hidden;
-  menu.hidden = !shouldOpen;
-  $('#aiPlanAcceptBtn')?.closest('.ai-dropdown-wrapper')?.classList.toggle('open', shouldOpen);
+function refineRecordAiPlan() {
+  const clarification = $('#recordPlanClarifyInput').value.trim();
+  if (!clarification) {
+    $('#recordPlanClarifyInput').focus();
+    return alert('Please enter clarification or details on what to change.');
+  }
+  generateRecordAiPlan(clarification);
 }
 
-function acceptAiPlanNow() {
-  toggleAiAcceptMenu(false);
-  if (!activeAiPlan?.plan) return;
-  const plan = activeAiPlan.plan;
+async function acceptAndRecordPlan() {
+  if (!activeRecordAiPlan?.plan) return;
+  const plan = activeRecordAiPlan.plan;
   const mod = plan.module || 'Workflow';
   const steps = plan.steps || [];
 
@@ -729,7 +1116,7 @@ function acceptAiPlanNow() {
   renderPlanCard(mod, plan, steps);
   $('#scriptName').value = plan.title || '';
 
-  send({
+  await send({
     type: 'PANEL_UPDATE_SCRIPT',
     patch: {
       name: plan.title,
@@ -739,16 +1126,13 @@ function acceptAiPlanNow() {
     }
   });
 
-  activeAiPlan = null;
-  $('#aiPlanPromptInput').value = '';
-  $('#aiPlanClarifyInput').value = '';
-  showAiPlanView('prompt');
+  closeRecordStartModal();
+  await startRecordingDirectly();
 }
 
-async function acceptAiPlanLater() {
-  toggleAiAcceptMenu(false);
-  if (!activeAiPlan?.plan) return;
-  const plan = activeAiPlan.plan;
+async function saveRecordPlanLater() {
+  if (!activeRecordAiPlan?.plan) return;
+  const plan = activeRecordAiPlan.plan;
   const mod = plan.module || 'Testing program';
   const title = plan.title;
 
@@ -767,35 +1151,16 @@ async function acceptAiPlanLater() {
     });
 
     refreshAll().catch(() => {});
-
-    alert(`✓ Added "${title}" as a recording opportunity under ${mod} on the Workflows tab.`);
-
-    activeAiPlan = null;
-    $('#aiPlanPromptInput').value = '';
-    $('#aiPlanClarifyInput').value = '';
-    showAiPlanView('prompt');
+    closeRecordStartModal();
+    toast(`✓ Saved "${title}" as an opportunity on Workflows tab.`);
   } catch (err) {
     alert(`Could not save opportunity: ${err.message}`);
   }
 }
 
-function dismissAiPlan() {
-  toggleAiAcceptMenu(false);
-  if (!confirm('Dismiss this AI-generated plan?')) return;
-  activeAiPlan = null;
-  $('#aiPlanPromptInput').value = '';
-  $('#aiPlanClarifyInput').value = '';
-  showAiPlanView('prompt');
-}
-
-function refineAiPlan() {
-  toggleAiAcceptMenu(false);
-  const clarification = $('#aiPlanClarifyInput').value.trim();
-  if (!clarification) {
-    $('#aiPlanClarifyInput').focus();
-    return alert('Please enter clarification or details on what to change.');
-  }
-  generateAiPlan(clarification);
+async function recordWithNoPlan() {
+  closeRecordStartModal();
+  await startRecordingDirectly();
 }
 
 let isRenderingActive = false;
@@ -834,6 +1199,29 @@ function updateRecordingBanner() {
 }
 
 async function cancelRecording() {
+  if (activeAiPollInterval) {
+    clearInterval(activeAiPollInterval);
+    activeAiPollInterval = null;
+  }
+  const banner = $('#recordingBanner');
+  if (banner) banner.hidden = true;
+
+  if (activeAiRecordKey) {
+    if (!confirm('Stop the active AI recording?')) return;
+    const keyToStop = activeAiRecordKey;
+    activeAiRecordKey = null;
+    try {
+      await api('/workflows/ai-record/stop', { method: 'POST', body: JSON.stringify({ key: keyToStop }) });
+    } catch (_) {}
+    state.recording = false;
+    updateRecordingButtons();
+    return;
+  }
+
+  try {
+    await api('/workflows/ai-record/stop', { method: 'POST', body: JSON.stringify({}) });
+  } catch (_) {}
+
   if (state.steps?.length && !confirm('Cancel this recording? Captured steps will be discarded.')) return;
   await send({ type: 'PANEL_STOP' });
   await send({ type: 'PANEL_CLEAR' });
@@ -903,6 +1291,11 @@ async function detectEnvironment() {
 }
 
 async function startRecording() {
+  if (state.recording) return;
+  openRecordStartModal();
+}
+
+async function startRecordingDirectly() {
   const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
   if (!tab?.id || !/^https?:/.test(tab.url || '')) return alert('Open PROD or Staging in the active tab before recording.');
 
@@ -1244,9 +1637,10 @@ async function resetRecordingSession() {
   renderTimer = null;
   isRenderingActive = false;
   selected = null;
-  activeAiPlan = null;
+  activeRecordAiPlan = null;
+  activeViewPlanModal = null;
 
-  // 1. Immediately reset DOM inputs and notices
+  // 1. Immediately reset DOM inputs, notices, and modal states
   $('#selectedWorkflow').hidden = true;
   $('#selectedWorkflow').innerHTML = '';
   $('#scriptName').value = '';
@@ -1257,12 +1651,16 @@ async function resetRecordingSession() {
   $('#pylonArticleLink').hidden = true;
   $('#renderStatus').classList.remove('ready');
   $('#renderStatus').textContent = '';
-  showAiPlanView('prompt');
+  $('#stepCount').textContent = '';
+  $('#stepCount').hidden = true;
+  $('#steps').innerHTML = '';
+  closeRecordStartModal();
 
   // 2. Clear local in-memory state and redraw empty list immediately
   state.steps = [];
   state.script = { name: '' };
   state.recordingId = null;
+  state.recording = false;
   renderSteps();
   updateRenderButtons();
   updateRecordingButtons();
@@ -1494,37 +1892,44 @@ $('#savedScriptsModal').onclick = (e) => {
   if (e.target.id === 'savedScriptsModal') closeSavedScriptsModal();
 };
 
-// AI Walkthrough Plan Generator
-$('#aiPlanGenerateBtn').onclick = () => generateAiPlan();
-$('#aiPlanPromptInput').onkeydown = (e) => {
+// Record Start Prompt Modal
+$('#closeRecordModalBtn').onclick = closeRecordStartModal;
+$('#recordStartModal').onclick = (e) => {
+  if (e.target.id === 'recordStartModal') closeRecordStartModal();
+};
+$('#recordModalCurrentPlanBtn').onclick = () => {
+  closeRecordStartModal();
+  startRecordingDirectly();
+};
+$('#recordModuleSelect').onchange = (e) => {
+  renderRecordModalOpportunities(e.target.value);
+};
+$('#recordNoPlanBtn').onclick = recordWithNoPlan;
+$('#recordAiGenerateBtn').onclick = () => generateRecordAiPlan();
+$('#recordAiPromptInput').onkeydown = (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
-    generateAiPlan();
+    generateRecordAiPlan();
   }
 };
-$('#aiPlanAcceptBtn').onclick = (e) => {
-  e.stopPropagation();
-  toggleAiAcceptMenu();
-};
-$('#aiPlanAcceptNowBtn').onclick = acceptAiPlanNow;
-$('#aiPlanAcceptLaterBtn').onclick = acceptAiPlanLater;
-$('#aiPlanDismissBtn').onclick = dismissAiPlan;
-$('#aiPlanIterateBtn').onclick = refineAiPlan;
-$('#aiPlanClarifyInput').onkeydown = (e) => {
+$('#recordPlanIterateBtn').onclick = refineRecordAiPlan;
+$('#recordPlanClarifyInput').onkeydown = (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
-    refineAiPlan();
+    refineRecordAiPlan();
   }
 };
-
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.ai-dropdown-wrapper')) {
-    toggleAiAcceptMenu(false);
-  }
-});
+$('#recordPlanAcceptAndRecordBtn').onclick = acceptAndRecordPlan;
+$('#recordPlanSaveLaterBtn').onclick = saveRecordPlanLater;
+$('#recordPlanDismissBtn').onclick = closeRecordStartModal;
 
 // View & Enhance Plan Modal
 $('#closeViewPlanModalBtn').onclick = closeViewPlanModal;
+$('#viewPlanAiRecordBtn').onclick = () => {
+  if (!activeViewPlanModal) return;
+  const wf = activeViewPlanModal.enhancedPlan || activeViewPlanModal.currentPlan || activeViewPlanModal.originalWorkflow;
+  startAiBrowserRecording(activeViewPlanModal.module, wf);
+};
 $('#viewPlanEnhanceBtn').onclick = enhancePlanInModal;
 $('#viewPlanIterateBtn').onclick = refinePlanInModal;
 $('#viewPlanAcceptBtn').onclick = acceptEnhancedPlanInModal;
@@ -1592,6 +1997,18 @@ $('#dismissResetBtn').onclick = resetRecordingSession;
 
 $('#refreshWorkflowsBtn').onclick = async () => {
   const btn = $('#refreshWorkflowsBtn');
+  btn.classList.add('refreshing');
+  try {
+    await refreshAll();
+  } finally {
+    setTimeout(() => btn.classList.remove('refreshing'), 400);
+  }
+};
+
+$('#pylonSearch').oninput = renderPylonArticles;
+
+$('#refreshPylonBtn').onclick = async () => {
+  const btn = $('#refreshPylonBtn');
   btn.classList.add('refreshing');
   try {
     await refreshAll();

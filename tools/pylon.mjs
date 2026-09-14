@@ -14,6 +14,7 @@ const PYLON_BASE = 'https://api.usepylon.com';
 // first. Override via env if these ever change or a second destination is needed.
 export const PYLON_KNOWLEDGE_BASE_ID = process.env.PYLON_KB_ID || '01dbe3ef-3f4e-46d5-ba0f-0cde759181ec';
 export const PYLON_COLLECTION_ID = process.env.PYLON_COLLECTION_ID || '27c811bc-d80c-4cea-a093-99a497541a89';
+export const PYLON_OTHER_COLLECTION_ID = '4bb77da6-c839-49b6-917a-85714c1f2446';
 // stephen@hadrius.com — the only real operator of Studio today; override via env if that changes.
 export const PYLON_AUTHOR_USER_ID = process.env.PYLON_AUTHOR_USER_ID || '43712c62-4d4c-4869-9fc2-cfec07320d9d';
 
@@ -27,10 +28,12 @@ const PYLON_MODULE_COLLECTIONS = {
   'communications': '1ce37e6f-f0aa-407a-abca-d01d1acb752c',
   'marketing': '2fc02445-6485-4a26-8367-70cbfe9649b5',
   'account surveillance': '973aa1d0-4caf-4893-b822-d92d3995eb71',
+  'other': PYLON_OTHER_COLLECTION_ID,
 };
-/** The right sub-collection for a workflow's module, or the "Hadrius Studio" parent if unknown. */
+/** The right sub-collection for a workflow's module, or the "Other" collection if unknown. */
 export function pylonCollectionForModule(module) {
-  return PYLON_MODULE_COLLECTIONS[String(module || '').trim().toLowerCase()] || PYLON_COLLECTION_ID;
+  const m = String(module || '').trim().toLowerCase();
+  return PYLON_MODULE_COLLECTIONS[m] || PYLON_OTHER_COLLECTION_ID;
 }
 
 function token() {
@@ -90,7 +93,8 @@ export const PYLON_MODULE_COLLECTION_MAP = Object.freeze({
   'Branches': 'ffcfda19-1492-4824-8c18-9ab130392418',
   'Communications': '1ce37e6f-f0aa-407a-abca-d01d1acb752c',
   'Marketing': '2fc02445-6485-4a26-8367-70cbfe9649b5',
-  'Account Surveillance': '973aa1d0-4caf-4893-b822-d92d3995eb71'
+  'Account Surveillance': '973aa1d0-4caf-4893-b822-d92d3995eb71',
+  'Other': PYLON_OTHER_COLLECTION_ID
 });
 
 export function pylonArticleUrl(article) {

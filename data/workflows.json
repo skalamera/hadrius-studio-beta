@@ -5,6 +5,31 @@
       "module": "Testing program",
       "workflows": [
         {
+          "title": "How to schedule a calendar task",
+          "purpose": "Schedule a new compliance task, assign it to a team member, configure its frequency, and add it to the firm's compliance calendar.",
+          "startRoute": "/testing-program/calendar",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to Testing program > Calendar",
+            "Click a day cell on the calendar grid to open the day details panel",
+            "Click \"New Task\" in the day details panel header",
+            "Enter the task name in the \"Title\" field",
+            "Select a due date using the date picker next to the Title field",
+            "Optionally enter task instructions in the \"Description\" textarea",
+            "Click the assignee dropdown and select an employee, or leave it as \"Unassigned\"",
+            "Click the recurrence dropdown and choose a repeat frequency (e.g. \"Does not repeat\", \"Daily\", or \"Custom...\")",
+            "Click \"Add Task\" to save and schedule the new calendar task"
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_page.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/schedule_task_dialog.tsx"
+          ],
+          "status": "covered",
+          "linkedScript": "How-to-schedule-a-calendar-task"
+        },
+        {
           "title": "How to sync the testing calendar to an external calendar",
           "purpose": "Generate and copy an iCal subscription link to automatically sync scheduled compliance test deadlines with external calendar applications such as Google Calendar, Apple Calendar, or Outlook.",
           "startRoute": "/testing-program/calendar",
@@ -651,24 +676,95 @@
         },
         {
           "title": "How to acknowledge a business risk during test review",
-          "purpose": "Accept a flagged issue as an acknowledged business risk during test review with supporting notes and severity level without blocking test approval.",
+          "purpose": "Accept a flagged issue as a known, acceptable business risk instead of requiring a fix, without blocking approval.",
           "startRoute": "/testing-program/tests",
-          "trigger": "",
+          "trigger": "\"Requires attention\" → \"Business risk acknowledged\"",
           "priority": "medium",
           "steps": [
             "Navigate to Testing program > Tests",
-            "Click on the test run currently under review to open its questionnaire details",
-            "Locate the flagged question and click \"Requires attention\" beneath the response",
+            "Open the test run you are reviewing so its questionnaire loads on the \"Tests\" tab",
+            "Scroll to the flagged question and click \"Requires attention\" beneath its answer",
             "In the \"Requires attention\" dialog, select the \"Business risk acknowledged\" outcome",
-            "Select the appropriate risk tier from the \"Severity level\" dropdown",
-            "Enter an explanation of why the risk is acceptable in the \"Add note\" field",
+            "Select the risk's \"Severity level\" from the dropdown (optional)",
+            "Enter an explanation of why the risk is acceptable in \"Add note\"",
             "Click \"Save & complete\" to record the business risk and close the dialog",
-            "Confirm that the \"Business risk acknowledged\" badge appears on the question card without blocking test completion"
+            "Confirm the \"Business risk acknowledged\" outcome badge now appears under the question, and that approval is not blocked"
           ],
-          "evidence": [],
+          "evidence": [
+            {
+              "instruction": "Navigate to Testing program > Tests",
+              "route": "/testing-program/tests",
+              "controlLabel": "Tests",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/utils.ts",
+              "symbol": "SidebarNav",
+              "quote": "Navigate to Testing program > Tests"
+            },
+            {
+              "instruction": "Open the test run you are reviewing so its questionnaire loads on the \"Tests\" tab",
+              "route": "/testing-program/tests",
+              "controlLabel": "Tests tab",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/page_test_details.tsx",
+              "symbol": "PageTestDetails",
+              "quote": "value=\"test_runs\""
+            },
+            {
+              "instruction": "Scroll to the flagged question and click \"Requires attention\" beneath its answer",
+              "route": "/testing-program/tests",
+              "controlLabel": "Requires attention",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/question_review_actions.tsx",
+              "symbol": "QuestionReviewActions",
+              "quote": "<Button ...>Requires attention</Button>"
+            },
+            {
+              "instruction": "In the \"Requires attention\" dialog, select the \"Business risk acknowledged\" outcome",
+              "route": "/testing-program/tests",
+              "controlLabel": "Business risk acknowledged",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+              "symbol": "ReviewOutcomeForms",
+              "quote": "value=\"BUSINESS_RISK_ACKNOWLEDGED\""
+            },
+            {
+              "instruction": "Select the risk's \"Severity level\" from the dropdown (optional)",
+              "route": "/testing-program/tests",
+              "controlLabel": "Severity level",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+              "symbol": "BusinessRiskForm",
+              "quote": "placeholder=\"Select severity\""
+            },
+            {
+              "instruction": "Enter an explanation of why the risk is acceptable in \"Add note\"",
+              "route": "/testing-program/tests",
+              "controlLabel": "Add note",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+              "symbol": "BusinessRiskForm",
+              "quote": "placeholder=\"Add note...\""
+            },
+            {
+              "instruction": "Click \"Save & complete\" to record the business risk and close the dialog",
+              "route": "/testing-program/tests",
+              "controlLabel": "Save & complete",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+              "symbol": "BusinessRiskForm",
+              "quote": "Save & complete"
+            },
+            {
+              "instruction": "Confirm the \"Business risk acknowledged\" outcome badge now appears under the question, and that approval is not blocked",
+              "route": "/testing-program/tests",
+              "controlLabel": "Business risk acknowledged badge",
+              "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/question_review_actions.tsx",
+              "symbol": "QuestionReviewActions",
+              "quote": "Business risk acknowledged"
+            }
+          ],
           "sources": [
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_run_detail.tsx",
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/dialogs/requires_attention_dialog.tsx"
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/question_review_actions.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/test_run_questionnaire_flow.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/page_test_details.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/utils.ts",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
+            "apps/hadrius-app/pages/firm_oversight_v2/tests/[id]/index.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx"
           ],
           "status": "missing"
         },
