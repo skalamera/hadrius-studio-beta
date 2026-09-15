@@ -1475,10 +1475,15 @@ const server = http.createServer(async (req, res) => {
                   const titleKey = it.title.toLowerCase();
                   seenTitles.add(titleKey);
                   const localMatch = localWorkflowMap.get(`${module.toLowerCase()}::${titleKey}`);
+                  // The local file is the plan that was audited against the codebase; the shared row
+                  // only carries coverage state (linked script, dismissed, status). So when both exist,
+                  // the local purpose/route/steps/prerequisites win — the shared start_route is often
+                  // the pre-audit guess (e.g. "/finra" for a page that actually lives at
+                  // "/finra?tab=br_filings"), and it has no prerequisite fields at all.
                   workflows.push({
                     title: it.title,
-                    purpose: it.description || localMatch?.purpose || '',
-                    startRoute: it.start_route || localMatch?.startRoute || `/${candSlug(module)}`,
+                    purpose: localMatch?.purpose || it.description || '',
+                    startRoute: localMatch?.startRoute || it.start_route || `/${candSlug(module)}`,
                     trigger: it.trigger || localMatch?.trigger || '',
                     priority: it.priority || localMatch?.priority || 'medium',
                     steps: localMatch?.steps?.length ? localMatch.steps : [
@@ -1487,6 +1492,11 @@ const server = http.createServer(async (req, res) => {
                     ],
                     evidence: localMatch?.evidence || [],
                     sources: localMatch?.sources || [it.source_file].filter(Boolean),
+                    prerequisites: Array.isArray(localMatch?.prerequisites) ? localMatch.prerequisites : [],
+                    provisionable: localMatch?.provisionable || null,
+                    blockerReason: localMatch?.blockerReason || '',
+                    suggestedSetupSteps: Array.isArray(localMatch?.suggestedSetupSteps) ? localMatch.suggestedSetupSteps : [],
+                    fileFixtureKind: localMatch?.fileFixtureKind || null,
                     linkedScript: it.linked_script || null,
                     status: it.status || 'missing'
                   });
