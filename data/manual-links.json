@@ -6,5 +6,11 @@
   "How to create and launch a certification campaign",
   "How to change a branch's operational status (and close a FINRA branch)",
   "How to schedule a calendar task",
-  "How to correct how a policy's sections were parsed"
+  "How to correct how a policy's sections were parsed",
+  "How to reopen a resolved finding",
+  "How to acknowledge a business risk during test review",
+  "How to bulk assign tests and categories to an entity",
+  "How to export all of an entity's testing data",
+  "How to link a control to a policy section",
+  "How to link a test to additional entities"
 ]

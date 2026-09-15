@@ -148,6 +148,15 @@
       <div class="view-plan-body">
         <p id="viewPlanModalSummary" class="plan-card-subtitle"></p>
 
+        <div id="viewPlanPrerequisitesSection" class="view-plan-prerequisites" hidden>
+          <div class="view-plan-section-header">
+            <strong>Before you record</strong>
+            <span id="viewPlanPrereqBadge" class="badge" hidden></span>
+          </div>
+          <ul id="viewPlanPrerequisitesList" class="plan-prereq-list"></ul>
+          <p id="viewPlanBlockerNote" class="prereq-blocker-note" hidden></p>
+        </div>
+
         <div class="view-plan-steps-section">
           <div class="view-plan-section-header">
             <div style="display:flex;align-items:center;gap:6px;">

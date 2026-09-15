@@ -413,7 +413,12 @@
     // renders near-instantly and persists across every navigation regardless of whether the actual
     // routed page has mounted yet — an unscoped count can be satisfied by that alone.
     else if (msg.type === 'KB_SETTLED') {
-      const busy = !!document.querySelector('[aria-busy="true"],.animate-spin');
+      // packages/ui/src/page_elements/LoadingSpinner.tsx (med/large size) renders <Image alt="Loading...">
+      // for a whole-page/whole-panel loading gate (e.g. entitiesLoading) — it sets neither aria-busy nor
+      // any spinner class, so it was invisible to the check below and let "settled" fire while this was
+      // still the only thing on screen. Its small-size TailSpin variant has no detectable attribute either,
+      // but that one's only ever used inline (e.g. inside a button), not as a page-blocking loader.
+      const busy = !!document.querySelector('[aria-busy="true"],.animate-spin,img[alt="Loading..."]');
       const saving = /Saving\.\.\./.test(document.body.innerText);
       const appRoot = document.getElementById('__next') || document.body;
       // Excludes the sidebar (nav/header chrome) on top of the #__next scoping: the sidebar's

@@ -605,6 +605,41 @@ function renderViewPlanContent(plan, isProposed = false) {
   $('#viewPlanModalTitle').textContent = plan.title || activeViewPlanModal?.originalWorkflow?.title || '';
   $('#viewPlanModalSummary').textContent = plan.summary || plan.purpose || '';
 
+  const prereqSection = $('#viewPlanPrerequisitesSection');
+  const prereqList = $('#viewPlanPrerequisitesList');
+  const prereqBadge = $('#viewPlanPrereqBadge');
+  const blockerNote = $('#viewPlanBlockerNote');
+  const prerequisites = plan.prerequisites || activeViewPlanModal?.originalWorkflow?.prerequisites || [];
+  const provisionable = plan.provisionable || activeViewPlanModal?.originalWorkflow?.provisionable || null;
+  const blockerReason = plan.blockerReason || activeViewPlanModal?.originalWorkflow?.blockerReason || '';
+  if (prerequisites.length > 0 || blockerReason) {
+    prereqSection.hidden = false;
+    prereqList.innerHTML = prerequisites.map((p) => `<li class="plan-prereq-item">${esc(p)}</li>`).join('') || '<li class="plan-prereq-item">No special setup needed.</li>';
+    if (provisionable === 'structurally-blocked') {
+      prereqBadge.textContent = 'Cannot be set up via UI';
+      prereqBadge.className = 'badge blocked';
+      prereqBadge.hidden = false;
+    } else if (provisionable === 'self-serve-quick' || provisionable === 'needs-deliberate-setup') {
+      prereqBadge.textContent = 'Needs setup first';
+      prereqBadge.className = 'badge needs-setup';
+      prereqBadge.hidden = false;
+    } else if (provisionable) {
+      prereqBadge.textContent = 'Usually ready';
+      prereqBadge.className = 'badge ready';
+      prereqBadge.hidden = false;
+    } else {
+      prereqBadge.hidden = true;
+    }
+    if (blockerReason) {
+      blockerNote.textContent = `Why this can't be auto-set-up: ${blockerReason}`;
+      blockerNote.hidden = false;
+    } else {
+      blockerNote.hidden = true;
+    }
+  } else {
+    prereqSection.hidden = true;
+  }
+
   const steps = Array.isArray(plan.steps) ? plan.steps : resolveSteps(mod, plan);
   $('#viewPlanStepsCount').textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
 
@@ -641,7 +676,10 @@ function openViewPlanModal(moduleName, workflow) {
       startRoute: workflow.startRoute || workflow.start_route,
       summary: workflow.purpose || workflow.summary || '',
       steps: resolveSteps(moduleName, workflow),
-      sources: workflow.sources || []
+      sources: workflow.sources || [],
+      prerequisites: workflow.prerequisites || [],
+      provisionable: workflow.provisionable || null,
+      blockerReason: workflow.blockerReason || ''
     },
     enhancedPlan: null
   };
@@ -1374,12 +1412,12 @@ async function stopAndNarrate() {
   await loadState();
   if (!state.steps.length) return;
   $('#narrationStatus').hidden = false;
-  $('#narrationStatus').textContent = 'Drafting narration with Gemini…';
+  $('#narrationStatus').textContent = 'Drafting narration…';
   const payload = state.steps.map((s) => ({index:s.index,action:s.action,key:s.key,route:s.route,target:s.target ? {role:s.target.role,name:s.target.name,label:s.target.label,text:s.target.text,placeholder:s.target.placeholder}:null}));
   const result = await send({type:'PANEL_AI_NARRATE',steps:payload,scriptName:$('#scriptName').value.trim()});
   if (result?.ok && Array.isArray(result.lines)) {
     for (let i=0;i<state.steps.length;i++) if (result.lines[i]) await send({type:'PANEL_UPDATE_STEP',index:state.steps[i].index,patch:{narration:result.lines[i],caption:result.lines[i]}});
-    $('#narrationStatus').textContent = `Narration drafted automatically with ${result.model?.startsWith('gemini')?'Gemini':'Claude fallback'}. Review any line below before rendering.`;
+    $('#narrationStatus').textContent = `Narration drafted automatically with ${result.model?.startsWith('gemini')?'Gemini fallback':'Claude'}. Review any line below before rendering.`;
   } else $('#narrationStatus').textContent = `Narration could not be drafted: ${result?.error || 'unknown error'}. Your recording is saved.`;
   await loadState();
 }

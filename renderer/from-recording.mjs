@@ -22,6 +22,18 @@ if (!fs.existsSync(recDir)) { console.error(`no captured slides at ${recDir} —
 
 fs.mkdirSync(path.join(outDir, 'slides'), { recursive: true });
 
+// Width/height live in the IHDR chunk, always first: 8-byte signature, 4-byte length, 4-byte "IHDR".
+function readPngSize(file) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(24);
+    fs.readSync(fd, head, 0, 24, 0);
+    fs.closeSync(fd);
+    if (head.toString('latin1', 1, 4) !== 'PNG' || head.toString('latin1', 12, 16) !== 'IHDR') return null;
+    return { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
+  } catch { return null; }
+}
+
 const report = {
   name: script.name,
   title: script.title || script.name,
@@ -47,14 +59,20 @@ for (const step of script.steps) {
   const outFile = `slide_${String(slideNo).padStart(2, '0')}.png`;
   fs.copyFileSync(src, path.join(outDir, 'slides', outFile));
 
-  // Recorded bbox/viewport are in CSS pixels (getBoundingClientRect); the captured PNG is in the
-  // tab's actual device pixels. Scale by the recorded devicePixelRatio so the Ken Burns target and
-  // the interactive HTML's hotspot land in the same coordinate space as the image itself.
-  const dpr = step.dpr || 1;
+  // Recorded bbox/viewport are in CSS pixels (getBoundingClientRect / innerWidth); the captured PNG is
+  // whatever size captureVisibleTab actually produced, which need not be CSS px × devicePixelRatio —
+  // a recording made at 80% browser zoom gave a 2000×1125 CSS viewport but a 1600×900 PNG, and the
+  // saved script carried no dpr at all, so every highlight landed 25% too far right/down. Measure the
+  // PNG and scale by the real ratio, so the drawn highlight and the interactive hotspot always land
+  // in the image's own coordinate space no matter the zoom, display scaling, or whether dpr was saved.
+  const png = readPngSize(src);
   const bbox = step.target?.hint?.bbox;
   const viewport = step.target?.hint?.viewport;
-  const target = bbox ? { x: Math.round(bbox.x * dpr), y: Math.round(bbox.y * dpr), width: Math.round(bbox.w * dpr), height: Math.round(bbox.h * dpr) } : null;
-  const vp = viewport ? { width: Math.round(viewport.w * dpr), height: Math.round(viewport.h * dpr) } : { width: 1600, height: 900 };
+  const sx = png && viewport?.w ? png.width / viewport.w : (step.dpr || 1);
+  const sy = png && viewport?.h ? png.height / viewport.h : (step.dpr || 1);
+  const target = bbox ? { x: Math.round(bbox.x * sx), y: Math.round(bbox.y * sy), width: Math.round(bbox.w * sx), height: Math.round(bbox.h * sy) } : null;
+  const vp = png ? { width: png.width, height: png.height }
+    : viewport ? { width: Math.round(viewport.w * sx), height: Math.round(viewport.h * sy) } : { width: 1600, height: 900 };
 
   report.slides.push({
     slide: slideNo,

@@ -2,7 +2,7 @@
 # Render only from slides captured during the live recording. No browser replay.
 set -euo pipefail
 cd "$(dirname "$0")"
-export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 S="${1:?usage: ./render.sh path/to/walkthrough.script.json}"
 N=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['name'])" "$S")
 RID=$(python3 -c "import json,sys; print((json.load(open(sys.argv[1])).get('recording') or {}).get('id',''))" "$S")

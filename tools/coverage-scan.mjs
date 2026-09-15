@@ -180,6 +180,29 @@ function cliError(err, stderr, timeout) {
   return new Error(`claude CLI ${why}${detail ? `: ${detail}` : ''}`);
 }
 
+/**
+ * execFile's own `timeout` option only signals the DIRECT child. Both the `claude` and `gemini`
+ * CLIs are themselves Node launchers that fork a real worker process — killing the launcher leaves
+ * that worker running as an orphan, so the intended timeout never actually bounds wall-clock time
+ * (observed: a `gemini` worker kept burning CPU for 3+ minutes after its 25s timeout should have
+ * fired, hanging an entire AI-recorder turn on one unanswered "consult"). Spawning `detached` makes
+ * the child the leader of its own process group, so killing `-pid` (negative = the whole group)
+ * reaches every descendant, not just the one Node is directly tracking.
+ */
+function killProcessGroupSoon(child, timeoutMs, signal) {
+  const graceMs = 3000; // let execFile's own timeout/killSignal try first; this is the backstop
+  const killGroup = () => {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch (_) {}
+    try { child.kill('SIGKILL'); } catch (_) {}
+  };
+  const timer = setTimeout(killGroup, timeoutMs + graceMs);
+  timer.unref?.();
+  // A user cancelling mid-call aborts `signal` immediately — execFile's own abort handling kills
+  // only the direct child (same orphan gap as the timeout), so do the group-kill here too.
+  signal?.addEventListener?.('abort', killGroup, { once: true });
+  return () => { clearTimeout(timer); signal?.removeEventListener?.('abort', killGroup); };
+}
+
 function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = ALLOWED_TOOLS, noTools = false, systemPrompt = null, model = planModel(), signal, onMeta } = {}) {
   return new Promise((resolve, reject) => {
     const args = ['-p', prompt, '--output-format', 'json', '--max-turns', String(maxTurns), '--model', model];
@@ -187,7 +210,8 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
     if (noTools) args.push('--tools', '', '--strict-mcp-config', '--no-session-persistence');
     else if (allowedTools) args.push('--allowedTools', allowedTools);
     if (systemPrompt) args.push('--system-prompt', systemPrompt);
-    const child = execFile('claude', args, { maxBuffer: 1024 * 1024 * 40, timeout, signal, env: claudeEnv() }, (err, stdout, stderr) => {
+    const child = execFile('claude', args, { maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env: claudeEnv() }, (err, stdout, stderr) => {
+      clearWatchdog();
       if (err?.name === 'AbortError') return reject(new Error('cancelled'));
       if (err && !stdout) return reject(cliError(err, stderr, timeout));
       try {
@@ -201,6 +225,7 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
         resolve(parsed.result ?? stdout);
       } catch { resolve(stdout.trim()); }
     });
+    const clearWatchdog = killProcessGroupSoon(child, timeout, signal);
     // The prompt is in argv; close stdin or the CLI waits ~3s per call for piped input that never comes.
     child.stdin?.end();
   });
@@ -221,7 +246,8 @@ function runGeminiCli(prompt, { timeout = 600000, signal, onMeta } = {}) {
   return new Promise((resolve, reject) => {
     const args = ['-p', prompt, '--output-format', 'json', '--approval-mode', 'plan', '--skip-trust'];
     const env = { ...process.env, GEMINI_CLI_TRUST_WORKSPACE: 'true' };
-    const child = execFile('gemini', args, { maxBuffer: 1024 * 1024 * 40, timeout, signal, env }, (err, stdout, stderr) => {
+    const child = execFile('gemini', args, { maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env }, (err, stdout, stderr) => {
+      clearWatchdog();
       if (err?.name === 'AbortError') return reject(new Error('cancelled'));
       if (err && !stdout) return reject(new Error(`Gemini CLI failed: ${String(stderr || err.message).trim().slice(0, 500)}`));
       try {
@@ -241,6 +267,7 @@ function runGeminiCli(prompt, { timeout = 600000, signal, onMeta } = {}) {
         if (stdout.trim()) resolve(stdout.trim()); else reject(parseErr);
       }
     });
+    const clearWatchdog = killProcessGroupSoon(child, timeout, signal);
     child.stdin?.end();
   });
 }
@@ -446,7 +473,9 @@ IMPORTANT RULES:
    - "route": the URL route where this happens
    - "control_label": exact button/input label or tab name
    - "evidence": { "file": "apps/...", "symbol": "...", "quote": "exact short code snippet" }
-4. Return ONLY a valid JSON object in this exact shape:
+4. Also determine "prerequisites": what must already exist in the app (a record in a specific status, a permission, a feature flag, a second entity) before these steps are actually possible — a fresh/typical company might not have it by default. Use search_code to check for disabled-state conditions, role/permission gates, or feature flags backing the action. Skip file uploads (already handled automatically by the recorder). List each as a short plain-English line. Empty array if nothing special is required.
+5. Set "provisionable" to one of: "none-needed" (works on any account), "likely-already-present" (a normal active company already has this kind of data), "self-serve-quick" (missing by default but any operator could create it in a couple of clicks first), "needs-deliberate-setup" (needs a longer multi-step sequence first), or "structurally-blocked" (cannot be created through the UI at all in this environment — e.g. only a backend seed, an external system sync, or a feature flag flip by Hadrius ops could do it). If "structurally-blocked", also set "blocker_reason" to the specific, cited reason.
+6. Return ONLY a valid JSON object in this exact shape:
 {
   "title": "${cand.title}",
   "description": "${cand.description || cand.purpose || ''}",
@@ -461,7 +490,10 @@ IMPORTANT RULES:
       "evidence": { "file": "apps/...", "symbol": "...", "quote": "..." }
     }
   ],
-  "sources": ["apps/..."]
+  "sources": ["apps/..."],
+  "prerequisites": ["short line each: role, data or setting required"],
+  "provisionable": "none-needed",
+  "blocker_reason": ""
 }
 `;
 
@@ -511,7 +543,10 @@ IMPORTANT RULES:
       trigger: String(plan.trigger || cand.trigger || '').trim() || `button "${cand.title}"`,
       priority: ['high', 'medium', 'low'].includes(plan.priority) ? plan.priority : (cand.priority || 'medium'),
       steps,
-      sources: [...new Set((plan.sources || [cand.target_component]).map(String).filter(Boolean))]
+      sources: [...new Set((plan.sources || [cand.target_component]).map(String).filter(Boolean))],
+      prerequisites: Array.isArray(plan.prerequisites) ? plan.prerequisites.map(String).filter(Boolean) : [],
+      provisionable: ['none-needed', 'likely-already-present', 'self-serve-quick', 'needs-deliberate-setup', 'structurally-blocked'].includes(plan.provisionable) ? plan.provisionable : null,
+      blocker_reason: String(plan.blocker_reason || '').trim()
     };
   } catch (err) {
     log(`    ! Worker plan fallback for "${cand.title}": ${err.message}`);

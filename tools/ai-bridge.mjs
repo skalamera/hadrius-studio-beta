@@ -686,7 +686,8 @@ IMPORTANT RULES:
    (or "Other" if genuinely none of these).
 3. Step 1 MUST ALWAYS be the starting navigation step: "Navigate to <Module> > <Tab>".
 4. Followed by 3 to 10 clear, imperative steps. Each step must reference exact visible UI labels in quotes, e.g. Click "Add policy", Enter policy name in "Policy title", Click "Save".
-5. Return ONLY a valid JSON object (no markdown fence, no surrounding prose) in this exact shape:
+5. Also determine "prerequisites": what must already exist in the app (a record in a specific status, a permission, a feature flag, a second entity) before these steps are actually possible — a fresh/typical company might not have it by default. Skip file uploads (already handled automatically by the recorder). List each as a short plain-English line; empty array if nothing special is required. Set "provisionable" to one of "none-needed", "likely-already-present", "self-serve-quick", "needs-deliberate-setup", or "structurally-blocked" (cannot be created through the UI at all here) — if "structurally-blocked", also set "blockerReason" to the specific, cited reason.
+6. Return ONLY a valid JSON object (no markdown fence, no surrounding prose) in this exact shape:
 {
   "title": "Clean, human-readable walkthrough title (e.g. How to add a new policy)",
   "module": "Testing program",
@@ -697,7 +698,10 @@ IMPORTANT RULES:
     "Click \\"Add policy\\" to open the dialog.",
     ...
   ],
-  "sources": ["apps/hadrius-app/src/..."]
+  "sources": ["apps/hadrius-app/src/..."],
+  "prerequisites": ["short line each: role, data or setting required"],
+  "provisionable": "none-needed",
+  "blockerReason": ""
 }
 `;
 
@@ -1182,7 +1186,10 @@ async function publishRenderToPylon(name, outDir) {
   const screenshotSlides = [...new Set(rawScreenshots.filter((n) => slides.some((s) => s.slide === n)))].slice(0, MAX_KB_SCREENSHOTS);
   for (const n of screenshotSlides) {
     const slide = slides.find((s) => s.slide === n);
-    const slidePath = path.join(outDir, 'slides', slide.file);
+    // assemble.py writes annotated/<file> (highlight + pointer burned in) for every slide with a
+    // target; fall back to the bare capture for slides that had nothing to point at.
+    const annotatedPath = path.join(outDir, 'annotated', slide.file);
+    const slidePath = fs.existsSync(annotatedPath) ? annotatedPath : path.join(outDir, 'slides', slide.file);
     const placeholder = `[[SCREENSHOT:${n}]]`;
     if (!bodyHtml.includes(placeholder)) continue;
     try {
@@ -1600,7 +1607,10 @@ const server = http.createServer(async (req, res) => {
               priority: workflow.priority,
               steps: (workflow.steps || []).map((step) => step.instruction).filter(Boolean),
               evidence: (workflow.steps || []).map((step) => ({ instruction: step.instruction, route: step.route, controlLabel: step.control_label, ...step.evidence })),
-              sources: workflow.sources || []
+              sources: workflow.sources || [],
+              prerequisites: workflow.prerequisites || [],
+              provisionable: workflow.provisionable || null,
+              blockerReason: workflow.blocker_reason || ''
             }))
           }));
           if (modules.some((entry) => entry.workflows.length)) {
@@ -1731,6 +1741,9 @@ const server = http.createServer(async (req, res) => {
             steps: Array.isArray(workflow.steps) ? workflow.steps : [],
             evidence: workflow.evidence || [],
             sources: workflow.sources || [workflow.source_file].filter(Boolean),
+            prerequisites: Array.isArray(workflow.prerequisites) ? workflow.prerequisites : [],
+            provisionable: workflow.provisionable || null,
+            blockerReason: workflow.blockerReason || '',
             status: 'missing'
           };
           if (existingIdx >= 0) {
@@ -1858,6 +1871,39 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- Workflow AI Recording: drive browser with Playwright using the enhanced plan ----
+  if (req.method === 'POST' && u.pathname === '/workflows/ai-record/stop') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { key } = JSON.parse(body || '{}');
+        let stoppedAny = false;
+        if (key) {
+          const job = aiJobs.get(key);
+          if (job && aiBusy(job)) {
+            job.controller?.abort();
+            job.state = 'failed';
+            job.error = 'Cancelled by user';
+            stoppedAny = true;
+          }
+        } else {
+          for (const [k, job] of aiJobs.entries()) {
+            if (aiBusy(job)) {
+              job.controller?.abort();
+              job.state = 'failed';
+              job.error = 'Cancelled by user';
+              stoppedAny = true;
+            }
+          }
+        }
+        return sendJson(res, 200, { ok: true, message: stoppedAny ? 'AI recording stopped' : 'No running job' });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
+  }
+
   if (u.pathname === '/workflows/ai-record') {
     if (req.method === 'POST') {
       let body = '';
@@ -1878,7 +1924,8 @@ const server = http.createServer(async (req, res) => {
             start_route: startRoute,
             description: workflow.purpose || workflow.summary || '',
             trigger: workflow.trigger || '',
-            steps: Array.isArray(workflow.steps) ? workflow.steps : []
+            steps: Array.isArray(workflow.steps) ? workflow.steps : [],
+            prerequisites: Array.isArray(workflow.prerequisites) ? workflow.prerequisites : []
           };
 
           const existing = aiJobs.get(key);
@@ -1888,7 +1935,7 @@ const server = http.createServer(async (req, res) => {
 
           if (item.steps.length) {
             const normSteps = item.steps.map((s) => (typeof s === 'string' ? { instruction: s } : s));
-            setPlan(key, { title, module: targetModule, steps: normSteps, summary: item.description }, title);
+            setPlan(key, { title, module: targetModule, steps: normSteps, summary: item.description, prerequisites: item.prerequisites }, title);
           }
 
           aiJobs.set(key, {
@@ -1906,39 +1953,6 @@ const server = http.createServer(async (req, res) => {
           pumpAiQueue();
 
           return sendJson(res, 202, { ok: true, key, message: `Queued AI recording for "${title}"` });
-        } catch (e) {
-          return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
-        }
-      });
-      return;
-    }
-
-    if (req.method === 'POST' && u.pathname === '/workflows/ai-record/stop') {
-      let body = '';
-      req.on('data', (c) => (body += c));
-      req.on('end', async () => {
-        try {
-          const { key } = JSON.parse(body || '{}');
-          let stoppedAny = false;
-          if (key) {
-            const job = aiJobs.get(key);
-            if (job && aiBusy(job)) {
-              job.controller?.abort();
-              job.state = 'failed';
-              job.error = 'Cancelled by user';
-              stoppedAny = true;
-            }
-          } else {
-            for (const [k, job] of aiJobs.entries()) {
-              if (aiBusy(job)) {
-                job.controller?.abort();
-                job.state = 'failed';
-                job.error = 'Cancelled by user';
-                stoppedAny = true;
-              }
-            }
-          }
-          return sendJson(res, 200, { ok: true, message: stoppedAny ? 'AI recording stopped' : 'No running job' });
         } catch (e) {
           return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
         }
@@ -2315,24 +2329,24 @@ const server = http.createServer(async (req, res) => {
         if (!Array.isArray(steps) || !steps.length) throw new Error('no steps provided');
 
         let lines = null;
-        let model = 'gemini-3.8-flash';
+        let model = 'claude';
         let fallbackReason = null;
 
         try {
-          lines = await runGemini(steps, scriptName);
-        } catch (geminiErr) {
-          fallbackReason = String(geminiErr?.message || geminiErr);
-          console.warn(`Gemini drafting failed (${fallbackReason}), temporarily falling back to Claude CLI...`);
           const result = await runClaudeCli(buildPrompt(steps, scriptName));
           const match = result.match(/\[[\s\S]*\]/);
           lines = JSON.parse(match ? match[0] : result);
-          model = 'claude';
+        } catch (claudeErr) {
+          fallbackReason = String(claudeErr?.message || claudeErr);
+          console.warn(`Claude CLI failed (${fallbackReason}), falling back to gemini-3.8-flash...`);
+          lines = await runGemini(steps, scriptName);
+          model = 'gemini-3.8-flash';
         }
 
         if (!Array.isArray(lines)) throw new Error('model did not return a JSON array');
         lines = sanitizeNarrationLines(lines);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'gemini', fallbackReason } : {}) }));
+        res.end(JSON.stringify({ ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'claude', fallbackReason } : {}) }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
@@ -2658,7 +2672,7 @@ const render = { running: false, name: null, mode: 'both', phase: 'idle', log: [
 
 function startRender(scriptPath, name, prelude = [], mode = 'both') {
   Object.assign(render, { running: true, name, mode, phase: 'replaying', log: [...prelude], outDir: path.join(REPO_ROOT, 'out', name), video: null, interactive: null, report: null, error: null, startedAt: render.startedAt || Date.now(), finishedAt: null, pylon: null });
-  const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.npm-global/bin:${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
+  const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.local/node/bin:${process.env.HOME}/.npm-global/bin:${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
   const onLine = (chunk) => {
     for (const raw of String(chunk).split('\n')) {
       const line = raw.replace(/\x1b\[[0-9;]*m/g, '').trimEnd();

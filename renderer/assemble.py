@@ -126,6 +126,13 @@ def build_segment(s):
     stage = 0
     if NEEDS_DRAWN_HIGHLIGHT and s.get('target'):
         hp = tmp / f"hl{s['slide']:02d}.png"; highlight_png(s['target'], sw, sh, hp)
+        # Same frame the video shows (highlight + pointer, no caption bar), kept as a still so the
+        # knowledge-base article's screenshots match the video instead of being the bare capture.
+        ann = out / 'annotated'; ann.mkdir(exist_ok=True)
+        overlay = Image.open(hp).convert('RGBA')
+        still = im.convert('RGB').resize((W, H), Image.LANCZOS)
+        still.paste(overlay, (0, 0), overlay)
+        still.save(ann / s['file'])
         inputs += ['-loop', '1', '-i', str(hp)]
         stage += 1
         chain.append(f"[v{stage - 1}][{stage}:v]overlay=0:0[v{stage}]")

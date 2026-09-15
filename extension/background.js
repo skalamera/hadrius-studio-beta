@@ -32,20 +32,87 @@ chrome.runtime.onInstalled.addListener(() => chrome.sidePanel.setPanelBehavior({
 // no second staging visit. One capture per step, reused for both the panel's thumbnail (existing
 // behavior) and the full-res slide asset (new), so recording stays within Chrome's ~2/s
 // captureVisibleTab rate limit.
-async function captureStep(step, attempt = 0) {
+// Give the route a chance to actually finish rendering before the pixels get frozen into a slide —
+// otherwise a step captured right after a navigation (or a click that triggers one) can catch the
+// loading spinner or a skeleton table instead of the real content. Reuses content.js's own
+// KB_SETTLED heuristic (same one the AI recorder relies on before reading a page).
+//
+// A single poll is not enough, though — confirmed live against staging: the app's sidebar alone
+// satisfies the element-count part of the check at all times, so "settled" hinges on a loading
+// indicator being present at the exact instant of the poll, and there are two windows with none:
+// the un-hydrated SSR shell right after a full page load (before the app mounts its loader), and
+// the beat between a client-side URL change and React swapping in the new route's skeleton. One
+// poll in either window passes, and the capture then lands on the skeleton. So a settled reading
+// only counts once it has held for `stable` consecutive polls and at least `minMs` have elapsed.
+async function waitForSettled(tabId, { maxMs = 6000, intervalMs = 250, minMs = 0, stable = 1 } = {}) {
+  const start = Date.now();
+  let run = 0, errors = 0, busySeen = false, lastErr = null;
+  while (Date.now() - start < maxMs) {
+    try {
+      const r = await chrome.tabs.sendMessage(tabId, { type: 'KB_SETTLED' });
+      errors = 0;
+      if (r?.settled) run++; else { run = 0; busySeen = true; }
+      if (run >= stable && Date.now() - start >= minMs) return { settled: true, ms: Date.now() - start, busySeen };
+    } catch (e) {
+      lastErr = String(e?.message || e);
+      // No listener at all (not a Hadrius page, or the recorder isn't injected) — nothing to wait on.
+      if (++errors >= 3) return { settled: true, ms: Date.now() - start, busySeen, error: lastErr };
+    }
+    await new Promise((res) => setTimeout(res, intervalMs));
+  }
+  return { settled: false, ms: Date.now() - start, busySeen, error: lastErr };
+}
+
+// A click is captured at pointerdown and must show the page as it was before the click, so it only
+// waits if the page is actually mid-load at that moment. A navigation always changes the page, so it
+// gets a grace period long enough to outlast both blind windows above; the very first slide comes
+// right after a full page load and gets a longer one for hydration.
+function settleOptsFor(step) {
+  if (step.action !== 'navigate') return { minMs: 0, stable: 1 };
+  return step.index === 0 ? { minMs: 2500, stable: 3, maxMs: 8000 } : { minMs: 1500, stable: 3 };
+}
+
+// Staging can take longer to finish loading a data-heavy route than our first wait allows for (seen
+// elsewhere this session: multi-second table/export latency). Rather than raise the first wait so
+// high it delays every step, give a slow step one more chance in the background to settle and
+// silently replace the slide with the fully-loaded version — same captureId, so it overwrites the
+// file already saved rather than adding a duplicate.
+async function recaptureIfSettles(step, tabId, recordingId) {
+  try {
+    const { settled, ms } = await waitForSettled(tabId, { maxMs: 12000, intervalMs: 300, stable: 3 });
+    console.log(`[capture] step ${step.index} background recheck settled=${settled} after ${ms}ms`);
+    if (!settled || !state.recording) return;
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return;
+    const png = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    step.thumb = png;
+    await bridge('POST', `/capture/${encodeURIComponent(recordingId)}/slide`, { captureId: step.captureId, dataUrl: png });
+    broadcast({ type: 'KB_STEPS_UPDATED', steps: state.steps });
+  } catch (_) {}
+}
+
+async function captureStep(step, attempt = 0, settled = null) {
   try {
     const tab = await chrome.tabs.get(state.tabId);
     if (!tab) return;
+    // Wait once per step, not once per attempt — but a retry after a captureVisibleTab failure must
+    // still know whether that wait timed out, or the background re-capture below never fires for it.
+    if (settled === null) {
+      const r = await waitForSettled(state.tabId, settleOptsFor(step));
+      settled = r.settled;
+      console.log(`[capture] step ${step.index} (${step.action} ${step.route || ''}) settled=${settled} after ${r.ms}ms busySeen=${r.busySeen}${r.error ? ` err=${r.error}` : ''}`);
+    }
     const png = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
     step.thumb = png;
     if (!state.recordingId) state.recordingId = crypto.randomUUID();
     await bridge('POST', `/capture/${encodeURIComponent(state.recordingId)}/slide`, { captureId: step.captureId, dataUrl: png });
+    if (!settled) recaptureIfSettles(step, state.tabId, state.recordingId);
   } catch (e) {
     step.thumbError = String(e?.message || e);
     // Retry up to 3 times to handle Chrome capture rate limit and page transitions
     if (attempt < 3 && state.recording) {
       await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
-      return captureStep(step, attempt + 1);
+      return captureStep(step, attempt + 1, settled);
     }
   }
 }
