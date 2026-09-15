@@ -16,26 +16,30 @@ A Chrome side-panel extension for producing short Hadrius knowledge-base walkthr
 
 ## Install
 
-Requirements: Node 20+, Python 3, FFmpeg, Chrome, and a `GEMINI_API_KEY`. `setup.sh` installs Gemini CLI; Claude CLI is optional fallback.
+Requirements: macOS (or Linux), Google Chrome, and a Claude subscription for the Claude CLI. `setup.sh` installs everything else it can't find — Node, Python tooling, FFmpeg, the Claude CLI, the Hadrius codebase MCP, Playwright's Chromium — and registers the bridge as a background service, so there is nothing to keep running by hand.
 
 ```bash
-cp .env.example .env
-./setup.sh
-npm start
+bash setup.sh
 ```
 
-Set `PYLON_API_TOKEN` and `GEMINI_API_KEY` in `.env`. `setup.sh` configures the Hadrius codebase MCP for Gemini CLI. If Claude CLI is installed, it remains fallback-only.
+Setup asks for the team's `STUDIO_SHARED_SECRET` (ask Stephen) so you share the same workflows and script library as everyone else. It then tells you which optional keys are missing from `.env`:
 
-In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `extension/`.
+- `PYLON_API_TOKEN` — needed for **Render + Article** and the Recorded tab's Pylon sync.
+- `GEMINI_API_KEY` — optional; only used as a fallback when the Claude CLI is unavailable.
+
+Afterwards, sign in once: `claude login`, then `claude mcp login hadrius-codebase` (the Hadrius codebase MCP is what grounds plans and narration in the real source).
+
+In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select the `extension/` folder. Pin **Hadrius Studio** from the extensions menu.
 
 ## Use
 
-1. Keep `npm start` running.
-2. Open the Studio side panel while on any Hadrius PROD or Staging company.
-3. Choose a workflow and review its recording plan.
-4. Click **Record** and perform the workflow normally.
-5. Click **Stop & draft narration**. Gemini immediately drafts narration; Claude is used only if Gemini is unavailable.
-6. Edit any action, narration, or caption, then click **Render MP4**.
+1. Open the Studio side panel while on any Hadrius PROD or Staging company (the bridge runs in the background; the dot in the header is green when it's reachable).
+2. Either click **Record now** for an ad hoc walkthrough, or **Record from a plan…** to pick an opportunity from the To Record list (or generate a plan with AI — beta).
+3. Perform the workflow normally in the tab.
+4. Click **Stop & draft narration**. Claude drafts narration grounded in the codebase; Gemini is used only if the Claude CLI is unavailable.
+5. Edit any action, narration, or caption, then click **Render MP4** (or **Render + Article** to also publish a draft Pylon article).
+
+Anything marked **Beta** in amber — Auto-record, Enhance Plan, Generate plan, Scan codebase — is AI-driven and can be inconsistent. Review its output before recording or publishing, and be especially careful with Auto-record, which drives your browser on its own.
 
 Outputs are written to `out/<walkthrough name>/`.
 
