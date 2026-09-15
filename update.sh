@@ -11,6 +11,23 @@ REPO_URL="https://github.com/skalamera/hadrius-studio-beta.git"
 
 echo "=== Updating Hadrius Studio Beta ==="
 
+# Sanity check: this script updates whatever folder IT lives in (same rule as
+# setup.sh), not whatever folder you happened to run it from. If someone drops
+# it into ~/Downloads and runs it there without moving it into their existing
+# install first, refuse rather than silently git-initing a stray clone into a
+# random directory — that would also steal port 8787 from their real bridge
+# when setup.sh runs.
+if [[ ! -f extension/manifest.json && -n "$(ls -A . 2>/dev/null)" ]]; then
+  echo "This doesn't look like a Hadrius Studio Beta folder (no extension/manifest.json)," >&2
+  echo "and the current folder ($(pwd)) isn't empty either." >&2
+  echo >&2
+  echo "update.sh updates whatever folder it's placed in — move it into your" >&2
+  echo "existing install and run it from there, e.g.:" >&2
+  echo "  mv ~/Downloads/update.sh ~/hadrius-studio-beta/" >&2
+  echo "  cd ~/hadrius-studio-beta && bash update.sh" >&2
+  exit 1
+fi
+
 # 0. Ensure git is installed
 if ! command -v git >/dev/null; then
   echo "Git not found. Installing..."
