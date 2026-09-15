@@ -88,7 +88,7 @@ fi
 if ! command -v node >/dev/null; then
   echo "Node.js not found. Installing Node.js LTS automatically..."
 
-  if [[ "$OS" == "Darwin" && $(command -v brew) ]]; then
+  if [[ "$OS" == "Darwin" ]] && command -v brew >/dev/null; then
     echo "Installing Node via Homebrew..."
     brew install node
   elif [[ "$OS" == "Darwin" ]]; then
@@ -186,7 +186,7 @@ if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null || ! ffmpeg
   mkdir -p "$HOME/.local/bin"
   export PATH="$HOME/.local/bin:$PATH"
 
-  if [[ "$OS" == "Darwin" && $(command -v brew) ]]; then
+  if [[ "$OS" == "Darwin" ]] && command -v brew >/dev/null; then
     echo "Installing FFmpeg via Homebrew..."
     brew install ffmpeg 2>/dev/null || true
   fi
@@ -305,6 +305,15 @@ fi
 
 if ! grep -qs '^STUDIO_LIBRARY_URL=.\+' .env 2>/dev/null; then
   echo "STUDIO_LIBRARY_URL=https://pylon-webhook-service.vercel.app/api/studio-beta-scripts" >> .env
+fi
+
+# The bridge degrades quietly without these — publishing just fails at render time, and the AI
+# fallback never kicks in — so say up front which optional keys this machine is missing.
+if ! grep -qs '^PYLON_API_TOKEN=.\+' .env 2>/dev/null; then
+  echo "⚠ PYLON_API_TOKEN is not set in .env — 'Render + Article' and the Recorded tab's Pylon sync won't work until it is."
+fi
+if ! grep -qs '^GEMINI_API_KEY=.\+' .env 2>/dev/null; then
+  echo "ℹ GEMINI_API_KEY is not set in .env — optional; it's only the fallback when the Claude CLI is unavailable."
 fi
 
 # Configure Hadrius Codebase MCP for Claude Code if installed

@@ -79,7 +79,7 @@ function updateScanStatus(scan) {
     }
     if (scanBtn) {
       scanBtn.disabled = false;
-      scanBtn.textContent = 'Scan codebase';
+      scanBtn.innerHTML = 'Scan codebase <span class="beta-chip">Beta</span>';
     }
   }
 }
@@ -302,7 +302,7 @@ function renderModules() {
 
     for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="primary aiRecord" title="Launch AI browser automation to perform and record this workflow live">⚡ Auto-record</button><button class="secondary choose" title="Record this workflow manually">Record manually</button><button class="secondary plan">View plan</button><button class="secondary markLinked" title="Mark this workflow as done">Mark as done</button><button class="secondary dismissWf" title="Dismiss or delete this opportunity">✕ Dismiss</button></div>`;
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="ai-beta aiRecord" title="Beta — drives your browser autonomously to perform and record this workflow. Results can be inconsistent; use with caution and review the result.">⚡ Auto-record <span class="beta-chip">Beta</span></button><button class="secondary choose" title="Record this workflow manually">Record manually</button><button class="secondary plan">View plan</button><button class="icon-action check markLinked push-right" type="button" title="Mark as done" aria-label="Mark as done">✓</button><button class="icon-action dismissWf" type="button" title="Dismiss this opportunity" aria-label="Dismiss">✕</button></div>`;
       item.querySelector('.aiRecord').onclick = () => startAiBrowserRecording(group.module, workflow);
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
       item.querySelector('.plan').onclick = () => openViewPlanModal(group.module, workflow);
@@ -1032,8 +1032,8 @@ function renderRecordModalOpportunities(moduleName) {
           </div>
         </div>
         <div style="display:flex;gap:5px;">
-          <button class="primary record-opp-ai-btn" type="button" title="Launch AI browser automation to perform and record this workflow live">⚡ Auto-record</button>
-          <button class="secondary record-opp-action-btn" type="button" title="Record this workflow manually">● Manual</button>
+          <button class="primary record-opp-action-btn" type="button" title="Load this plan and start recording">● Record</button>
+          <button class="ai-beta record-opp-ai-btn" type="button" title="Beta — drives your browser autonomously to perform and record this workflow. Results can be inconsistent; use with caution.">⚡ Auto <span class="beta-chip">Beta</span></button>
         </div>
       </div>
     `;
@@ -1069,7 +1069,7 @@ function openRecordStartModal() {
   showRecordModalView('choice');
   populateRecordModalModules();
   $('#recordStartModal').hidden = false;
-  setTimeout(() => $('#recordAiPromptInput').focus(), 50);
+  setTimeout(() => $('#recordModuleSelect').focus(), 50);
 }
 
 function closeRecordStartModal() {
@@ -1196,8 +1196,9 @@ async function saveRecordPlanLater() {
   }
 }
 
-async function recordWithNoPlan() {
-  closeRecordStartModal();
+// Ad hoc recording: no plan, no modal — capture whatever the person does next in the active tab.
+async function recordNow() {
+  if (state.recording) return;
   await startRecordingDirectly();
 }
 
@@ -1942,7 +1943,7 @@ $('#recordModalCurrentPlanBtn').onclick = () => {
 $('#recordModuleSelect').onchange = (e) => {
   renderRecordModalOpportunities(e.target.value);
 };
-$('#recordNoPlanBtn').onclick = recordWithNoPlan;
+$('#recordNowBtn').onclick = recordNow;
 $('#recordAiGenerateBtn').onclick = () => generateRecordAiPlan();
 $('#recordAiPromptInput').onkeydown = (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {

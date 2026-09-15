@@ -40,7 +40,8 @@
     <section class="record-controls">
       <input id="scriptName" placeholder="Walkthrough name">
       <div class="record-button-row">
-        <button id="recordBtn" class="primary" type="button">● Record</button>
+        <button id="recordNowBtn" class="primary record-now-btn" type="button" title="Start recording this tab right away — no plan needed. Narration is drafted when you stop."><span class="rec-dot-live">●</span> Record now</button>
+        <button id="recordBtn" class="secondary" type="button" title="Pick an existing opportunity, or generate a plan first">Record from a plan…</button>
         <button id="openSavedBtn" class="secondary" type="button" title="Load a saved walkthrough script to view, edit, or re-render">📂 Saved scripts</button>
         <button id="stopBtn" class="danger" type="button" hidden>■ Stop & draft narration</button>
         <button id="cancelRecordBtn" class="secondary" type="button" hidden>✕ Cancel recording</button>
@@ -71,7 +72,7 @@
   <main id="workflowsView" hidden>
     <section class="toolbar">
       <input id="search" type="search" placeholder="Search workflows…">
-      <button id="scanBtn" class="secondary">Scan codebase</button>
+      <button id="scanBtn" class="ai-beta" title="Beta — AI scans the codebase for new opportunities. Results can be inconsistent; review new plans before recording.">Scan codebase <span class="beta-chip">Beta</span></button>
     </section>
     <p id="syncStatus" class="muted">Loading workflows…</p>
     <div id="modules"></div>
@@ -163,7 +164,7 @@
               <strong id="viewPlanStepsHeader">Walkthrough Steps</strong>
               <span id="viewPlanStepsCount" class="badge"></span>
             </div>
-            <button id="viewPlanAiRecordBtn" class="primary ai-gen-btn" type="button" title="Launch AI browser automation to perform and record this plan live">⚡ Auto-record with AI</button>
+            <button id="viewPlanAiRecordBtn" class="ai-beta ai-gen-btn" type="button" title="Beta — drives your browser autonomously to perform and record this plan. Results can be inconsistent; use with caution and review the result.">⚡ Auto-record with AI <span class="beta-chip">Beta</span></button>
           </div>
           <div class="view-plan-steps-container">
             <ul id="viewPlanModalStepsList" class="plan-steps-list"></ul>
@@ -191,14 +192,15 @@
             <div class="ai-plan-head" style="margin-bottom: 6px;">
               <span class="ai-sparkle">✨</span>
               <div class="ai-plan-title-group">
-                <strong style="font-size: 12px;">Enhance plan with AI</strong>
+                <strong style="font-size: 12px;">Enhance plan with AI <span class="beta-chip">Beta</span></strong>
                 <p class="muted small" style="margin: 0; line-height: 1.3;">Optionally prompt the AI to focus on specific buttons, dialogs, or workflow requirements.</p>
+                <p class="ai-caution">AI output can be inconsistent — review the proposed steps before accepting.</p>
               </div>
             </div>
             <div class="view-plan-prompt-row">
               <textarea id="viewPlanAiPromptInput" rows="2" placeholder="e.g. Focus on the bulk action bar and confirmation dialog, or leave blank to auto-ground with codebase..."></textarea>
               <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
-                <button id="viewPlanEnhanceBtn" class="primary ai-gen-btn" type="button">✨ Enhance Plan</button>
+                <button id="viewPlanEnhanceBtn" class="ai-beta ai-gen-btn" type="button" title="Beta — AI-enhanced plans can be inconsistent. Review before accepting.">✨ Enhance Plan</button>
               </div>
             </div>
           </div>
@@ -233,7 +235,7 @@
             <span class="rec-dot">●</span>
             <strong>Start Recording</strong>
           </div>
-          <h3 id="recordModalHeading" class="plan-card-title">How would you like to begin?</h3>
+          <h3 id="recordModalHeading" class="plan-card-title">Start from a plan</h3>
         </div>
         <button id="closeRecordModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
       </div>
@@ -250,49 +252,13 @@
             <button id="recordModalCurrentPlanBtn" class="primary" type="button" style="white-space: nowrap; padding: 7px 14px; font-weight: 700;">▶ Record this plan →</button>
           </div>
 
-          <!-- Option A: Generate with AI -->
-          <div class="ai-plan-box" style="margin-bottom: 12px;">
-            <div class="ai-plan-head">
-              <span class="ai-sparkle">✨</span>
-              <div class="ai-plan-title-group">
-                <strong>Generate walkthrough plan with AI</strong>
-                <p class="muted small">Describe what you want to achieve to generate a grounded plan from the codebase before recording.</p>
-              </div>
-            </div>
-            <div class="ai-plan-input-row">
-              <textarea id="recordAiPromptInput" rows="2" placeholder="e.g. How to invite a new employee and assign them a compliance officer role…"></textarea>
-              <div class="ai-plan-actions-row">
-                <button id="recordAiGenerateBtn" class="primary ai-gen-btn" type="button">✨ Generate plan</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Divider -->
-          <div class="record-or-divider">
-            <span>or</span>
-          </div>
-
-          <!-- Option B: Continue with no plan -->
-          <div class="record-no-plan-box">
-            <div class="record-no-plan-info">
-              <strong>Record with no plan</strong>
-              <p class="muted small">Jump straight into capturing browser clicks and navigation immediately.</p>
-            </div>
-            <button id="recordNoPlanBtn" class="secondary" type="button">Continue with no plan →</button>
-          </div>
-
-          <!-- Divider -->
-          <div class="record-or-divider">
-            <span>or choose an opportunity</span>
-          </div>
-
-          <!-- Option C: Choose an existing recording opportunity -->
+          <!-- Option A: Choose an existing recording opportunity -->
           <div class="record-opportunities-box">
             <div class="record-opps-header">
               <span class="opps-icon">📋</span>
               <div class="record-opps-title-group">
                 <strong>Record an existing opportunity</strong>
-                <p class="muted small">Select a module to view unrecorded opportunities and jump straight into recording with its plan loaded.</p>
+                <p class="muted small">Pick a module, then a workflow — its plan loads and recording starts.</p>
               </div>
             </div>
             <div class="record-opps-selector-row">
@@ -301,6 +267,29 @@
               </select>
             </div>
             <div id="recordModalOppsList" class="record-modal-opps-list" hidden></div>
+          </div>
+
+          <!-- Divider -->
+          <div class="record-or-divider">
+            <span>or</span>
+          </div>
+
+          <!-- Option B: Generate with AI -->
+          <div class="ai-plan-box ai-beta-box" style="margin-bottom: 4px;">
+            <div class="ai-plan-head">
+              <span class="ai-sparkle">✨</span>
+              <div class="ai-plan-title-group">
+                <strong>Generate walkthrough plan with AI <span class="beta-chip">Beta</span></strong>
+                <p class="muted small">Describe the workflow to get a plan grounded in the codebase before recording.</p>
+                <p class="ai-caution">AI output can be inconsistent — review every step before you record.</p>
+              </div>
+            </div>
+            <div class="ai-plan-input-row">
+              <textarea id="recordAiPromptInput" rows="2" placeholder="e.g. How to invite a new employee and assign them a compliance officer role…"></textarea>
+              <div class="ai-plan-actions-row">
+                <button id="recordAiGenerateBtn" class="ai-beta ai-gen-btn" type="button" title="Beta — AI-generated plans can be inconsistent. Review before recording.">✨ Generate plan</button>
+              </div>
+            </div>
           </div>
         </div>
 
