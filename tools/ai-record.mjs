@@ -511,6 +511,7 @@ Rules:
 - elementId must be a NUMBER copied from the list above (never invent one).
 - Read the "→" outcome of your previous action before choosing. If a dropdown/menu/dialog opened (new option/menuitem elements appeared), your next action is to pick from it — NEVER click the same trigger twice in a row, that closes it again.
 - Never repeat an action that just failed the same way.
+- Finish an open dialog before anything else: fill its fields, then click ITS primary button ("Save", "Create", "Submit"…). Never navigate away, open a menu, or click outside while a dialog holds text you typed — that discards it and you will only have to redo the whole sequence.
 - On list pages the real trigger is often INSIDE an item: if the button you expect isn't on the page, open the relevant row (role=row) or item first and look again. The "starting trigger" hint is a hint, not a guarantee of where it lives.
 - Wizards and forms often GATE later sections behind a required choice at the top (a "Select …" / "Search for …" field, a field marked *, a disabled "Next"). Satisfy that first: type into the search field, wait for the options to appear, click one — only then move on. Clicking section/step tabs does nothing until the gate is satisfied. Use realistic sample data (e.g. pick the first real option offered) — this is a staging demo.
 - Perform the workflow exactly ONCE. As soon as the final action has succeeded (a success message, a redirect, the new record visible in a list, or the form is gone), reply "done" — do not create a second record or start over.
@@ -1046,7 +1047,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
           const { how, file } = await attachFile(page, loc, text);
           onLog(`  attached ${path.basename(file)} (${how})`);
         } else {
-          try { await loc.click({ timeout: 2500 }); } catch (_) {}
+          // Focus, don't click, to start typing: a pointer click on a field bubbles to whatever the
+          // field sits inside — in a dialog rendered within a clickable table row, that click reached
+          // the row's own handler and navigated away mid-rename. Focus has no such side effects.
+          try { await loc.focus({ timeout: 2500 }); } catch (_) { try { await loc.click({ timeout: 2500 }); } catch (_) {} }
           try { await loc.fill(''); } catch (_) {}
           await loc.type(text, { delay: 15 });
         }
