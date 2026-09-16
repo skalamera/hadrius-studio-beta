@@ -1225,6 +1225,218 @@
           ],
           "planUpdatedAt": "2026-09-16T05:38:19.586Z",
           "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Testing program > Controls (the page opens on the \"Register\" tab)",
+            "Confirm the manual version selector in the page header shows the current version (labelled \"(Current)\"); the \"Add control\" button is only shown for the active version",
+            "Click \"Add control\" — the \"Create control\" dialog opens",
+            "Under \"Details\", type a name in the \"Name\" field (placeholder \"Enter control name\") and a description in \"Description\" (placeholder \"Describe the control\")",
+            "Leave \"Compliance Manual Version\" on the active manual",
+            "Under \"Policy and procedures\", fill \"Policy\" (placeholder \"Enter policy reference\") and \"Procedures\" (placeholder \"Enter control procedures\")",
+            "Under \"Associated risks\", use the \"Search risks\" box and tick the checkbox next to one or more risks",
+            "Under \"Associated tests\", use the \"Search tests\" box and tick the checkbox next to one or more tests",
+            "Click \"Create Control\" — the dialog closes and the new control appears in the Register table"
+          ],
+          "purpose": "Author a custom control with a name, description, policy reference and procedures, associate existing risks and tests, and add it to the control register for the active compliance manual version.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_controls.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_control_register.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx"
+          ],
+          "startRoute": "/testing-program/controls",
+          "blockerReason": "",
+          "prerequisites": [
+            "Company has the Testing program (firm_oversight) feature and the risks/controls setting enabled (sidebar hides Risks/Controls when useRisksControlsEnabled is false)",
+            "User has Testing program admin access (Controls tab is admin-only in the sidebar)",
+            "An ACTIVE compliance manual version should exist (without one the dialog still works, using manual_id -1 / 'Current (No manual)')",
+            "Optional: at least one risk and one test exist so the association lists are not empty"
+          ],
+          "provisionable": "likely-already-present",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [],
+          "title": "How to add a new control to the register",
+          "planUpdatedAt": "2026-09-16T05:51:14.523Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Testing program > Entities",
+            "Click \"Add entity\" (top right of the entities table) — the \"Add entity\" dialog opens with the description \"Create a new entity and optionally upload a WSP file.\"",
+            "In \"Entity name\", type an optional suffix (placeholder \"Optional suffix\"); the helper text reads \"This entity will be added to <company name>\"",
+            "In \"Entity tag\", open the select (placeholder \"Select entity type\") and pick an entity type — an \"Entity preview:\" row appears showing the composed name and tag",
+            "Optionally drop a .pdf, .doc or .docx file into the \"Upload WSP\" dropzone",
+            "Click \"Save\" (shows \"Uploading...\" then \"Saving...\") — a toast \"Entity created\" appears and the app navigates to the new entity's Tests page (/firm_oversight_v2/tests?entity=<id>)"
+          ],
+          "purpose": "Register a new legal entity under the company being viewed, tag it with an entity type, and optionally upload its WSP document so a compliance manual is parsed from it.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/entities_section.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/add_entity_dialog.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx"
+          ],
+          "startRoute": "/testing-program/entities",
+          "blockerReason": "",
+          "prerequisites": [
+            "User has Testing program admin access",
+            "The \"Entities\" sidebar tab only appears when the user has admin access AND allCompanies.length > 1 (consultant/multi-company); single-company admins reach the same EntitiesSection via Testing program > Tests when no last-viewed entity redirect fires",
+            "Optional WSP fixture (.pdf/.doc/.docx) if the upload step is recorded"
+          ],
+          "provisionable": "none-needed",
+          "fileFixtureKind": "pdf",
+          "suggestedSetupSteps": [],
+          "title": "How to add a new entity",
+          "planUpdatedAt": "2026-09-16T05:51:14.868Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Testing program > Risks (the page opens on the \"Register\" tab)",
+            "Confirm the compliance manual version selector in the header shows the active version; \"Add risk\" only appears for the active version",
+            "Click \"Add risk\" — the \"Create risk\" dialog opens",
+            "Under \"Details\", type the risk in \"Scenario\" (placeholder \"Describe the risk scenario\")",
+            "Fill \"Guidance\" (placeholder \"Add guidance for managing this risk\") and \"Notes\" (placeholder \"Add notes about this risk\")",
+            "Leave \"Compliance Manual Version\" on the active manual",
+            "Under \"Inherent risk\", drag the \"Impact\" slider between \"Low impact\" (1) and \"Very high impact\" (5); the badge shows the chosen value",
+            "Click \"Create risk\" — the dialog closes, the form resets, and the new risk appears in the Register table"
+          ],
+          "purpose": "Author a custom risk scenario with guidance and notes, set its inherent risk impact on a 1–5 slider, and attach it to a compliance manual version in the risk register.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_risks.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx"
+          ],
+          "startRoute": "/testing-program/risks",
+          "blockerReason": "",
+          "prerequisites": [
+            "Company has the Testing program feature and the risks/controls setting enabled",
+            "User has Testing program admin access (Risks tab is admin-only)",
+            "An ACTIVE compliance manual version should exist"
+          ],
+          "provisionable": "likely-already-present",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [],
+          "title": "How to add a new risk to the register",
+          "planUpdatedAt": "2026-09-16T05:51:15.208Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Testing program > Tests; if the entity list is shown, click the entity's row to open its tests (/firm_oversight_v2/tests?entity=<id>) — the app may auto-redirect to the last viewed entity",
+            "Click \"Add test\" (top right of the tests table) — the create-test wizard opens at /firm_oversight_v2/tests/new?entity_id=<id> with a vertical stepper: \"Test basics\", \"Questionnaire\", \"Scheduling\", \"Ownership\", \"Risks & Controls\", \"Review\"",
+            "On \"Test basics\", enter a \"Test title\" (placeholder \"Give a name to identify this test across the platform\"), optionally a \"Test description (optional)\", choose a \"Manual\" (\"Select a manual...\") and a \"Category\" (\"Select a category...\"), then click \"Next: Questionnaire\"",
+            "On \"Questionnaire\" (section heading \"Add questions\"), add or select the questionnaire template the owner will complete, then click \"Save and next\" (an error \"Add a questionnaire to continue.\" shows if none is set)",
+            "On \"Scheduling\", choose \"One-time\" or \"Recurring\"; for recurring pick a \"Repeat frequency\" (\"Choose frequency\") and \"Set first due date\"; set \"Set test reviewer due date\" and \"Set test owner due date\" (\"Select date\"), then click \"Next: Ownership\"",
+            "On \"Ownership\" (heading \"Ownership & accountability\"), pick a test owner (\"Select test owner\") and a test reviewer (\"Select test reviewer\"); optionally \"Add final test reviewer\" (\"Select final test reviewer (optional)\"), then click \"Next: Risks & Controls\" (or \"Next: Review\" if risks & controls are disabled)",
+            "On \"Risks & Controls\", link any risks and controls, then click \"Next: Review\"",
+            "On \"Review\", check the configuration and click \"Save test\" — a toast \"Test created successfully\" appears and the new test is listed in the entity's tests table"
+          ],
+          "purpose": "Create a new compliance test for an entity through the multi-step wizard: basics, questionnaire, scheduling, ownership, risks & controls (if enabled), and review.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/create_test/page_create_test.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/create_test/steps/step_basics.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/create_test/steps/step_questionnaire.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/create_test/steps/step_scheduling.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/create_test/steps/step_ownership.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/create_test/steps/step_review.tsx",
+            "apps/hadrius-app/pages/firm_oversight_v2/tests/index.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/admin_landing.tsx"
+          ],
+          "startRoute": "/testing-program/tests",
+          "blockerReason": "",
+          "prerequisites": [
+            "Company has the firm_oversight feature and user can access it (ModuleAccessView)",
+            "User has Testing program admin access — \"Add test\" is rendered only when isAdmin",
+            "At least one entity exists (the wizard is opened from an entity's tests page)",
+            "Employees exist to assign as owner/reviewer",
+            "\"Risks & Controls\" step appears only when risksControlsEnabled; otherwise Ownership's next button reads \"Next: Review\""
+          ],
+          "provisionable": "likely-already-present",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [
+            "Testing program > Entities > \"Add entity\" if no entity exists",
+            "People directory > \"Add employees\" if no owner/reviewer candidates exist"
+          ],
+          "title": "How to create a new test",
+          "planUpdatedAt": "2026-09-16T05:51:15.537Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Testing program > Findings — an entity table with columns \"Entity name\", \"Open findings\" and \"Overdue\" is shown",
+            "Click \"View findings\" on the entity's row (opens /firm_oversight_v2/findings?entity=<id>)",
+            "In the findings table (columns \"Finding\", \"Owner\", \"Severity\", \"Due date\", \"Status\"), click the finding's row — the \"Finding\" detail sheet slides in from the right, showing a status badge (\"Open\", \"Overdue\") and the test it was raised on",
+            "Optionally update \"Corrective action\", \"Owner\", \"Severity level\", \"Due date\" or \"Notes\" (placeholder \"How this was addressed\") and click \"Save changes\" — toast \"Finding updated\"",
+            "Click \"Mark as resolved\" — a toast \"Finding resolved\" appears and the sheet closes",
+            "Re-open the finding to confirm the \"Resolved\" badge and the alert \"This finding is resolved.\"; the button now reads \"Reopen finding\""
+          ],
+          "purpose": "Open a finding raised during a test review from the entity's findings register and mark it resolved once the corrective action is complete.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/findings_entities_section.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/page_findings.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/findings_table.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/finding_detail_sheet.tsx"
+          ],
+          "startRoute": "/testing-program/findings",
+          "blockerReason": "",
+          "prerequisites": [
+            "Company has the Testing program feature; user can access it (Findings tab is not admin-gated in the sidebar)",
+            "At least one OPEN finding exists on the entity — findings are created by a reviewer recording a corrective action on a test run question",
+            "The patch is not gated on the parent run's progress, so the run may already be approved"
+          ],
+          "provisionable": "needs-deliberate-setup",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [
+            "Create a test with an owner and reviewer, have the owner complete the questionnaire and \"Submit for review\"",
+            "As the reviewer, open the run, click \"Requires attention\" on a question and record a \"Corrective action\" — this raises a finding",
+            "Then follow the resolve steps above"
+          ],
+          "title": "How to resolve a finding",
+          "planUpdatedAt": "2026-09-16T05:51:15.866Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Sign in as the run's assigned reviewer and navigate to Testing program > Tests, opening the entity that holds the test",
+            "In the tests table, click the test run whose progress badge shows \"Pending review\" (or \"Pending final review\") — the test details page opens at /firm_oversight_v2/tests/<testId>?run=<runId>",
+            "Stay on the default \"Tests\" tab, where the submitted questionnaire is shown with a review block under each question",
+            "For each question, click \"No objection\" — a toast \"No objection recorded\" appears and a \"Review outcome\" badge is shown (click \"Change outcome\" to revise)",
+            "For a question that needs work, click \"Requires attention\" — a \"Requires attention\" dialog opens where you choose \"Corrective action\" or \"Business risk acknowledged\" and fill in the form",
+            "Once every question has an outcome, use the primary button in the header: \"Approve\" (sole/final reviewer) or \"Forward to final reviewer\" (first of two reviewers); it stays disabled with a tooltip until every question is marked no objection or business risk",
+            "If any question has a corrective action, the header button instead reads \"Send corrections to owner\" — click it to return the run (toast \"Returned to owner\")",
+            "Click \"Approve\" — toast \"Approved\" appears and the run's progress badge changes to \"Completed\" (or toast \"Forwarded to final reviewer\" after forwarding)"
+          ],
+          "purpose": "A reviewer opens a submitted test run, records \"No objection\" (or flags issues) on each questionnaire question, and then approves, forwards to the final reviewer, or sends corrections back to the owner.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/question_review_actions.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/page_test_details.tsx",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/review_gating.ts",
+            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx"
+          ],
+          "startRoute": "/testing-program/tests",
+          "blockerReason": "",
+          "prerequisites": [
+            "A test run in PENDING_REVIEW (or PENDING_FINAL_REVIEW) state — the owner must have completed the questionnaire and clicked \"Submit for review\"",
+            "The logged-in user must be assigned as a reviewer on that run (canRecordReviewOutcome requires isReviewer; admins who are not reviewers see no review actions)",
+            "For the \"Forward to final reviewer\" path, the test must have both a reviewer and a final reviewer"
+          ],
+          "provisionable": "needs-deliberate-setup",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [
+            "Create a test (see \"How to create a new test\") assigning the recording user as reviewer",
+            "As the owner, open the run, answer the questionnaire and click \"Submit for review\" (toast \"Submitted for review\")",
+            "Switch to the reviewer account and follow the steps above"
+          ],
+          "title": "How to review and approve a test run",
+          "planUpdatedAt": "2026-09-16T05:51:16.195Z",
+          "planUpdatedBy": "stephenskalamera"
         }
       ]
     },
@@ -2423,6 +2635,37 @@
           "fileFixtureKind": null,
           "planUpdatedAt": "2026-09-16T05:38:20.247Z",
           "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to People directory",
+            "Click \"Add employees\" (top right, next to \"Export\") — the \"Add employees\" page opens at /employees/new with a \"Manual\" / \"Bulk upload\" segmented control set to \"Manual\"",
+            "Under \"Employee details\", fill \"First name\", optional \"Middle name\", \"Last name\" and \"Email address\"",
+            "Optionally add additional emails and pick an \"Employment start date\" (placeholder \"Select start date\")",
+            "Under \"Groups and permissions\", adjust \"Assign to group(s)\" (defaults to \"Employees\") and \"Assign permission(s)\" (defaults to \"Employee\"); linked groups/permissions are added automatically",
+            "Under \"Email invite\", toggle \"Send email invite\" on if the employee should receive an invite",
+            "Click \"Add employee\" in the page header — a toast \"Employee added\" (\"<First> <Last> has been added.\") appears and you are returned to the People directory"
+          ],
+          "purpose": "Add a single employee to the People directory by entering their name and email, assigning groups and permissions, and optionally sending them an email invite to Hadrius.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx"
+          ],
+          "startRoute": "/people-oversight/people-directory",
+          "blockerReason": "",
+          "prerequisites": [
+            "People directory is part of Hadrius base (ungated sidebar tab)",
+            "User has permission to add employees (the \"Add employees\" button is rendered unconditionally in the directory; backend enforces)",
+            "Roles \"Employee\" and group \"Employees\" exist for defaults (standard)"
+          ],
+          "provisionable": "none-needed",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [],
+          "title": "How to add a new employee manually",
+          "planUpdatedAt": "2026-09-16T05:51:17.220Z",
+          "planUpdatedBy": "stephenskalamera"
         }
       ]
     },
@@ -3410,6 +3653,41 @@
           ],
           "fileFixtureKind": null,
           "planUpdatedAt": "2026-09-16T05:38:20.815Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Branches > Branches",
+            "Click a branch that carries the \"FINRA\" badge (a FINRA-registered branch with a CRD number) to open its detail page (/branches/{id})",
+            "In the page header, click the kebab button labeled \"Branch actions\" (vertical ellipsis) to the right of the header actions",
+            "In the \"Actions\" menu, click \"Re-sync with FINRA\"",
+            "A full-screen overlay with a spinner and the text \"Syncing with FINRA...\" appears while the sync runs; the menu item is disabled during this time",
+            "When the overlay disappears, review the branch details and personnel tabs, which are refreshed with the latest FINRA Form BR data"
+          ],
+          "purpose": "Pull the latest official Form BR data for an already-synced FINRA branch from the branch detail page.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/components/branch_actions_popover.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/pages/branch_details_page.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/pages/branches_home_page.tsx",
+            "apps/hadrius-app/src/api/finra/api_finra.ts",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_branch_tabs.tsx"
+          ],
+          "startRoute": "/branches",
+          "blockerReason": "",
+          "prerequisites": [
+            "Branch oversight module enabled and the user has canViewBranches permission",
+            "The branch must be FINRA-registered (branch_profile.is_finra true) with a crd_number; otherwise the \"Re-sync with FINRA\" item is not shown / does nothing",
+            "Company FINRA integration (finra_api_enabled) with saved FINRA credentials so the backend branch sync call succeeds"
+          ],
+          "provisionable": "needs-deliberate-setup",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [
+            "Ensure FINRA credentials are saved for the firm (FINRA settings) so the Branches sidebar also shows \"Branch filings\"",
+            "If no FINRA branch exists: on Branches > Branches use the add-branch flow to sync a branch from FINRA by CRD number (add_branch_modal.tsx uses the same useBranchSync hook)"
+          ],
+          "title": "How to re-sync a branch's data with FINRA",
+          "planUpdatedAt": "2026-09-16T05:51:18.463Z",
           "planUpdatedBy": "stephenskalamera"
         }
       ]
@@ -5413,6 +5691,73 @@
           "fileFixtureKind": null,
           "planUpdatedAt": "2026-09-16T05:38:21.486Z",
           "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Marketing > Workflows and click the \"Routing questionnaires\" tab",
+            "On the empty state \"Set up your routing questionnaire first\", click \"Create questionnaire\" — a 3-step editor opens with the stepper \"Create questionnaire\", \"Add questions\", \"Save\"",
+            "Under \"Set up questionnaire\", enter a \"Questionnaire title\" (placeholder \"e.g. Campaign questionnaire\") and optionally a \"Description (optional)\"",
+            "Click \"Next: Add questions\" (or \"Save as draft\" to stop here)",
+            "In \"Question 1\", type the \"Question text\", choose the type from the dropdown (\"Multiple choice\" or \"Yes / No\"), optionally add \"Helper text (optional)\", and for multiple choice fill the \"Answer options\" (click \"Add option\" for more); toggle \"Required\" as needed",
+            "Click \"Add question (1/3)\" to add up to 3 questions",
+            "Click \"Save questionnaire\" — the questionnaire is saved as Active and a success toast appears offering to add routing rules; the questionnaire card now shows an \"Active\" badge",
+            "Optionally click \"Add first rule\" / \"Add rule\" in the \"Routing rules\" section to map answers to workflows"
+          ],
+          "purpose": "A compliance admin builds the marketing routing questionnaire (up to 3 single-select or Yes/No questions) that submitters answer so their project is auto-routed to the right approval workflow.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/routing_questionnaires/tab_routing_questionnaires.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/routing_questionnaires/component_create_questionnaire.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/page_marketing_workflows.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_marketing_tab.tsx"
+          ],
+          "startRoute": "/marketing/workflows/routing_questionnaires",
+          "blockerReason": "",
+          "prerequisites": [
+            "Company has Marketing Review enabled (marketingReviewHidden false)",
+            "User is an admin (useIsAdmin) — the \"Routing questionnaires\" tab is hidden otherwise",
+            "Marketing review config flag enable_routing_questionnaires must be true",
+            "No questionnaire exists yet — only one questionnaire is supported; if one exists the page shows its card with \"Edit\" instead of \"Create questionnaire\""
+          ],
+          "provisionable": "needs-deliberate-setup",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [
+            "Ensure enable_routing_questionnaires is on in the company's marketing review config (backend/config setting, not visible in the UI files read)",
+            "If a questionnaire already exists, the walkthrough must use \"Edit\" on the existing card instead"
+          ],
+          "title": "How to create a routing questionnaire",
+          "planUpdatedAt": "2026-09-16T05:51:16.566Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Marketing > Workflows and click the \"Groups\" tab",
+            "Click \"Create group\" (next to the \"Search groups\" bar) — the \"Create workflow group\" page opens at /marketing/workflows/groups/new",
+            "In \"Group name\", type a name (placeholder \"Enter workflow group name\")",
+            "Under \"Members\", use the group policy builder to include at least one employee group or individual employee",
+            "Click \"Create group\" — a toast \"Success\" / \"Workflow group \\\"<name>\\\" created successfully\" appears and you are returned to the Groups tab",
+            "Confirm the new group appears in the table (columns \"Category\", \"Name\", \"Employee groups\", \"Members\", \"Can approve\", \"Used in\")"
+          ],
+          "purpose": "A compliance admin creates a reusable workflow group of employees (built from employee groups and/or individual employees) that can be assigned as submitters or approvers in marketing approval workflows.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/groups/tab_workflows_groups.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/groups/page_marketing_workflows_new_group.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/page_marketing_workflows.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_marketing_tab.tsx"
+          ],
+          "startRoute": "/marketing/workflows/groups",
+          "blockerReason": "",
+          "prerequisites": [
+            "Company has Marketing Review enabled (Workflows sub-tab appears in Marketing sidebar)",
+            "At least one employee or employee group exists to add as a member (validation: \"Please add at least one employee or employee group to include\")"
+          ],
+          "provisionable": "likely-already-present",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [],
+          "title": "How to create a workflow group",
+          "planUpdatedAt": "2026-09-16T05:51:16.899Z",
+          "planUpdatedBy": "stephenskalamera"
         }
       ]
     },
@@ -6083,6 +6428,78 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "planUpdatedAt": "2026-09-16T05:38:22.028Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Account surveillance > Trades",
+            "Optionally use the search box (\"Search symbol, CUSIP, ISIN, order ID, or external ID...\") or the \"Trade filters\" panel to narrow the blotter to the trades in question",
+            "Tick the row checkboxes of the trades to include; a \"N trades selected\" bar appears above the table and a \"Create manual exception\" button appears in the toolbar next to \"Export\"",
+            "Click \"Create manual exception\"; the app navigates to the \"New manual exception\" page (/account-surveillance/rules/violations/new) with breadcrumbs Account surveillance > Trades > New manual exception",
+            "In the \"Reason for flagging\" card, enter a \"Title\" (required); optionally fill \"Description\" and \"Initial note\"",
+            "Review the \"Trade details\" section listing each selected trade (symbol, side, quantity, date, account, rep)",
+            "In \"Parties involved\", confirm the \"Subject representative\" (auto-derived from the trades, or pick one with \"Select representative\" if the trades span more than one rep)",
+            "In the right-hand rail, choose a \"Severity\" (Low / Medium / High) via \"Select severity\" (required)",
+            "Optionally pick a reviewer under \"Assigned to\" via \"Select reviewer\" (defaults to \"Unassigned\")",
+            "Click \"Create exception\" in the page header; the button reads \"Creating...\" while saving, then the app navigates to the new exception's detail page (/account-surveillance/rules/violations/{id})"
+          ],
+          "purpose": "A compliance officer ticks trades in the Trades blotter and opens a manual exception covering them when no automated rule caught the activity.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_trades_table_container.tsx",
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/page_create_manual_violation.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx"
+          ],
+          "startRoute": "/account-surveillance/trades",
+          "blockerReason": "",
+          "prerequisites": [
+            "Account surveillance module enabled for the company (sidebar tab not hidden by module permissions)",
+            "Ingested trade data so the Trades blotter has rows to select",
+            "Selection is scoped to the current page: changing filters, sort, or page clears ticked rows"
+          ],
+          "provisionable": "likely-already-present",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [],
+          "title": "How to create a manual exception from selected trades",
+          "planUpdatedAt": "2026-09-16T05:51:17.744Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
+          "status": "missing",
+          "steps": [
+            "Navigate to Account surveillance > Overview",
+            "Scroll to the \"Exceptions\" table; optionally narrow it with the filter pills (\"All\", \"Open\", \"New\", \"Escalated\", \"Closed\"), \"Filter by rule\", or the \"Search exceptions...\" search",
+            "Tick the row checkboxes of the exceptions to update; a \"N flags selected\" bulk action bar appears above the table with \"Close\", \"Escalate\", \"Reopen\", \"Archive\", a \"Set severity\" select and an \"Assign to\" select",
+            "To change risk level, open the \"Set severity\" select and choose \"High\", \"Medium\", or \"Low\"; the update applies immediately and the selection clears",
+            "Tick the rows again if you also want to reassign them",
+            "To assign a reviewer, open the \"Assign to\" select and choose an admin by name (or \"Unassigned\"); the update applies immediately and the selection clears",
+            "Confirm the \"Risk level\" column now shows the new severity for the affected rows (Low / Moderate / High)",
+            "Optionally click \"Clear\" on the bulk action bar to drop any remaining selection"
+          ],
+          "purpose": "An admin selects several exceptions in the Overview table and sets their risk level or assigns them to a reviewer in one action.",
+          "sources": [
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/alerts/page_ts_overview.tsx",
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_violations_table.tsx",
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/bulk_action_bar.tsx",
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/violation_bulk_actions.tsx",
+            "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/component_violation_dialogs.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx"
+          ],
+          "startRoute": "/account-surveillance",
+          "blockerReason": "",
+          "prerequisites": [
+            "Signed in as an admin (useIsAdmin): row checkboxes and the bulk action bar are admin-only",
+            "At least two existing exceptions (rule-generated or manual) in the Exceptions table",
+            "At least one other admin employee to appear in the \"Assign to\" list",
+            "Not in the \"Archived\" pill view, where only \"Unarchive\" is offered"
+          ],
+          "provisionable": "likely-already-present",
+          "fileFixtureKind": null,
+          "suggestedSetupSteps": [
+            "If no exceptions exist: Navigate to Account surveillance > Trades, tick a few trades, click \"Create manual exception\", fill Title and Severity, click \"Create exception\" (repeat once more)"
+          ],
+          "title": "How to bulk-assign or set severity for multiple exceptions",
+          "planUpdatedAt": "2026-09-16T05:51:18.138Z",
           "planUpdatedBy": "stephenskalamera"
         }
       ]
