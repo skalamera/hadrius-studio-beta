@@ -18,12 +18,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runClaude, extractJson, decisionModel, planModel, codebaseReachable } from './coverage-scan.mjs';
-import { STUDIO_TENANT_COMPANY_ID } from './stage-lib.mjs';
 import { attachFile } from './upload-fixtures.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browser-profile');
-export const STAGING_BASE = (process.env.KBS_STAGING_BASE || 'https://staging.hadrius.com').replace(/\/$/, '');
+export const STAGING_BASE = (process.env.KBS_STAGING_BASE || 'https://app.hadrius.com').replace(/\/$/, '');
+// Recordings run in the "Hadrius Sandbox" company (1048) in production — a sandbox tenant with
+// realistic data, chosen over staging after staging data gaps kept failing walkthroughs.
+export const RECORD_COMPANY_ID = process.env.KBS_COMPANY_ID || '1048';
 const MAX_STEPS = 45; // a 6-step wizard with a couple of detours needs ~30; leave headroom so the model doesn't bail early
 const VIEWPORT = { width: 1600, height: 900 };
 const LOGIN_WAIT_MS = 10 * 60 * 1000; // how long to hold a window open for a manual Hadrius sign-in
@@ -750,7 +752,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
   // (Hadrius) and failing on a case it had no membership on. Staging is a nightly clone of real
   // production data for EVERY tenant, so an unpinned run can also record a stranger's real data.
   const startUrl = stagingBase.replace(/\/$/, '') + item.start_route
-    + (item.start_route.includes('?') ? '&' : '?') + `company_id=${STUDIO_TENANT_COMPANY_ID}`;
+    + (item.start_route.includes('?') ? '&' : '?') + `company_id=${RECORD_COMPANY_ID}`;
   const throwIfCancelled = () => { if (signal?.aborted) throw new Error('cancelled'); };
   const firstUse = !fs.existsSync(profileDir);
   fs.mkdirSync(profileDir, { recursive: true });

@@ -11,7 +11,6 @@ import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
-import { STUDIO_TENANT_COMPANY_ID } from './stage-lib.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID } from './pylon.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
@@ -423,7 +422,7 @@ function pumpAiQueue() {
               name: desired,
               captionsFromNarration: false,
               createdAt: new Date().toISOString(),
-              environment: { startUrl: `https://app.hadrius.com${job.item.start_route || ''}?company_id=${STUDIO_TENANT_COMPANY_ID}` },
+              environment: { startUrl: `https://app.hadrius.com${job.item.start_route || ''}?company_id=${process.env.KBS_COMPANY_ID || '1048'}` },
               steps: [],
             });
           }

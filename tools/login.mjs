@@ -15,7 +15,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 
 const PROFILE_DIR = path.join(process.cwd(), '.browser-profile');
-const START_URL = process.env.KBS_START_URL || 'https://staging.hadrius.com/overview';
+const START_URL = process.env.KBS_START_URL || 'https://app.hadrius.com/overview';
 
 console.log('Opening a browser window. Log in to Hadrius (including 2FA if asked).');
 console.log('Profile will be saved to:', PROFILE_DIR);
