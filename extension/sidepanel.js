@@ -712,6 +712,8 @@ function openViewPlanModal(moduleName, workflow) {
       prerequisites: workflow.prerequisites || [],
       provisionable: workflow.provisionable || null,
       blockerReason: workflow.blockerReason || '',
+      grounding: workflow.grounding || null,
+      autoRecordBlocker: workflow.autoRecordBlocker,
       planUpdatedAt: workflow.planUpdatedAt || null,
       planUpdatedBy: workflow.planUpdatedBy || null
     },
@@ -2020,7 +2022,8 @@ $('#recordPlanDismissBtn').onclick = closeRecordStartModal;
 $('#closeViewPlanModalBtn').onclick = closeViewPlanModal;
 $('#viewPlanAiRecordBtn').onclick = () => {
   if (!activeViewPlanModal) return;
-  const wf = activeViewPlanModal.enhancedPlan || activeViewPlanModal.currentPlan || activeViewPlanModal.originalWorkflow;
+  // Prefer the full workflow object: it carries the grounding record the auto-record gate needs.
+  const wf = activeViewPlanModal.enhancedPlan || activeViewPlanModal.originalWorkflow || activeViewPlanModal.currentPlan;
   startAiBrowserRecording(activeViewPlanModal.module, wf);
 };
 $('#viewPlanEnhanceBtn').onclick = enhancePlanInModal;
