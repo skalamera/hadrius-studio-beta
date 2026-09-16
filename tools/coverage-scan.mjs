@@ -453,6 +453,40 @@ Rules:
 }
 
 /** Stage 2: Dedicated Worker Agent inspects real code and formulates a deep, granular walkthrough plan. */
+// The one grounding standard every plan-writing path shares (scan, Generate plan, Enhance plan).
+// Plans drive a browser agent that follows them literally, so a step it can't map to one exact
+// control is where it stalls — hence per-step proof and an honest verified flag, which the UI
+// turns into "Auto-record available" or not.
+export const GROUNDING_CONTRACT = `GROUNDING CONTRACT (non-negotiable):
+- Read the real code first: the page component behind the start route, then every dialog, drawer, menu, wizard step, or table component a step touches. Read as many files as it takes — there is no tool-call budget. Never write a step from memory or inference.
+- Routes: the start route must resolve — a file under apps/hadrius-app/pages/** or a rewrite source in apps/hadrius-app/next.config.js. Prefer the path the sidebar links to; the sidebar labels live in the nav config (search_code for a known label such as "People directory").
+- Every step is ONE concrete action on ONE concrete target: navigate to a route, click a control, type into a field, choose an option, upload a file, or wait for a specific visible result (toast text, dialog title, row appearing). Quote the target's label exactly as it appears in the JSX (button text, tab name, dialog title, field label, menu item, aria-label). No "configure as needed", "review the settings", "complete the form" — if a form has fields, list them.
+- Icon-only controls: say so and quote the aria-label or tooltip; say where it sits ("the vertical-ellipsis button at the right end of the row").
+- For each step record proof: the file you read, and a short verbatim quote from it containing the label or route. Mark "verified": true ONLY if you read that file and saw that label/route in it. If you could not confirm a step in the code — or a label is rendered from data you cannot see — mark "verified": false and say why in "reason". Do not guess to fill the gap; an unverified step honestly flagged is worth more than a plausible one.
+- Gating counts as a prerequisite: feature flags, admin/role checks, disabled-state conditions, module activation, data that must already exist. Say which and cite where.
+- "confidence" is "high" only when every step is verified and the route resolves; "medium" when the flow is clear but one or two labels or a branch could not be confirmed; "low" when the goal isn't reachable as titled or several steps are unconfirmed.`;
+
+// Compute the plan's verification record from the model's per-step proof, never from its
+// self-reported confidence alone: a plan is only "high" if every step is actually pinned.
+export function assessGrounding(plan) {
+  const steps = Array.isArray(plan?.steps) ? plan.steps : [];
+  const proofs = Array.isArray(plan?.step_grounding) ? plan.step_grounding : steps.map((s) => (s && typeof s === 'object' ? s.evidence : null));
+  const unverified = [];
+  const detail = steps.map((step, i) => {
+    const p = proofs[i] || {};
+    const text = typeof step === 'string' ? step : (step?.instruction || '');
+    const isNav = i === 0 && /^(navigate to|open|go to)\s+/i.test(text);
+    const verified = p.verified === true && !!String(p.file || '').trim() && String(p.file) !== 'source';
+    if (!verified && !isNav) unverified.push({ step: i + 1, reason: String(p.reason || (p.file ? 'label not confirmed in source' : 'no source read for this step')).slice(0, 200) });
+    return { step: i + 1, file: p.file ? String(p.file).slice(0, 300) : null, quote: p.quote ? String(p.quote).slice(0, 300) : null, verified: verified || isNav };
+  });
+  const claimed = ['high', 'medium', 'low'].includes(plan?.confidence) ? plan.confidence : 'low';
+  let confidence = 'low';
+  if (steps.length >= 3 && unverified.length === 0) confidence = claimed === 'low' ? 'medium' : 'high';
+  else if (steps.length >= 3 && unverified.length <= 2 && unverified.length < steps.length / 2) confidence = claimed === 'high' ? 'medium' : claimed;
+  return { confidence, verifiedSteps: steps.length - unverified.length, totalSteps: steps.length, unverified, steps: detail, checkedAt: new Date().toISOString() };
+}
+
 export async function deepPlanWorkflow(mod, cand, log = () => {}) {
   log(`  [Worker Agent] Deep planning "${cand.title}"…`);
   const prompt = `You are a technical compliance lead and educator on the Hadrius compliance web app (repo "hadrius_frontend", app code under apps/hadrius-app/src/).
@@ -462,8 +496,10 @@ Starting route: "${cand.start_route}"
 Workflow summary: "${cand.description || cand.purpose || ''}"
 ${cand.target_component ? `Target component hint: "${cand.target_component}"` : ''}
 
-Use the hadrius-codebase MCP tools (search_code, read_file, list_directory) to inspect the real routes, pages, and components.
-Find the exact buttons, dialog forms, wizard steps, inputs, and confirmations.
+Use the hadrius-codebase MCP tools (search_code, read_file, list_directory, file_tree) to inspect the real routes, pages, and components.
+Routing is two-layer: apps/hadrius-app/pages/** are thin route files; the real UI lives under apps/hadrius-app/src/pages/coreloop/** (module display names do not match folder names — search for labels and route strings rather than guessing folders).
+
+${GROUNDING_CONTRACT}
 
 IMPORTANT RULES:
 1. Step 1 MUST ALWAYS be the starting navigation step: "Navigate to ${mod.module} > <Tab/Section>".
@@ -472,7 +508,7 @@ IMPORTANT RULES:
    - "instruction": exact imperative step text
    - "route": the URL route where this happens
    - "control_label": exact button/input label or tab name
-   - "evidence": { "file": "apps/...", "symbol": "...", "quote": "exact short code snippet" }
+   - "evidence": { "file": "apps/...", "symbol": "...", "quote": "exact short code snippet", "verified": true|false, "reason": "only when verified is false" }
 4. Also determine "prerequisites": what must already exist in the app (a record in a specific status, a permission, a feature flag, a second entity) before these steps are actually possible — a fresh/typical company might not have it by default. Use search_code to check for disabled-state conditions, role/permission gates, or feature flags backing the action. Skip file uploads (already handled automatically by the recorder). List each as a short plain-English line. Empty array if nothing special is required.
 5. Set "provisionable" to one of: "none-needed" (works on any account), "likely-already-present" (a normal active company already has this kind of data), "self-serve-quick" (missing by default but any operator could create it in a couple of clicks first), "needs-deliberate-setup" (needs a longer multi-step sequence first), or "structurally-blocked" (cannot be created through the UI at all in this environment — e.g. only a backend seed, an external system sync, or a feature flag flip by Hadrius ops could do it). If "structurally-blocked", also set "blocker_reason" to the specific, cited reason.
 6. Return ONLY a valid JSON object in this exact shape:
@@ -487,13 +523,14 @@ IMPORTANT RULES:
       "instruction": "Navigate to ${mod.module} > ...",
       "route": "${cand.start_route}",
       "control_label": "...",
-      "evidence": { "file": "apps/...", "symbol": "...", "quote": "..." }
+      "evidence": { "file": "apps/...", "symbol": "...", "quote": "...", "verified": true }
     }
   ],
   "sources": ["apps/..."],
   "prerequisites": ["short line each: role, data or setting required"],
   "provisionable": "none-needed",
-  "blocker_reason": ""
+  "blocker_reason": "",
+  "confidence": "high"
 }
 `;
 
@@ -516,9 +553,12 @@ IMPORTANT RULES:
       evidence: {
         file: String(step.evidence?.file || plan.sources?.[0] || 'source').trim(),
         symbol: String(step.evidence?.symbol || 'Component').trim(),
-        quote: String(step.evidence?.quote || step.instruction || '').trim()
+        quote: String(step.evidence?.quote || step.instruction || '').trim(),
+        verified: step.evidence?.verified === true,
+        ...(step.evidence?.reason ? { reason: String(step.evidence.reason).trim() } : {})
       }
     }));
+    const grounding = assessGrounding({ steps, confidence: plan.confidence });
 
     const firstInstruction = steps[0]?.instruction || '';
     const hasNav = /^(navigate to|open|go to)\s+/i.test(firstInstruction) &&
@@ -546,7 +586,8 @@ IMPORTANT RULES:
       sources: [...new Set((plan.sources || [cand.target_component]).map(String).filter(Boolean))],
       prerequisites: Array.isArray(plan.prerequisites) ? plan.prerequisites.map(String).filter(Boolean) : [],
       provisionable: ['none-needed', 'likely-already-present', 'self-serve-quick', 'needs-deliberate-setup', 'structurally-blocked'].includes(plan.provisionable) ? plan.provisionable : null,
-      blocker_reason: String(plan.blocker_reason || '').trim()
+      blocker_reason: String(plan.blocker_reason || '').trim(),
+      grounding
     };
   } catch (err) {
     log(`    ! Worker plan fallback for "${cand.title}": ${err.message}`);
@@ -565,9 +606,10 @@ IMPORTANT RULES:
       priority: cand.priority || 'medium',
       steps: [
         { instruction: navText, route: startRoute, control_label: tabLabel, evidence: { file: 'navigation', symbol: 'SidebarNav', quote: navText } },
-        { instruction: `Follow the steps for ${cand.title}`, route: startRoute, control_label: null, evidence: { file: cand.target_component || 'source', symbol: 'Page', quote: cand.title } }
+        { instruction: `Follow the steps for ${cand.title}`, route: startRoute, control_label: null, evidence: { file: cand.target_component || 'source', symbol: 'Page', quote: cand.title, verified: false, reason: 'planner failed; placeholder step' } }
       ],
-      sources: [cand.target_component].filter(Boolean)
+      sources: [cand.target_component].filter(Boolean),
+      grounding: { confidence: 'low', verifiedSteps: 1, totalSteps: 2, unverified: [{ step: 2, reason: `planner failed: ${String(err.message).slice(0, 160)}` }], steps: [], checkedAt: new Date().toISOString() }
     };
   }
 }

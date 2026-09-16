@@ -302,8 +302,12 @@ function renderModules() {
 
     for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions"><button class="ai-beta aiRecord" title="Beta — drives your browser autonomously to perform and record this workflow. Results can be inconsistent; use with caution and review the result.">⚡ Auto-record <span class="beta-chip">Beta</span></button><button class="secondary choose" title="Record this workflow manually">Record manually</button><button class="secondary plan">View plan</button><button class="icon-action check markLinked push-right" type="button" title="Mark as done" aria-label="Mark as done">✓</button><button class="icon-action dismissWf" type="button" title="Dismiss this opportunity" aria-label="Dismiss">✕</button></div>`;
-      item.querySelector('.aiRecord').onclick = () => startAiBrowserRecording(group.module, workflow);
+      const blocker = autoRecordBlocker(workflow);
+      const aiBtn = blocker
+        ? `<span class="auto-record-off" title="${esc(`Auto-record unavailable: ${blocker}. Record manually, or open View plan → Enhance so every step gets verified.`)}">⚡ Auto-record unavailable</span>`
+        : `<button class="ai-beta aiRecord" title="Beta — drives your browser autonomously to perform and record this workflow. Every step of this plan was verified against the source, but results can still be inconsistent; review the result.">⚡ Auto-record <span class="beta-chip">Beta</span></button>`;
+      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions">${aiBtn}<button class="secondary choose" title="Record this workflow manually">Record manually</button><button class="secondary plan">View plan</button><button class="icon-action check markLinked push-right" type="button" title="Mark as done" aria-label="Mark as done">✓</button><button class="icon-action dismissWf" type="button" title="Dismiss this opportunity" aria-label="Dismiss">✕</button></div>`;
+      const aiEl = item.querySelector('.aiRecord'); if (aiEl) aiEl.onclick = () => startAiBrowserRecording(group.module, workflow);
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
       item.querySelector('.plan').onclick = () => openViewPlanModal(group.module, workflow);
       item.querySelector('.markLinked').onclick = () => markWorkflowLinked(workflow.title, group.module);
@@ -605,6 +609,17 @@ function renderViewPlanContent(plan, isProposed = false) {
   $('#viewPlanModalTitle').textContent = plan.title || activeViewPlanModal?.originalWorkflow?.title || '';
   $('#viewPlanModalSummary').textContent = plan.summary || plan.purpose || '';
 
+  // Auto-record only for fully verified plans; otherwise say exactly why it's off.
+  const aiRecordBtn = $('#viewPlanAiRecordBtn');
+  const aiNote = $('#viewPlanAutoRecordNote');
+  if (aiRecordBtn && aiNote) {
+    const src = isProposed ? plan : (activeViewPlanModal?.originalWorkflow || plan);
+    const blocker = autoRecordBlocker({ ...src, steps: plan.steps || src.steps, grounding: plan.grounding || src.grounding, provisionable: plan.provisionable || src.provisionable });
+    aiRecordBtn.hidden = !!blocker || isProposed;
+    aiNote.hidden = !blocker || isProposed;
+    if (blocker) aiNote.textContent = `Auto-record unavailable — ${blocker}. Record manually or run Enhance plan.`;
+  }
+
   // Plans are shared live across every install; say who last changed this one and when, so a
   // teammate's edit landing under you is visible rather than mysterious.
   const metaEl = $('#viewPlanUpdatedMeta');
@@ -839,8 +854,25 @@ function discardEnhancedPlanInModal() {
 let activeAiRecordKey = null;
 let activeAiPollInterval = null;
 
+// Mirrors the bridge's rule (tools/ai-bridge.mjs autoRecordBlocker): the browser agent stalls on any
+// step the planner couldn't pin to one exact control, so Auto-record is offered only for plans whose
+// every step was verified against the source. The bridge re-checks and refuses regardless.
+function autoRecordBlocker(w) {
+  if (w?.autoRecordBlocker !== undefined && w.autoRecordBlocker !== null) return w.autoRecordBlocker || null;
+  const steps = Array.isArray(w?.steps) ? w.steps : [];
+  if (steps.length < 3) return 'the plan has fewer than 3 steps';
+  if (w?.provisionable === 'structurally-blocked') return 'its prerequisites cannot be set up in this environment';
+  const g = w?.grounding;
+  if (!g) return 'the plan has not been verified against the codebase yet';
+  if (g.confidence !== 'high') return `the plan is only ${g.confidence || 'partially'}-confidence`;
+  if (Array.isArray(g.unverified) && g.unverified.length) return `${g.unverified.length} step(s) could not be pinned to an exact control`;
+  return null;
+}
+
 async function startAiBrowserRecording(moduleName, workflow) {
   if (!workflow) return;
+  const blocker = autoRecordBlocker(workflow);
+  if (blocker) return alert(`Auto-record is unavailable for this plan: ${blocker}.\n\nRecord it manually, or open View plan → Enhance plan so every step is verified first.`);
   const title = workflow.title;
   const steps = resolveSteps(moduleName, workflow);
   const stepsCount = steps.length;
@@ -1052,7 +1084,9 @@ function renderRecordModalOpportunities(moduleName) {
         </div>
         <div style="display:flex;gap:5px;">
           <button class="primary record-opp-action-btn" type="button" title="Load this plan and start recording">● Record</button>
-          <button class="ai-beta record-opp-ai-btn" type="button" title="Beta — drives your browser autonomously to perform and record this workflow. Results can be inconsistent; use with caution.">⚡ Auto <span class="beta-chip">Beta</span></button>
+          ${autoRecordBlocker(w)
+            ? `<span class="auto-record-off small" title="${esc(`Auto-record unavailable: ${autoRecordBlocker(w)}`)}">⚡ n/a</span>`
+            : `<button class="ai-beta record-opp-ai-btn" type="button" title="Beta — drives your browser autonomously to perform and record this workflow. Results can be inconsistent; use with caution.">⚡ Auto <span class="beta-chip">Beta</span></button>`}
         </div>
       </div>
     `;
@@ -1060,7 +1094,8 @@ function renderRecordModalOpportunities(moduleName) {
 
   list.querySelectorAll('.record-opp-item').forEach((itemEl, i) => {
     const w = unlinked[i];
-    itemEl.querySelector('.record-opp-ai-btn').onclick = () => {
+    const aiBtn = itemEl.querySelector('.record-opp-ai-btn');
+    if (aiBtn) aiBtn.onclick = () => {
       startAiBrowserRecording(moduleName, w);
     };
     itemEl.querySelector('.record-opp-action-btn').onclick = async () => {

@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson } from './coverage-scan.mjs';
+import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { STUDIO_TENANT_COMPANY_ID } from './stage-lib.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID } from './pylon.mjs';
 
@@ -79,7 +79,21 @@ function candSlug(s) {
 // The plan proper — what the shared library stores on each candidate row so every install sees the
 // same steps without a git pull. Coverage state (status, linked script, dismissed) is deliberately
 // not part of it; that lives in the row's own columns.
-const PLAN_FIELDS = ['purpose', 'startRoute', 'steps', 'sources', 'prerequisites', 'provisionable', 'blockerReason', 'suggestedSetupSteps', 'fileFixtureKind', 'evidence', 'trigger', 'priority'];
+const PLAN_FIELDS = ['purpose', 'startRoute', 'steps', 'sources', 'prerequisites', 'provisionable', 'blockerReason', 'suggestedSetupSteps', 'fileFixtureKind', 'evidence', 'trigger', 'priority', 'grounding'];
+
+// Auto-record only makes sense when every step was verified against the source: a step the
+// planner could not pin to an exact control is exactly where the browser agent gets stuck. The
+// same rule gates the button in the panel and the /workflows/ai-record endpoint.
+function autoRecordBlocker(wf) {
+  const steps = Array.isArray(wf?.steps) ? wf.steps : [];
+  if (steps.length < 3) return 'the plan has fewer than 3 steps';
+  if (wf?.provisionable === 'structurally-blocked') return 'its prerequisites cannot be set up in this environment';
+  const g = wf?.grounding;
+  if (!g) return 'the plan has not been verified against the codebase yet — open View plan and run Enhance';
+  if (g.confidence !== 'high') return `the plan is only ${g.confidence || 'partially'}-confidence`;
+  if (Array.isArray(g.unverified) && g.unverified.length) return `${g.unverified.length} step(s) could not be pinned to an exact control`;
+  return null;
+}
 function planPayload(wf) {
   if (!wf || !Array.isArray(wf.steps) || !wf.steps.length) return null;
   const plan = {};
@@ -696,9 +710,12 @@ async function generatePlanFromIdea({ userPrompt, previousPlan, clarification })
   let prompt = `You are an expert technical lead and product educator on the Hadrius compliance web app (repo "hadrius_frontend", app code under apps/hadrius-app/src/).
 The user has an idea for a video walkthrough: "${userPrompt}".
 Your job is to inspect the real codebase using the hadrius-codebase MCP tools (search_code, read_file, list_directory, file_tree) and produce a strictly grounded, step-by-step walkthrough plan.
+Routing is two-layer: apps/hadrius-app/pages/** are thin route files; the real UI lives under apps/hadrius-app/src/pages/coreloop/** (module display names do not match folder names — search for labels and route strings rather than guessing folders).
+
+${GROUNDING_CONTRACT}
 
 IMPORTANT RULES:
-1. Be focused and efficient: use 2-4 targeted MCP tool calls (search_code for the key term or route, then read_file on the main page/dialog component), then immediately output the final JSON plan.
+1. Read everything the plan touches before writing it: the page behind the start route and every dialog/drawer/menu/wizard component a step uses. Then output the final JSON.
 2. Determine which of the 6 Hadrius modules this workflow belongs to:
    - "Testing program"
    - "People oversight"
@@ -724,8 +741,14 @@ IMPORTANT RULES:
   "sources": ["apps/hadrius-app/src/..."],
   "prerequisites": ["short line each: role, data or setting required"],
   "provisionable": "none-needed",
-  "blockerReason": ""
+  "blockerReason": "",
+  "step_grounding": [
+    { "step": 1, "file": "apps/hadrius-app/src/components/.../nav config file", "quote": "the label as it appears in code", "verified": true },
+    { "step": 2, "file": "apps/hadrius-app/src/pages/coreloop/.../dialog.tsx", "quote": "<Button>Add policy</Button>", "verified": true }
+  ],
+  "confidence": "high"
 }
+"step_grounding" MUST have exactly one entry per step, in order. Set "verified": false with a "reason" for any step you could not confirm in the source.
 `;
 
   if (previousPlan) {
@@ -780,6 +803,11 @@ Return ONLY a valid JSON object in this exact shape:
   if (!plan || !Array.isArray(plan.steps) || !plan.steps.length) {
     throw new Error('AI could not generate a valid step-by-step plan for this idea. Please try clarifying your request.');
   }
+  // Verification record computed from the per-step proof, not the model's headline claim. A plan
+  // written by the no-tools Gemini fallback has no proof at all and correctly comes out "low".
+  plan.grounding = assessGrounding(plan);
+  delete plan.step_grounding;
+  delete plan.confidence;
 
   // Ensure Step 1 has navigation
   const first = plan.steps[0] || '';
@@ -1530,6 +1558,8 @@ const server = http.createServer(async (req, res) => {
                     blockerReason: plan?.blockerReason || '',
                     suggestedSetupSteps: Array.isArray(plan?.suggestedSetupSteps) ? plan.suggestedSetupSteps : [],
                     fileFixtureKind: plan?.fileFixtureKind || null,
+                    grounding: plan?.grounding || null,
+                    autoRecordBlocker: autoRecordBlocker(plan),
                     planUpdatedAt: plan?.planUpdatedAt || it.plan_updated_at || null,
                     planUpdatedBy: plan?.planUpdatedBy || it.plan_updated_by || null,
                     linkedScript: it.linked_script || null,
@@ -1692,7 +1722,10 @@ const server = http.createServer(async (req, res) => {
               sources: workflow.sources || [],
               prerequisites: workflow.prerequisites || [],
               provisionable: workflow.provisionable || null,
-              blockerReason: workflow.blocker_reason || ''
+              blockerReason: workflow.blocker_reason || '',
+              grounding: workflow.grounding || null,
+              planUpdatedAt: new Date().toISOString(),
+              planUpdatedBy: WHOAMI
             }))
           }));
           if (modules.some((entry) => entry.workflows.length)) {
@@ -1829,6 +1862,9 @@ const server = http.createServer(async (req, res) => {
             blockerReason: workflow.blockerReason || '',
             suggestedSetupSteps: Array.isArray(workflow.suggestedSetupSteps) ? workflow.suggestedSetupSteps : [],
             fileFixtureKind: workflow.fileFixtureKind || null,
+            // A plan whose steps were changed without re-verifying (hand edits) has no grounding
+            // record, which correctly hides Auto-record until Enhance re-grounds it.
+            grounding: workflow.grounding && typeof workflow.grounding === 'object' ? workflow.grounding : null,
             status: 'missing',
             planUpdatedAt: new Date().toISOString(),
             planUpdatedBy: WHOAMI
@@ -1870,6 +1906,7 @@ const server = http.createServer(async (req, res) => {
                   blockerReason: workflow.blockerReason || '',
                   suggestedSetupSteps: Array.isArray(workflow.suggestedSetupSteps) ? workflow.suggestedSetupSteps : [],
                   fileFixtureKind: workflow.fileFixtureKind || null,
+                  grounding: workflow.grounding && typeof workflow.grounding === 'object' ? workflow.grounding : null,
                 })
               }],
               full_scan: false
@@ -2028,6 +2065,9 @@ const server = http.createServer(async (req, res) => {
             steps: Array.isArray(workflow.steps) ? workflow.steps : [],
             prerequisites: Array.isArray(workflow.prerequisites) ? workflow.prerequisites : []
           };
+
+          const blocker = autoRecordBlocker({ steps: item.steps, provisionable: workflow.provisionable, grounding: workflow.grounding });
+          if (blocker) return sendJson(res, 400, { ok: false, error: `Auto-record is unavailable for this plan: ${blocker}. Record it manually, or run Enhance plan so every step is verified first.` });
 
           const existing = aiJobs.get(key);
           if (existing && aiBusy(existing)) {

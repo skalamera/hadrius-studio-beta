@@ -35,8 +35,17 @@
             "At least one employee record if the operator wants to demonstrate assigning the task to a named person (optional — the assignee dropdown defaults to and can be left as 'Unassigned', so this is not a hard blocker)."
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-16T05:38:19.446Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:22.315Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to sync the testing calendar to an external calendar",
@@ -70,8 +79,17 @@
             "Recording account has Firm Oversight basic access (Role.Action.FIRM_OVERSIGHT_BASIC_ACCESS) and an active Employee record in the company — the same baseline needed just to open the Calendar page, not anything extra for this workflow specifically"
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-16T05:38:19.454Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:22.570Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to link a test to additional entities",
@@ -108,8 +126,17 @@
             "Return to Testing program > Tests and open the test you want to link, to confirm the new entity now appears as a toggle-enabled option in the \"Link test to entity\" dialog."
           ],
           "linkedScript": "How-to-link-a-test-to-additional-entities",
-          "planUpdatedAt": "2026-09-16T05:38:19.468Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:22.821Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to link a control to a policy section",
@@ -150,8 +177,17 @@
             "If no policy on hand has any associated controls, navigate to Testing program > Controls, click the control-creation button (e.g. '+ Create control'), and set the new control's policy/manual field to the target policy before saving, so it becomes available to link at the section level."
           ],
           "linkedScript": "How-to-link-a-control-to-a-policy-section",
-          "planUpdatedAt": "2026-09-16T05:38:19.476Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:23.065Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to export all of an entity's testing data",
@@ -186,8 +222,17 @@
           ],
           "provisionable": "likely-already-present",
           "linkedScript": "How-to-export-all-of-an-entity-s-testing-data",
-          "planUpdatedAt": "2026-09-16T05:38:19.482Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:23.333Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to bulk assign tests and categories to an entity",
@@ -221,8 +266,17 @@
           ],
           "provisionable": "likely-already-present",
           "linkedScript": "How-to-bulk-assign-tests-and-categories-to-an-entity",
-          "planUpdatedAt": "2026-09-16T05:38:19.489Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:23.577Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to associate a control with a risk's treatment plan",
@@ -252,8 +306,17 @@
             "At least one control already present in the Controls Register, since the Treatment Plan's \"Search controls\" checklist is populated from the company's existing controls (a company with zero controls would show an empty, unusable list)"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:19.496Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:23.823Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to correct how a policy's sections were parsed",
@@ -293,8 +356,17 @@
             "Return to the policy list and click that row's actions button again to reach \"Update sections\""
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:19.503Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:24.101Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to change which entities a policy covers",
@@ -381,8 +453,17 @@
             "More than one entity configured for the company, so the checklist has something to add or remove (a company with only one entity can only ever uncheck it, which the dialog blocks with 'A policy has to cover at least one entity' and a disabled Save)"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:19.510Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:24.370Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to upload a new version of a policy document",
@@ -501,8 +582,17 @@
             "Proceed with the plan's own steps, selecting the just-uploaded fixture file in the \"Select this policy's document\" picker."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:19.517Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:24.626Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to re-analyze a policy to regenerate its risks and controls catalog",
@@ -535,8 +625,17 @@
             "Recording account needs Firm Oversight admin permission: the derive_catalog endpoint is decorated with @feature_enabled(FIRM_OVERSIGHT) and @required_role_actions([Role.Action.FIRM_OVERSIGHT_ADMIN_ACCESS]) (hadrius_backend/hadrius/firm_oversight/views_compliance_manual.py:591-592)."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:19.523Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:24.875Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to archive a policy",
@@ -638,8 +737,17 @@
             "Click \"Add policy\" to save — this creates a second ACTIVE policy covering that entity, so the original policy is no longer the sole active manual there and can be archived without the backend's cascading-archival safeguard blocking it."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:19.530Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:25.137Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to rename a policy",
@@ -723,8 +831,17 @@
             "If the table is empty or every policy is archived, click \"Add policy\"",
             "Enter a name (e.g. \"Demo Policy\") and confirm creation to add a new active policy that can then be renamed"
           ],
-          "planUpdatedAt": "2026-09-16T05:38:19.535Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:25.415Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to manage test categories",
@@ -854,8 +971,17 @@
             "Click into the 'Stephen Investments' entity row to land on its Tests page, then click 'Manage categories' to open the sheet and verify at least one non-archived category is listed.",
             "If no categories are listed, click 'New category', type a name (e.g. 'Demo Category') in 'Category name', and click 'Create category' so there is something to rename, expand, and delete on camera."
           ],
-          "planUpdatedAt": "2026-09-16T05:38:19.542Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:25.746Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to raise a corrective action during test review",
@@ -898,8 +1024,17 @@
             "Reload the test run detail page — now that the run is Pending review and the recording account is the assigned reviewer, the per-question \"Requires attention\" action becomes available for the recorded plan to proceed"
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:19.549Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:26.011Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to acknowledge a business risk during test review",
@@ -1011,8 +1146,17 @@
             "Reload the run's \"Tests\" tab as the reviewer so the per-question \"No objection\" / \"Requires attention\" actions appear beneath each answer"
           ],
           "linkedScript": "How-to-acknowledge-a-business-risk-during-test-review",
-          "planUpdatedAt": "2026-09-16T05:38:19.555Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:26.263Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to reopen a resolved finding",
@@ -1062,8 +1206,17 @@
             "Click the X to close the panel — a resolved finding now exists and the \"Resolved\" chip will appear for the recorded plan to use"
           ],
           "linkedScript": "How-to-reopen-a-resolved-finding",
-          "planUpdatedAt": "2026-09-16T05:38:19.561Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:26.510Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to schedule a new calendar task",
@@ -1095,8 +1248,17 @@
             "Access to Testing Program (firm_oversight.all.basic_access permission on the recording account, standard for any active employee/admin role)"
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-16T05:38:19.568Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:26.759Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to edit or reassign a scheduled calendar task",
@@ -1136,8 +1298,17 @@
             "Optionally select an assignee and a due date",
             "Click \"Add Task\" to save the new task so a scheduled task exists to edit"
           ],
-          "planUpdatedAt": "2026-09-16T05:38:19.574Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:27.000Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to cancel or delete a calendar task",
@@ -1182,8 +1353,17 @@
             "Open the recurrence dropdown and select an option such as \"Weekly on <day>\"",
             "Click \"Add Task\" to create the recurring task"
           ],
-          "planUpdatedAt": "2026-09-16T05:38:19.580Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:27.258Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to mark a calendar task complete",
@@ -1223,8 +1403,17 @@
             "Click \"Add Task\"",
             "Confirm the new task now appears as an item in the day drawer for that date, ready to be expanded and marked complete"
           ],
-          "planUpdatedAt": "2026-09-16T05:38:19.586Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:27.512Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 5,
+            "unverified": [],
+            "verifiedSteps": 5
+          }
         },
         {
           "status": "missing",
@@ -1257,8 +1446,17 @@
           "fileFixtureKind": null,
           "suggestedSetupSteps": [],
           "title": "How to add a new control to the register",
-          "planUpdatedAt": "2026-09-16T05:51:14.523Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:27.751Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "status": "missing",
@@ -1287,8 +1485,17 @@
           "fileFixtureKind": "pdf",
           "suggestedSetupSteps": [],
           "title": "How to add a new entity",
-          "planUpdatedAt": "2026-09-16T05:51:14.868Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:27.997Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "status": "missing",
@@ -1319,8 +1526,17 @@
           "fileFixtureKind": null,
           "suggestedSetupSteps": [],
           "title": "How to add a new risk to the register",
-          "planUpdatedAt": "2026-09-16T05:51:15.208Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:28.241Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "status": "missing",
@@ -1362,8 +1578,18 @@
             "People directory > \"Add employees\" if no owner/reviewer candidates exist"
           ],
           "title": "How to create a new test",
-          "planUpdatedAt": "2026-09-16T05:51:15.537Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:28.494Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Step labels, nextLabels (\"Next: Questionnaire\", \"Next: Scheduling\", \"Next: Ownership\", \"Next: Risks & Controls\", \"Next: Review\", \"Save test\") and field labels verified. The Questionnaire step's inner template picker (TestQuestionnaireSection in tests/components/test_questionnaire_editor) was not read, so its button labels are not quoted. Landing behaviour: /testing-program/tests renders AdminLandi",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "status": "missing",
@@ -1397,8 +1623,17 @@
             "Then follow the resolve steps above"
           ],
           "title": "How to resolve a finding",
-          "planUpdatedAt": "2026-09-16T05:51:15.866Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:28.750Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "status": "missing",
@@ -1435,8 +1670,18 @@
             "Switch to the reviewer account and follow the steps above"
           ],
           "title": "How to review and approve a test run",
-          "planUpdatedAt": "2026-09-16T05:51:16.195Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:28.994Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Header primary action logic verified in page_test_details.tsx: return wins over forward/approve when any question has CORRECTIVE_ACTION/RETURNED; forward shown for first reviewer when a final reviewer exists; approve for final/sole reviewer. Approve/forward disabled until every visible question is NO_OBJECTION or BUSINESS_RISK. A one-shot confirmation prompt (e.g. \"Every question is cleared. Appro",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         }
       ]
     },
@@ -1479,8 +1724,17 @@
           "provisionable": "self-serve-quick",
           "blockerReason": "",
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T05:38:19.593Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:29.240Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 11,
+            "unverified": [],
+            "verifiedSteps": 11
+          }
         },
         {
           "title": "How to send continuing education reminder emails",
@@ -1512,8 +1766,17 @@
             "The 'Continuing education' / WebCE module enabled for the company (confirmed active for this tenant)"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:19.600Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:29.491Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to notify an employee about an expired account connection",
@@ -1544,8 +1807,17 @@
           ],
           "provisionable": "structurally-blocked",
           "blockerReason": "A connection's 'Connection expired' badge (frontend: getConnectionAttentionType() mapping external_connection_status === 'BROKEN' -> NEEDS_REPAIR, in apps/hadrius-app/src/pages/employees/connections/brokerage_account_utilities.ts) is driven entirely by EmployeeBrokerConnection.external_connection_status = BROKEN on the backend. Searching hadrius_backend shows BROKEN is only ever set by (1) external sync/reconciliation jobs — snaptrade/service_snaptrade.py (remote_connection_status from the SnapTrade API), meld/sync_meld_connection_status.py (hadrius_connection.external_connection_status = BROKEN based on Meld's reported state), and Plaid webhook/reconciliation paths — or (2) derive_connection_status_from_accounts() in connections/service_update_account_status.py, which itself only turns BROKEN when an underlying EmployeeAccount.status is BROKEN, again a value only written by those same external sync services. There is no admin/user-facing API view or UI control anywhere in hadrius_frontend or hadrius_backend that lets an operator directly set a connection or account to BROKEN — the only backend endpoints touching broken connections (views_employees.py, views_trade_monitoring_employees.py, views_trade_monitoring_connections.py) all just read/count/filter on the existing status. Producing a 'Connection expired' row therefore requires an actual real-world disconnection/revocation on the linked broker's side (Plaid, SnapTrade, or Meld sandbox), which is external-system-dependent and outside the Hadrius app UI. A live query against the staging DB (company_id=1013) confirms zero BROKEN connections currently exist there (statuses present: GOOD=5, MISSING_LETTER=10, MISSING_STATEMENTS=35), so there is nothing to click on for this step today.",
-          "planUpdatedAt": "2026-09-16T05:38:19.606Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:29.879Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How an employee completes and signs a certification",
@@ -1589,8 +1861,17 @@
             "Open that task and click through its questions once before recording to confirm it contains a yes/no question, a follow-up text or document-upload question, and the Final disclaimer section with two attestation checkboxes — if the first task picked lacks variety, pick a different employee/task from the Waiting list that does."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:19.613Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:30.126Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to review and approve or reject a disclosure",
@@ -1644,8 +1925,17 @@
             "In the fill-on-behalf modal that opens, answer the questionnaire — choosing an answer likely to trigger a flag on at least one question if you want to demo the flagged-response path — then click Submit to submit it as the employee's response.",
             "Confirm the new disclosure now appears in People oversight > Disclosures > Approvals with status 'Pending review' and is assigned to you, so 'Start review' / the arrow 'View disclosure' button are enabled."
           ],
-          "planUpdatedAt": "2026-09-16T05:38:20.098Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:30.371Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to review and approve an employee's certification submission",
@@ -1687,8 +1977,17 @@
             "Click into an in-progress certification task for that employee and answer all questions, then click the submit/finish action to move the task to submitted status.",
             "Return to People oversight > Certifications > Submissions and confirm the row now appears under the 'Needs review' filter (re-navigate with an explicit statuses=needs_review-equivalent URL rather than clicking the filter pill twice, since the pill is a toggle and the post-action list can be stale)."
           ],
-          "planUpdatedAt": "2026-09-16T05:38:20.105Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:30.616Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to match an unclaimed brokerage account to an employee",
@@ -1716,8 +2015,17 @@
           ],
           "provisionable": "structurally-blocked",
           "blockerReason": "Confirmed fresh against current code: apps/hadrius-app/pages/employees/unclaimed-accounts/index.tsx drives entirely off GET accounts/unclaimed/ and POST accounts/unclaimed/<id>/claim/ (plus bulk-claim/dismiss/restore/mapping-preview siblings, all in hadrius_backend/hadrius/employees/src/trade_monitoring/views_unclaimed_accounts.py and gated @has_role_access(User.Role.SUPERADMIN)). None of these views create a new UnclaimedExternalAccount row — claim/bulk-claim/dismiss/restore only act on rows that already exist, and preview_mapping_file_view explicitly 'writes nothing.' The only code paths that call UnclaimedExternalAccount.objects.bulk_create/create outside of tests are the direct-feed sync jobs in hadrius/employees/src/trade_monitoring/direct_feed/base.py (lines ~639, 859, 1076), which run against real custodian feeds (Schwab, Pershing, Raymond James, Merrill Lynch, Goldman Sachs, Morgan Stanley, RBC, BridgeFT). There is no Django admin route and no create/seed HTTP endpoint for this model. So whether the recording tenant has any open unclaimed account on a given night depends entirely on what the production snapshot happened to carry over, and no UI action can manufacture one if it's empty.",
-          "planUpdatedAt": "2026-09-16T05:38:20.112Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:30.856Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 5,
+            "unverified": [],
+            "verifiedSteps": 5
+          }
         },
         {
           "title": "How to deactivate or reactivate an employee",
@@ -1753,8 +2061,17 @@
             "Operator should pick a low-importance/test employee row, since the confirmation dialog explicitly warns 'Deletes are not reversible' — deactivating permanently deletes that employee's incomplete certification/disclosure tasks and trade restrictions"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:20.119Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:31.097Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to create a new trade flagging (monitoring) rule",
@@ -1790,8 +2107,17 @@
           ],
           "provisionable": "likely-already-present",
           "fileFixtureKind": "csv",
-          "planUpdatedAt": "2026-09-16T05:38:20.127Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:31.343Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to log a check manually in the Check Blotter",
@@ -1839,8 +2165,17 @@
             "Click \"Log check\" to submit — this now triggers the duplicate warning shown in step 9, so record from this point to capture the full flow including \"Log check anyways\" / \"Cancel\"."
           ],
           "blockerReason": "Live-verified in the browser: navigating to People oversight > Check blotter shows \"You don't have this module activated. Book a demo to learn more about activating this feature.\" The Check Blotter module itself is not activated for company 1013 (Stephen Investments) at the account/feature-flag level — no amount of in-app action can create a check record until Hadrius ops activates the module for this tenant. The original fresh classification (\"self-serve-quick\") was wrong; the 3-day-old prior research note that flagged this as structurally blocked was correct.",
-          "planUpdatedAt": "2026-09-16T05:38:20.133Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:31.621Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to close a check as compliant or non-compliant",
@@ -1886,8 +2221,17 @@
             "Click the \"Log check\" button to open the Log Check dialog and fill in the manual check form (amount, received date, forwarding date, payee, issuer, etc.) to create at least one check record in a resolvable (non-archived, non-escalated) state.",
             "Click \"Save\" to log the check, confirming it appears in the check list with an open/unresolved status."
           ],
-          "planUpdatedAt": "2026-09-16T05:38:20.140Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:31.887Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to bulk-update the review status of flagged trades",
@@ -1921,8 +2265,17 @@
             "At least one trade with review status 'Flagged' (UNREVIEWED) to select and update — Stephen Investments (company 1013) is a Hadrius sandbox company whose nightly-reseeded demo data includes a curated overlay of pre-flagged trades, so this is expected to already be present"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:20.147Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:32.167Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to upload or manually enter an employee's account holdings",
@@ -1968,8 +2321,17 @@
             "Confirm the newly created connection/account now appears in People oversight > Accounts — since it was just created it has zero holdings, so it is the account to select in step 4 of the main walkthrough ('choose an account that has no holdings yet')"
           ],
           "fileFixtureKind": "csv",
-          "planUpdatedAt": "2026-09-16T05:38:20.154Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:32.406Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to file a new Form U5",
@@ -2019,8 +2381,17 @@
             "Before recording, confirm with Hadrius engineering/ops whether the filing firm on company 1013 already has a working FINRA API credential (Firm profile > FINRA API credentials) and, if so, whether it points at a real vs. throwaway FINRA relationship",
             "If credentials are missing or unverified, plan to stop the recording after \"Validate filing\" fails (or before clicking it) rather than attempting \"File U5 to FINRA\" / \"Submit filing\", to avoid either a stuck recording or a real regulatory submission"
           ],
-          "planUpdatedAt": "2026-09-16T05:38:20.161Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:32.651Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 11,
+            "unverified": [],
+            "verifiedSteps": 11
+          }
         },
         {
           "title": "How to file a Form U4 amendment",
@@ -2062,8 +2433,17 @@
             "Enter the representative's CRD number and date of birth, then submit — this tenant's FINRA integration is mocked (company 1013 is classified INTERNAL/sandbox, so `finra_client()` always uses `call_mock=True`), so the sync succeeds immediately without any real external FINRA connectivity and creates the underlying FirmAssociation record needed for amendments.",
             "Confirm the sync completed (toast says \"Sync successful\" / \"Account connected and synced\"), then return to People oversight > U4 filings and use this employee as the representative in Section 1 of the amendment wizard."
           ],
-          "planUpdatedAt": "2026-09-16T05:38:20.168Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:32.907Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to create and launch a certification campaign",
@@ -2111,8 +2491,17 @@
             "Caution, not a blocker: launching with a real employee/group audience dispatches real notification emails and tasks immediately — step_audience.tsx's alert copy states \"New employees will be notified and assigned tasks immediately\" for a non-empty audience (the only way to avoid this is the separate \"Future new hires\" / autoAssignNewHires toggle, which the plan's steps do not use). Pick a minimal/throwaway audience for the recording rather than a broad group of real staff."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:20.174Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:33.435Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 14,
+            "unverified": [],
+            "verifiedSteps": 14
+          }
         },
         {
           "title": "How to assign a new disclosure questionnaire to employees",
@@ -2152,8 +2541,17 @@
             "At least one employee with disclosure-review/approver capability in the org (backend approver-capability check) so the Summary step doesn't flag 'no eligible reviewer' for the chosen templates — if a chosen template has no configured default reviewer, the operator must manually pick a valid non-recipient reviewer on the Initial or Final reviewer step (already part of the plan's own steps, no extra setup screen needed)."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:20.180Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:33.691Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to add a new holding to an account statement",
@@ -2206,8 +2604,17 @@
             "Wait for the statement's status pill to leave \"Pending\"/processing (it reaches Complete, or Failed if the placeholder isn't a parseable real statement — either state unlocks the Holdings tab for manual editing) before starting the recorded walkthrough"
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:20.187Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:33.934Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to bulk transfer employees to a new branch",
@@ -2347,8 +2754,17 @@
           ],
           "provisionable": "structurally-blocked",
           "blockerReason": "hadrius_backend/hadrius/finra/br/service_views_br.py, bulk_transfer_branch_employees() (~line 471): `if not (firm_profile := FirmProfile.objects.filter(company=company).first()): raise ResourceNotFoundException(\"Firm profile not found\")`. This FINRA path (the only one that creates Form U4/BR amendments) is selected whenever company.finra_enabled() and both source and target branches have a crd_number (hadrius_backend/hadrius/branches/views_branches.py post_transfer_branch_personnel, ~line 329) — true for company 1013 (finra_api_enabled=ACTIVE; 6 of its 8 branches are ACTV with crd_number). Live DB query confirms company 1013 has zero finra_firmprofile rows and zero finra_finraapicredentials rows. Creating a FirmProfile via the app's own UI requires the 'Onboard FINRA firm' flow (hadrius_backend/hadrius/finra/firm/views_firm.py post_onboard_finra_firm_profile), which calls the real external FINRA API (finra_client(...).get_access_token / get_firm_profile) using client_id/client_secret credentials that don't exist for this tenant — not something an operator can set up from within a recording session. Without it, any transfer between two CRD-numbered branches throws a server error at step 10, and the 'Filings created' screen (steps 11-12) is unreachable; the only workaround (transferring between the two non-FINRA branches, Scottsdale/Denver) avoids the error but produces zero U4/BR filings, defeating the plan's stated purpose.",
-          "planUpdatedAt": "2026-09-16T05:38:20.200Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:34.197Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 12,
+            "unverified": [],
+            "verifiedSteps": 12
+          }
         },
         {
           "title": "How to edit an employee's trade monitoring configuration",
@@ -2456,8 +2872,17 @@
             "The 'Default monitoring start date' field only shows for accounts that are both a company admin AND flagged is_hadrius_employee (apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx:163) — the plan already treats this as optional/conditional ('If visible'), which is correct."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:38:20.220Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:34.447Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to file a new Form U5 for a departing representative",
@@ -2511,8 +2936,18 @@
             "For a recording without live FINRA access, stop after the \"Signatures\" step; \"Validate filing\" and \"File U5 to FINRA\" call the FINRA Gateway"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.227Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:34.682Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Rewrote entirely. The original sources (src/pages/finra/index.tsx, u5_filing_dialog.tsx) do not exist and there is no 'New filing' dialog with 'Filing type'/'Representative'/'Termination type' fields; the real UI is a full-page stepper reached via \"File New U5\". /finra with no tab redirects to /settings/finra-api, so startRoute is now /people-oversight/u5-filings (the sidebar item lives under Peop",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 13,
+            "unverified": [],
+            "verifiedSteps": 13
+          }
         },
         {
           "title": "How to delete or reject U4 filings in bulk",
@@ -2549,8 +2984,17 @@
             "Create draft filings to act on: on the Form U4 directory click \"File New U4\", choose a type in the \"Create new Form U4 filing\" dialog and save at least two drafts (initial filings for delete, amendments for reject)"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.233Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:34.920Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to bulk sign, validate, and submit U4 filings",
@@ -2590,8 +3034,17 @@
           "blockerReason": "The core steps 'Validate N filings' and 'File N filings to FINRA' (component_bulk_validate_submit_modal.tsx useBulkValidateU4Filings / useBulkSubmitU4Filings) depend on a working FINRA Gateway API credential and real registered representatives, which cannot be provisioned inside the Hadrius UI; only the signing step is fully local.",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.240Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:35.156Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to file a new Form U4 for a representative",
@@ -2633,8 +3086,18 @@
           "blockerReason": "The \"U4 filings\" sidebar item appears only when useGetAllFinraCredentials returns credentials (use_employee_tab.tsx) and company.finra_api_enabled is ACTIVE; FINRA API gateway credentials come from FINRA's external system and cannot be created inside Hadrius. If the demo firm already has credentials, treat as needs-deliberate-setup.",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.247Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:35.400Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Original sources (src/pages/finra/u4/..., create_u4_modal.tsx, amendment_wizard.tsx) do not exist. The original steps described the Amendment path (\"New U4 amendment\" page with \"Next: Enter amendment details\", \"Next: Review & submit\", \"Continue to signatures\" - those labels do exist in page_new_u4_amendment.tsx), but the title asks for a NEW Form U4, which is the \"Initial\" option, so the plan was ",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "status": "missing",
@@ -2664,8 +3127,17 @@
           "fileFixtureKind": null,
           "suggestedSetupSteps": [],
           "title": "How to add a new employee manually",
-          "planUpdatedAt": "2026-09-16T05:51:17.220Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:35.636Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         }
       ]
     },
@@ -2714,8 +3186,18 @@
             "Confirm the branch has a person in charge (Branch details / Personnel tab)"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.254Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:35.888Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "The original plan's UI does not exist: there is no 'Remediations' tab with checkboxes, no 'Follow-up notes' or 'Due date' fields and no 'Send follow-up' button, and both listed source paths are invented. The real 'Issue follow-up' release dialog (delivery options \"Letter and task link\"/\"Letter only\"/\"Task link only\", \"Review before issuing\", \"Issue follow-up\") IS implemented in remediation.tsx but",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to export a branch exam's remediation tracker to CSV",
@@ -2752,8 +3234,17 @@
             "Log at least one finding with a corrective action on the exam so the Remediation table has rows"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.261Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:36.120Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 5,
+            "unverified": [],
+            "verifiedSteps": 5
+          }
         },
         {
           "title": "How to download a branch exam's audit trail",
@@ -2790,8 +3281,17 @@
             "Branches > Branches > click a branch row > click \"Schedule exam\" and complete the create-exam modal; the creation itself generates audit events"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.268Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:36.360Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 5,
+            "unverified": [],
+            "verifiedSteps": 5
+          }
         },
         {
           "title": "How to edit a branch's display name in Branches",
@@ -2826,8 +3326,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:39:06.861Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:36.595Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to connect Hadrius to the FINRA Gateway in Branches",
@@ -2869,8 +3378,18 @@
           "blockerReason": "The \"Save & Test Connection\" and \"Find & sync branch\" steps call the FINRA Gateway with the firm's API credentials (component_finra_api_credentials_modal.tsx onboardFinraFirmProfile; add_branch_modal.tsx syncBranch(crd)); a working FINRA Gateway account and a real branch CRD cannot be provisioned through the Hadrius UI.",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.280Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:36.848Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Sidebar tab is \"Branches\" (not 'Branch dashboard'). Steps verified against add_branch_modal.tsx and the credentials modal; corrected the flow detail that after saving credentials the dialog returns to the regulator-selection step, so the user must re-select FINRA > \"Sync an existing branch\" > \"Next\" before entering the CRD. Original source paths were invented. Note the credential modal is also mou",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 11,
+            "unverified": [],
+            "verifiedSteps": 11
+          }
         },
         {
           "title": "How to add a new branch",
@@ -2996,8 +3515,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.766Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:37.089Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to bulk transfer employees between branches",
@@ -3041,8 +3569,17 @@
             "Open the source branch > \"Personnel\" tab > \"Add employee\" to add at least one person to transfer"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.774Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:37.317Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to schedule a new branch exam",
@@ -3181,8 +3718,17 @@
             "Grant an employee the branch exam inspector permission from the permissions page (linked via \"Open permissions\" in the Inspectors step) so they appear as an inspector"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.781Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:37.553Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to log a corrective finding during a branch exam",
@@ -3356,8 +3902,17 @@
             "If no template was attached at creation, open the exam > \"Inspection\" tab and attach a branch exam questionnaire template from the pinned questionnaire card"
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:20.789Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:37.792Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 11,
+            "unverified": [],
+            "verifiedSteps": 11
+          }
         },
         {
           "title": "How to customize a branch exam notification email template",
@@ -3397,8 +3952,17 @@
             "Branches > All exams > \"Create new exam\", select \"Announced\" on the Notify step and click \"Create exam\"; do not click \"Mark ready and notify\" before recording"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.796Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:38.021Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to complete and submit a branch exam task questionnaire",
@@ -3439,8 +4003,18 @@
             "Log in as that employee and open My exams"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.802Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:38.256Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Original sources (src/pages/branches/branch_exams/...) do not exist and the described \"Tasks\" tab does not exist on the admin exam page. The employee-facing flow is EmployeeBranchExamTaskSubmissionFlow at /employee/examtask/[taskId], reached from the employee nav item \"My exams\". Removed the \"Add corrective finding\" / \"Add evidence\" steps: those actions require branch manage or inspector permissio",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to file a new branch registration (Form BR)",
@@ -3611,8 +4185,18 @@
           "blockerReason": "The \"Branch filings\" tab is only added to the sidebar when useGetAllFinraCredentials returns at least one credential (use_branch_tabs.tsx) and company.finra_api_enabled is ACTIVE (use_tab_states.ts); FINRA API gateway credentials (client ID/secret) come from FINRA's external system and cannot be created inside Hadrius. If the demo firm already has credentials, treat this as likely-already-present.",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.809Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:38.494Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "The original plan described the closure flow (/finra/br/close, \"Close a branch office\"), which contradicts the title; rewrote around \"Register a new branch office\" (/finra/br/new). Dropped page_finra_home.tsx-based tab list claims: /finra only renders u4_filings, u5_filings, br_filings and redirects otherwise to /settings/finra-api. Field labels for steps 2-5 (Registration information etc.) were n",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to add an affiliated firm",
@@ -3652,8 +4236,17 @@
             "No data setup needed for the manual form path; only the admin role and module access above"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.815Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:38.727Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "status": "missing",
@@ -3687,8 +4280,18 @@
             "If no FINRA branch exists: on Branches > Branches use the add-branch flow to sync a branch from FINRA by CRD number (add_branch_modal.tsx uses the same useBranchSync hook)"
           ],
           "title": "How to re-sync a branch's data with FINRA",
-          "planUpdatedAt": "2026-09-16T05:51:18.463Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:38.966Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Verified menu label \"Re-sync with FINRA\", gating on branch.branch_profile.is_finra, disabled while syncing, and the \"Syncing with FINRA...\" overlay. handleResyncFinra silently returns if crd_number is missing. No success or error toast is wired in the popover — completion is only indicated by the overlay disappearing and SWR caches updating. The popover is also rendered elsewhere, but the detail p",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         }
       ]
     },
@@ -3737,8 +4340,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.821Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:39.196Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to review and close an email as compliant or non-compliant",
@@ -3775,8 +4387,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.827Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:39.426Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to escalate a flagged email conversation to an admin",
@@ -3868,8 +4489,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.833Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:39.688Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to export search results for email communications",
@@ -3907,8 +4537,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.840Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:39.938Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to create a new instant messaging provider",
@@ -3947,8 +4586,17 @@
             "On Communications > Providers, turn on the \"IMs enabled\" switch if it is off"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.846Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:40.180Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to add a social media account for archiving",
@@ -4060,8 +4708,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.852Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:40.423Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to approve or reject pending social media account requests",
@@ -4168,8 +4825,17 @@
             "Return as an admin to Communications > Social media > \"Manage\" and filter by \"Pending\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.859Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:40.674Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to add a website subdomain for archiving",
@@ -4205,8 +4871,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.864Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:40.935Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to create a new case",
@@ -4328,8 +5003,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.871Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:41.188Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to add a dataset of filtered communications to a case",
@@ -4372,8 +5056,17 @@
             "Ensure the firm has at least one connected email or IM source with archived messages (Communications > Email or Communications > Instant messages should show conversations)"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.878Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:41.421Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to manage employee access to a case",
@@ -4409,8 +5102,17 @@
             "Navigate to Communications > Cases, click \"Create a case\", fill in the required fields choosing yourself as \"Internal case manager\", toggle \"Ongoing project\", and click \"Create case\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.884Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:41.676Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to share a case export with an external recipient",
@@ -4542,8 +5244,17 @@
             "Wait on the \"Exports\" tab until the export's status badge changes from \"Processing\" to \"Complete\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.890Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:42.022Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 11,
+            "unverified": [],
+            "verifiedSteps": 11
+          }
         },
         {
           "title": "How to rename or delete an export in Settings > Exports",
@@ -4585,8 +5296,18 @@
             "Return to Settings > Exports and confirm the export appears in the table"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.896Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:42.264Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "The original startRoute /communications/exports (Communications > Exports, CommsExportPage) has NO rename or delete actions — its row menu only offers download, \"Copy export details\" and \"View original search\". Rename/Delete live on the Settings > Exports page (/settings/exports, ExportsPage) which lists exports across modules (Email, Instant messages, Cases, etc.). Rewrote the plan around that pa",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to upload reviewed emails to test an AI compliance subrule",
@@ -4633,8 +5354,18 @@
             "Ensure some flagged emails for that rule category have been reviewed in Communications > Email (marked compliant or non-compliant) so they appear in the \"Select Reviewed Emails for Testing\" dialog"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.902Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:42.492Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Original source paths (coreloop/communications/subrules/...) do not exist; the real UI is under coreloop/archive/email/subrules. The toolbar button is \"AI configurations\" (not \"Subrules\") on the current email page; the legacy page uses \"Subrules\". Removed the unverified \"view match rate results\" claim — results show as \"Expected\"/\"Subrule Result\" columns and a \"Tests Completed\" toast. Medium confi",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to create a new email compliance subrule",
@@ -4674,8 +5405,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.909Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:42.727Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         }
       ]
     },
@@ -4725,8 +5465,17 @@
             "Fill in \"Title\" and \"Disclosure copy\", then click \"Save & activate\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.915Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:42.960Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to restore an archived marketing project",
@@ -4764,8 +5513,17 @@
             "In the \"Confirm project archive\" dialog click \"Archive\"; the project now appears under Marketing > Archive > Projects"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:20.920Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:43.192Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to create a routing rule to auto-assign projects to a workflow",
@@ -4808,8 +5566,17 @@
             "On Marketing > Workflows > \"Routing questionnaires\", click \"Create questionnaire\", add questions, and finish the editor so the questionnaire shows the \"Active\" badge"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.379Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:43.416Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to archive a disclosure",
@@ -4846,8 +5613,17 @@
             "Fill in \"Title\" and \"Disclosure copy\", then click \"Save & activate\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.387Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:43.657Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to add a document type override for expiration in Marketing",
@@ -4889,8 +5665,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.393Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:43.892Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to reject a marketing document with a reason",
@@ -4935,8 +5720,18 @@
             "As a submitter in the workflow's submitter group, create a project and upload a document through Marketing > Projects (see \"How to create a new marketing project\") so it lands in the approver's tier"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.400Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:44.116Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Input sources (marketing_dashboard.tsx, document_review.tsx) were invented and there is no \"Pending review\" submissions table or \"Rejection reason\" field. Rewritten around the real Approver Dashboard: unclaimed table \"Claim\" -> \"Claim review\" dialog, then assigned table icon \"Reject\" -> \"Reject document\" dialog with \"Reason for rejection (optional)\". Rejecting from the document review page (projec",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to export marketing review data",
@@ -4972,8 +5767,17 @@
             "If no projects exist, create one via Marketing > Projects (see \"How to create a new marketing project\")"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.407Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:44.343Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to create a new disclosure in Marketing",
@@ -5009,8 +5813,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.413Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:44.570Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to create a new approval workflow",
@@ -5050,8 +5863,17 @@
             "Navigate to Marketing > Workflows, click the \"Groups\" tab and click \"Create group\" (/marketing/workflows/groups/new) to create a submitter group and an approver group with members"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.419Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:44.805Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to create a disclosure rule to auto-attach disclosures",
@@ -5094,8 +5916,17 @@
             "Navigate to Marketing > Disclosures, click \"New disclosure\", fill \"Title\" and \"Disclosure copy\", click \"Save & activate\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.426Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:45.033Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to create a new marketing project",
@@ -5148,8 +5979,17 @@
             "If no workflow exists: Marketing > Workflows > create a workflow whose submitter group includes the recording user (see the 'How to create a new approval workflow' plan)."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:21.431Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:45.269Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to configure document expiration and renewal rules",
@@ -5323,8 +6163,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.438Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:45.506Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 13,
+            "unverified": [],
+            "verifiedSteps": 13
+          }
         },
         {
           "title": "How to claim and approve a marketing document",
@@ -5366,8 +6215,17 @@
             "Create a project with one document via Marketing > Projects > \"New\" using a workflow whose first approval step includes the recording user's approval group; wait for AI processing to finish so it lands in the approver queue."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.443Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:45.742Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to configure project submission questions",
@@ -5403,8 +6261,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.449Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:45.975Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to add a new document to an existing marketing project",
@@ -5442,8 +6309,17 @@
             "Create a project first via Marketing > Projects > \"New\" if the board is empty."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:38:21.455Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:46.212Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to configure comment templates for document review",
@@ -5475,8 +6351,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.461Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:46.449Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to configure marketing document types",
@@ -5508,8 +6393,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.468Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:46.688Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to move a project card through the review kanban board",
@@ -5551,8 +6445,18 @@
             "Create a project via Marketing > Projects > \"New\" with a single-step workflow whose approval group includes the recording user; after AI processing completes the card sits in \"Admin review\"."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.474Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:46.922Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Original plan mixed two boards. The columns \"For my attention\"/\"With submitter\"/\"Resolved\" exist only on the Approver Dashboard's \"Projects & Documents\" tab with the \"Projects\" segmented toggle (gated by enable_dashboards); the ungated Marketing Projects board uses \"Submitter review\"/\"Admin review\"/\"Resolved\". The card menu items are \"Share link\", \"Download\", \"Withdraw\", \"Archive\", \"View project\" ",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to add context to Firm Intelligence",
@@ -5651,8 +6555,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.481Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:47.163Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to edit or manage a Firm Intelligence finding",
@@ -5689,8 +6602,17 @@
             "Run the 'How to add context to Firm Intelligence' flow first (add a text source and wait for findings) so a source with findings exists; leave at least one finding unsaved so \"Save Context\"/\"Delete\" are available."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.486Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:47.394Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "status": "missing",
@@ -5726,8 +6648,17 @@
             "If a questionnaire already exists, the walkthrough must use \"Edit\" on the existing card instead"
           ],
           "title": "How to create a routing questionnaire",
-          "planUpdatedAt": "2026-09-16T05:51:16.566Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:47.631Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "status": "missing",
@@ -5756,8 +6687,17 @@
           "fileFixtureKind": null,
           "suggestedSetupSteps": [],
           "title": "How to create a workflow group",
-          "planUpdatedAt": "2026-09-16T05:51:16.899Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:47.867Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         }
       ]
     },
@@ -5793,8 +6733,17 @@
           "provisionable": "likely-already-present",
           "blockerReason": "",
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T05:38:21.494Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:48.102Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (step-by-step audit, pre-verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to reopen a closed exception in Account surveillance",
@@ -5834,8 +6783,17 @@
             "Open the new exception and click \"Close\" in the header, pick a \"Determination\", fill \"Resolution summary\", and click \"Close exception\" so there is a closed exception to reopen."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.500Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:48.360Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to archive a flagged exception",
@@ -5873,8 +6831,17 @@
             "Create an exception via a rule run (Overview > \"Rule library\" > row menu > \"Run now\") or manually from Account surveillance > Trades: tick trade rows, click \"Create manual exception\", fill \"Title\", choose a severity, click \"Create exception\"."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.506Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:48.640Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to save and reuse a custom trade search",
@@ -5908,8 +6875,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.511Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:48.876Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to escalate a flagged compliance exception",
@@ -5945,8 +6921,17 @@
             "Create an open exception via a rule run (Overview > \"Rule library\" > row menu > \"Run now\") or manually from Account surveillance > Trades: tick trade rows, click \"Create manual exception\", fill \"Title\", choose a severity, click \"Create exception\"."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.516Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:49.108Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to close a flagged compliance exception",
@@ -5983,8 +6968,17 @@
             "Create an open exception via a rule run (Overview > \"Rule library\" > row menu > \"Run now\") or manually from Account surveillance > Trades: tick trade rows, click \"Create manual exception\", fill \"Title\", choose a severity, click \"Create exception\"."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.522Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:49.346Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to bulk close multiple flagged exceptions at once",
@@ -6025,8 +7019,17 @@
             "Generate several exceptions by running a rule (Overview > \"Rule library\" > row menu > \"Run now\"), or create two or more manual exceptions from Account surveillance > Trades (tick trades > \"Create manual exception\" > \"Title\" + severity > \"Create exception\")."
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.529Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:49.572Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to import trade and holdings data",
@@ -6061,8 +7064,17 @@
             "Prepare a small CSV in that custodian's format containing a few trades and holdings."
           ],
           "fileFixtureKind": "csv",
-          "planUpdatedAt": "2026-09-16T05:38:21.977Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:50.543Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to create a new surveillance rule from a template",
@@ -6107,8 +7119,17 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.983Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:50.772Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "title": "How to edit a surveillance rule's configuration",
@@ -6156,8 +7177,17 @@
             "Pick a template (e.g. Front running), complete the wizard steps (only \"Rule name\" is required on the first step; other steps have defaults) and click \"Publish\" on the \"Review & publish\" step"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.989Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:51.159Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 9,
+            "unverified": [],
+            "verifiedSteps": 9
+          }
         },
         {
           "title": "How to activate, deactivate, or sandbox a surveillance rule",
@@ -6192,8 +7222,17 @@
             "Go to /account-surveillance/rules and click \"Create new rule\", choose a template, complete the wizard and click \"Publish\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:21.995Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:51.421Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         },
         {
           "title": "How to manually run a surveillance rule",
@@ -6277,8 +7316,17 @@
             "Go to /account-surveillance/rules and click \"Create new rule\", pick a template, complete the wizard and click \"Publish\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:22.002Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:51.679Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to view a rule run's results",
@@ -6317,8 +7365,17 @@
             "Go to /account-surveillance/rules, open a rule's \"...\" menu and click \"Run now\"; wait for the run to complete"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:22.009Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:51.918Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
+          }
         },
         {
           "title": "How to view and link entities in the Client Relationship Builder graph",
@@ -6352,8 +7409,18 @@
             "Return to /account-surveillance/company_structure once processing has finished"
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:22.015Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:52.153Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Original source path (coreloop/account_surveillance/company_structure.tsx) does not exist; the real component is page_relationship_builder.tsx. The page file is annotated \"//Unused page\" and is not in the sidebar subtabs, so it is reached only by URL. Removed the claim that the new edge shows an \"OWNS\"/\"MANAGES\" label: onConnect adds the edge optimistically with no label, and there is no explicit ",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "low",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to search and filter representatives",
@@ -6387,8 +7454,17 @@
             "If no representatives exist, go to /account-surveillance/import_data, choose a \"Custodian\", select a CSV/XLSX under \"Input CSV/XLSX\" and click \"Upload and Proceed\""
           ],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:22.022Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:52.397Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          }
         },
         {
           "title": "How to monitor incoming data feed sync status",
@@ -6427,8 +7503,18 @@
           "blockerReason": "Sync records (ExternalSync) are produced by backend feed ingestion from custodian/SFTP sources; the UI offers no way to create one (the Import data page uploads trade files but the code does not show it creating a feed-monitor sync record).",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:38:22.028Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:52.639Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "note": "Original sources (coreloop/trade_monitoring/feed_monitor/...) do not exist. Corrected the filter UI: the \"Feed filters\" panel uses single-select combobox dropdowns (\"All sources\", \"All statuses\", \"All file types\"), not checkboxes; there is no \"Search\" or \"Clear all\" button in this panel because a custom TableFilterPanel is supplied without onSave/onClear. Status labels like \"Failed\"/\"Delayed\" coul",
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "medium",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "status": "missing",
@@ -6461,8 +7547,17 @@
           "fileFixtureKind": null,
           "suggestedSetupSteps": [],
           "title": "How to create a manual exception from selected trades",
-          "planUpdatedAt": "2026-09-16T05:51:17.744Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:52.904Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
+          }
         },
         {
           "status": "missing",
@@ -6499,8 +7594,17 @@
             "If no exceptions exist: Navigate to Account surveillance > Trades, tick a few trades, click \"Create manual exception\", fill Title and Severity, click \"Create exception\" (repeat once more)"
           ],
           "title": "How to bulk-assign or set severity for multiple exceptions",
-          "planUpdatedAt": "2026-09-16T05:51:18.138Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T05:58:53.138Z",
+          "planUpdatedBy": "stephenskalamera",
+          "grounding": {
+            "steps": [],
+            "source": "codebase audit (agent verdict)",
+            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "confidence": "high",
+            "totalSteps": 8,
+            "unverified": [],
+            "verifiedSteps": 8
+          }
         }
       ]
     }

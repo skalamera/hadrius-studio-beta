@@ -42,6 +42,8 @@ In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpa
 
 Plans are shared live: every install reads and writes the step-by-step plans through the team library, so a plan someone edits, enhances, or generates shows up for everyone within about a minute (the View Plan dialog says who last changed it and when). `data/workflows.json` is just this machine's cache of that — no `git pull` is needed to stay in sync on plan content; `update.sh` is only for code changes.
 
+Every plan-writing path (Scan codebase, Generate plan, Enhance plan) follows the same grounding contract: read the real components, one concrete control per step with its label quoted from the code, and a per-step verified/unverified record. **Auto-record is only offered when every step is verified** — an unverified step is exactly where the browser agent stalls — so an opportunity shows "Auto-record unavailable" (with the reason) until Enhance re-grounds it. Record manually in the meantime.
+
 Anything marked **Beta** in amber — Auto-record, Enhance Plan, Generate plan, Scan codebase — is AI-driven and can be inconsistent. Review its output before recording or publishing, and be especially careful with Auto-record, which drives your browser on its own.
 
 Outputs are written to `out/<walkthrough name>/`.
