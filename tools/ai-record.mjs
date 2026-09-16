@@ -219,6 +219,15 @@ export const SNAPSHOT_FN = new Function(`
     if (!elName && dh) {
       elName = 'Calendar day ' + dh.day + (dh.today ? ' (Today)' : '');
     }
+    // Checked/pressed/selected/expanded state — a radio, checkbox, switch, tab or toggle keeps the
+    // SAME role and name after being activated (only this attribute flips), so without capturing it
+    // here describeOutcome() below has no way to see the change. It used to report every successful
+    // radio/checkbox click as "no visible change", which fed the retry-then-block-as-dead escalation
+    // even when the click had genuinely worked (verbatim what happened to the Form U4 amendment-type
+    // radios: aria-checked flipped to true, but the model was told nothing happened and gave up).
+    const stateAttr = el.getAttribute('aria-checked') ?? el.getAttribute('aria-pressed')
+      ?? el.getAttribute('aria-selected') ?? el.getAttribute('aria-expanded')
+      ?? (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio') ? String(el.checked) : null);
     out.push({
       id: i,
       tag: el.tagName.toLowerCase(),
@@ -227,6 +236,7 @@ export const SNAPSHOT_FN = new Function(`
       datePicker: isDatePickerButton(el) || undefined,
       disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
       inDialog: !!el.closest('[role="dialog"],[role="alertdialog"]'),
+      state: stateAttr === null ? undefined : stateAttr,
     });
   });
   // Non-interactive page text: headings, labels, helper/validation notes, required markers. This is
@@ -736,6 +746,19 @@ function describeOutcome(before, after) {
   if (menuish.length) parts.push(`a menu opened with ${menuish.length} option(s): ${menuish.slice(0, 5).map((e) => `"${e.name}"`).join(', ')}${menuish.length > 5 ? '…' : ''}`);
   else if (added.length) parts.push(`${added.length} new element(s) appeared, e.g. ${added.slice(0, 3).map((e) => `${e.role || e.tag} "${e.name}"`).join(', ')}`);
   if (!menuish.length && removed.length >= 3 && added.length === 0) parts.push(`${removed.length} element(s) disappeared (a menu/dialog closed?)`);
+  // A radio/checkbox/switch/tab keeps the SAME role|name after being activated — only its state
+  // attribute flips — so it never shows up as added/removed above. Match elements by role|name and
+  // report any state change directly; without this, every successful toggle read as "no visible
+  // change" and the retry logic eventually declared the control dead.
+  const beforeByKey = new Map(before.elements.map((e) => [key(e), e]));
+  const stateChanges = [];
+  for (const e of after.elements) {
+    const b = beforeByKey.get(key(e));
+    if (b && b.state !== undefined && e.state !== undefined && b.state !== e.state) {
+      stateChanges.push(`"${e.name}" is now ${e.state}`);
+    }
+  }
+  if (stateChanges.length) parts.push(stateChanges.slice(0, 5).join(', '));
   if (!parts.length) parts.push('no visible change');
   return parts.join('; ');
 }
