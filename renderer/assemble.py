@@ -51,15 +51,59 @@ XF = 0.8                  # dissolve length between slides
 FONT = '/System/Library/Fonts/Helvetica.ttc'
 tmp = out / '_build'; tmp.mkdir(exist_ok=True)
 
-# ---------- 1. narration (edge-tts) ----------
+# ---------- 1. narration (ElevenLabs when configured, edge-tts otherwise) ----------
+# The bridge loads .env into its own environment before spawning render.sh, but a render started
+# from a terminal has none of it — so read .env directly for anything the environment lacks.
+def env_from_dotenv(name):
+    if os.environ.get(name): return os.environ[name].strip()
+    try:
+        for line in (ROOT / '.env').read_text().splitlines():
+            line = line.strip()
+            if line.startswith(f'{name}='):
+                return line.split('=', 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ''
+
+ELEVEN_KEY = env_from_dotenv('ELEVENLABS_API_KEY')
+ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'XrExE9yKIg1WjnnlVkGX'  # "Matilda"
+ELEVEN_MODEL = env_from_dotenv('ELEVENLABS_MODEL_ID') or 'eleven_multilingual_v2'
+
+def elevenlabs_tts(text, path):
+    import urllib.request
+    body = json.dumps({
+        'text': text,
+        'model_id': ELEVEN_MODEL,
+        'voice_settings': {'stability': 0.5, 'similarity_boost': 0.75, 'style': 0.0, 'use_speaker_boost': True},
+    }).encode()
+    req = urllib.request.Request(
+        f'https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE}?output_format=mp3_44100_128',
+        data=body, method='POST',
+        headers={'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg'})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        path.write_bytes(resp.read())
+
 async def tts():
-    import edge_tts
+    used_fallback = False
     for s in slides:
         if not s['narration']: s['audio'] = None; continue
-        f = tmp / f"n{s['slide']:02d}.mp3"
+        # Provider is part of the cache name so switching voices never reuses the other's audio.
+        f = tmp / (f"n{s['slide']:02d}-el.mp3" if ELEVEN_KEY else f"n{s['slide']:02d}.mp3")
         if not f.exists():
-            await edge_tts.Communicate(s['narration'], VOICE, rate=RATE, pitch=PITCH).save(str(f))
+            if ELEVEN_KEY:
+                try:
+                    elevenlabs_tts(s['narration'], f)
+                except Exception as e:  # quota, network, bad voice id — keep the render going
+                    detail = getattr(e, 'read', lambda: b'')()
+                    print(f"  ⚠ ElevenLabs failed for slide {s['slide']} ({e}{(': ' + detail[:160].decode(errors='replace')) if detail else ''}) — falling back to edge-tts", file=sys.stderr)
+                    used_fallback = True
+                    f = tmp / f"n{s['slide']:02d}.mp3"
+            if not f.exists():
+                import edge_tts
+                await edge_tts.Communicate(s['narration'], VOICE, rate=RATE, pitch=PITCH).save(str(f))
         s['audio'] = str(f)
+    provider = 'ElevenLabs' + (f' (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})' if ELEVEN_KEY else '') if ELEVEN_KEY else f'edge-tts ({VOICE})'
+    print(f"narration: {provider}{' — some slides fell back to edge-tts' if used_fallback else ''}")
 asyncio.run(tts())
 
 def dur(f):

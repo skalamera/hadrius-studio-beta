@@ -315,6 +315,9 @@ fi
 if ! grep -qs '^GEMINI_API_KEY=.\+' .env 2>/dev/null; then
   echo "ℹ GEMINI_API_KEY is not set in .env — optional; it's only the fallback when the Claude CLI is unavailable."
 fi
+if ! grep -qs '^ELEVENLABS_API_KEY=.\+' .env 2>/dev/null; then
+  echo "ℹ ELEVENLABS_API_KEY is not set in .env — videos will use the free edge-tts voice instead of ElevenLabs (Matilda)."
+fi
 
 # Configure Hadrius Codebase MCP for Claude Code if installed
 if command -v claude >/dev/null; then
