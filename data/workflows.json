@@ -2631,77 +2631,77 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "high",
-            "verifiedSteps": 10,
-            "totalSteps": 10,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/pages/people-oversight/u4-filings/index.tsx",
+                "step": 1,
                 "quote": "export default function PeopleOversightU4FilingsPage() { return <U4DirectoryTab />; }",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "step": 2,
                 "quote": "<PantheonButton leftIcon={<Plus />}>File New U4</PantheonButton>",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "step": 3,
                 "quote": "<RadioGroupItem value=\"amendment\" id=\"amendment\" /> ... <Link href={`/finra/u4/new/${filingType}`}>Continue</Link>",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_prelim_info.tsx",
+                "step": 4,
                 "quote": "placeholder=\"Search for a representative's name or email\"",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_questions.tsx",
+                "step": 5,
                 "quote": "{ value: \"RESIDENTIAL_HISTORY\", label: \"Residential history\", id: \"amendment-residential-history\" }",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "step": 6,
                 "quote": "label: \"Next: Enter amendment details\"",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_questions.tsx",
+                "step": 7,
                 "quote": "Text variant=\"small_leading_medium\">Address line 1 ... Effective date of new address ... Move out date of previous address",
                 "verified": true
               },
               {
-                "step": 8,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "step": 8,
                 "quote": "label: \"Next: Review & submit\"",
                 "verified": true
               },
               {
-                "step": 9,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_review.tsx",
+                "step": 9,
                 "quote": "<Text variant=\"small_leading_medium\">Amendment details</Text>",
                 "verified": true
               },
               {
-                "step": 10,
                 "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "step": 10,
                 "quote": "onClick={handleSaveAndContinueToSignatures} ... Continue to signatures",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:04:03.491Z"
+            "checkedAt": "2026-09-16T16:04:03.491Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:04:03.502Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:04:03.622Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to create a disclosure template for People oversight",
@@ -4664,83 +4664,83 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "high",
-            "verifiedSteps": 11,
-            "totalSteps": 11,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
+                "step": 1,
                 "quote": "title={\"Branches\"}\n          path={branchTab.path}",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/pages/branch_dashboard_page.tsx",
+                "step": 2,
                 "quote": "<SegmentedControllerItem isActive={viewMode === \"branch\"} onClick={() => setViewMode(\"branch\")}>\n                Branch\n              </SegmentedControllerItem>",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/pages/branch_details_page.tsx",
+                "step": 3,
                 "quote": "personnel: \"Personnel\",",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "step": 4,
                 "quote": "<DataTableSelectCell ... onCheckedChange={(checked) => { ... handleSelectRow(rowData, checked); }}",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/tabs/personnel.tsx",
+                "step": 5,
                 "quote": "<Typography variant=\"controlText\">Transfer {selectedBranchIndividuals.length}</Typography>",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 6,
                 "quote": "<Text variant=\"base_leading_bold\">Transfer to branch</Text>\n        <Combobox ... placeholder=\"Select target branch\"",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 7,
                 "quote": "<Text variant=\"base_leading_bold\">End date at current branch</Text>",
                 "verified": true
               },
               {
-                "step": 8,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 8,
                 "quote": "<Text variant=\"base_leading_bold\">Start date at new branch</Text>",
                 "verified": true
               },
               {
-                "step": 9,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 9,
                 "quote": "{!bulkTransferBranchEmployeesLoading && <ArrowRightLeft className=\"h-4 w-4\" />} Transfer to branch",
                 "verified": true
               },
               {
-                "step": 10,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 10,
                 "quote": "{showResults ? \"Filings created\" : ...}",
                 "verified": true
               },
               {
-                "step": 11,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 11,
                 "quote": "<Button variant=\"ghost\" onClick={onCancel}>Close</Button> ... Continue to filings",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:04:43.759Z"
+            "checkedAt": "2026-09-16T16:04:43.759Z",
+            "confidence": "high",
+            "totalSteps": 11,
+            "unverified": [],
+            "verifiedSteps": 11
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:04:43.768Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:04:43.858Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to edit an employee's trade monitoring configuration",
@@ -4967,107 +4967,107 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "high",
-            "verifiedSteps": 15,
-            "totalSteps": 15,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+                "step": 1,
                 "quote": "{ key: \"u5_filings\", title: \"U5 filings\", path: \"/people-oversight/u5-filings\" }",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/tab_u5_directory.tsx",
+                "step": 2,
                 "quote": "File New U5",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_preliminary_info.tsx",
+                "step": 3,
                 "quote": "placeholder=\"Search for a representative's name or email\" ... Select firm",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_general_info.tsx",
+                "step": 4,
                 "quote": "Section 3: Current residential address ... RequiredLabel required>Address line 1",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+                "step": 5,
                 "quote": "Is this a full termination?",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+                "step": 6,
                 "quote": "Discharged ... Termination explanation: ... placeholder=\"Select termination date\"",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+                "step": 7,
                 "quote": "Is this a multiple termination with one or more firms affiliated with the filing firm?",
                 "verified": true
               },
               {
-                "step": 8,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_disclosures.tsx",
+                "step": 8,
                 "quote": "7. Disclosure questions ... Disclosure certification checkbox (optional):",
                 "verified": true
               },
               {
-                "step": 9,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_drps.tsx",
+                "step": 9,
                 "quote": "No disclosure reporting pages required",
                 "verified": true
               },
               {
-                "step": 10,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_new_u5_filing.tsx",
+                "step": 10,
                 "quote": "Save and proceed to signatures ... toast({ title: \"U5 filing created\" ... })",
                 "verified": true
               },
               {
-                "step": 11,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_signatures.tsx",
+                "step": 11,
                 "quote": "I verify the accuracy and completeness of the information contained in and with this form. ... Sign firm acknowledgment",
                 "verified": true
               },
               {
-                "step": 12,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_signatures.tsx",
+                "step": 12,
                 "quote": "Electronic signature of individual ... Sign individual acknowledgment",
                 "verified": true
               },
               {
-                "step": 13,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/tab_u5_directory.tsx",
+                "step": 13,
                 "quote": "<Link href={`/finra/u5/${filing.id}`}>",
                 "verified": true
               },
               {
-                "step": 14,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_specific_u5.tsx",
+                "step": 14,
                 "quote": "Validate filing ... Employee SSN Required ... READY_TO_FILE: \"Ready to file: Please file to FINRA\"",
                 "verified": true
               },
               {
-                "step": 15,
                 "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_specific_u5.tsx",
+                "step": 15,
                 "quote": "File U5 to FINRA ... AlertDialogTitle>Submit U5 filing ... Submit filing",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:05:34.960Z"
+            "checkedAt": "2026-09-16T16:05:34.960Z",
+            "confidence": "high",
+            "totalSteps": 15,
+            "unverified": [],
+            "verifiedSteps": 15
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:05:34.965Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:05:35.038Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to delete or reject U4 filings in bulk",
@@ -5207,8 +5207,70 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"u4_filings\", title: \"U4 filings\", path: \"/people-oversight/u4-filings\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "step": 2,
+                "quote": "<PantheonButton leftIcon={<Plus />}>File New U4</PantheonButton> ... <DialogTitle>Create new Form U4 filing</DialogTitle>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "step": 3,
+                "quote": "<Link href={`/finra/u4/new/${filingType}`}>Continue</Link>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_preliminary_info.tsx",
+                "step": 4,
+                "quote": "placeholder=\"Search for a representative's name or email\" ... Text variant=\"extra_large_leading_medium\">Section 1: Select representative",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_filing.tsx",
+                "step": 5,
+                "quote": "Next: {stepLabels[currentStep + 1]}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_filing.tsx",
+                "step": 6,
+                "quote": "Create Filing and Proceed to Signatures",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/components/component_type_confirmation_dialog.tsx",
+                "step": 7,
+                "quote": "Type <span ...>{confirmWord}</span> to confirm ... confirmWord = \"CONFIRM\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_specific_u4_signatures.tsx",
+                "step": 8,
+                "quote": "Text variant=\"small_medium\">Sign on their behalf ... Sign section 15A",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_signatures.tsx",
+                "step": 9,
+                "quote": "Sign section 15B ... Electronic signature of appropriate signatory",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_specific_u4_signatures.tsx",
+                "step": 10,
+                "quote": "Section15C ... Sign section 15C",
+                "verified": false
+              }
+            ],
+            "checkedAt": "2026-09-16T16:04:36.707Z",
             "confidence": "medium",
-            "verifiedSteps": 9,
             "totalSteps": 10,
             "unverified": [
               {
@@ -5216,73 +5278,11 @@
                 "reason": "15C only appears/is required when the employee requests Temporary Registration; could not confirm from code exactly which registration inputs make sig15C mandatory vs. optional, so this step may not a"
               }
             ],
-            "steps": [
-              {
-                "step": 1,
-                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
-                "quote": "{ key: \"u4_filings\", title: \"U4 filings\", path: \"/people-oversight/u4-filings\" }",
-                "verified": true
-              },
-              {
-                "step": 2,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
-                "quote": "<PantheonButton leftIcon={<Plus />}>File New U4</PantheonButton> ... <DialogTitle>Create new Form U4 filing</DialogTitle>",
-                "verified": true
-              },
-              {
-                "step": 3,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
-                "quote": "<Link href={`/finra/u4/new/${filingType}`}>Continue</Link>",
-                "verified": true
-              },
-              {
-                "step": 4,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_preliminary_info.tsx",
-                "quote": "placeholder=\"Search for a representative's name or email\" ... Text variant=\"extra_large_leading_medium\">Section 1: Select representative",
-                "verified": true
-              },
-              {
-                "step": 5,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_filing.tsx",
-                "quote": "Next: {stepLabels[currentStep + 1]}",
-                "verified": true
-              },
-              {
-                "step": 6,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_filing.tsx",
-                "quote": "Create Filing and Proceed to Signatures",
-                "verified": true
-              },
-              {
-                "step": 7,
-                "file": "apps/hadrius-app/src/pages/finra/components/component_type_confirmation_dialog.tsx",
-                "quote": "Type <span ...>{confirmWord}</span> to confirm ... confirmWord = \"CONFIRM\"",
-                "verified": true
-              },
-              {
-                "step": 8,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_specific_u4_signatures.tsx",
-                "quote": "Text variant=\"small_medium\">Sign on their behalf ... Sign section 15A",
-                "verified": true
-              },
-              {
-                "step": 9,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_signatures.tsx",
-                "quote": "Sign section 15B ... Electronic signature of appropriate signatory",
-                "verified": true
-              },
-              {
-                "step": 10,
-                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_specific_u4_signatures.tsx",
-                "quote": "Section15C ... Sign section 15C",
-                "verified": false
-              }
-            ],
-            "checkedAt": "2026-09-16T16:04:36.707Z"
+            "verifiedSteps": 9
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:04:36.717Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:04:36.802Z",
+          "planUpdatedBy": null
         },
         {
           "status": "missing",
@@ -5366,59 +5366,59 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "high",
-            "verifiedSteps": 7,
-            "totalSteps": 7,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/shared/components/branch_oversight_tabs.tsx",
+                "step": 1,
                 "quote": "{ key: \"branch-exams\", href: \"/branch-exams\", label: \"All exams\" }",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/pages/branch_exams_dashboard_page.tsx",
+                "step": 2,
                 "quote": "onRowClick={(row) => { void router.push(getBranchExamHref(row)); }}",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/pages/branch_exam_details_page.tsx",
+                "step": 3,
                 "quote": "{ name: \"follow-up-letter\", title: \"Follow-up letter\" }",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "step": 4,
                 "quote": "No saved versions yet. Generate a follow-up letter to create version 1.",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "step": 5,
                 "quote": "title: \"Follow-up letter generated\", description: \"The follow-up letter is ready to download.\"",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "step": 6,
                 "quote": "<LetterSection title=\"Purpose\">...<LetterSection title=\"Scope\">...<LetterSection title=\"Findings and Corrective Actions\">...<LetterSection title=\"Response Instructions\">",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "step": 7,
                 "quote": "<Button type=\"button\" size=\"sm\" loading={isDownloading} onClick={handleDownload}>Download",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:05:34.636Z"
+            "checkedAt": "2026-09-16T16:05:34.636Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:05:34.644Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:05:35.006Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to export a branch exam's remediation tracker to CSV",
@@ -6565,83 +6565,83 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "high",
-            "verifiedSteps": 11,
-            "totalSteps": 11,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/info_barriers_view.tsx",
+                "step": 1,
                 "quote": "title=\"Message management\" ... { key: \"policies\", label: \"Policies\" }",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/common/policies/policies_tab.tsx",
+                "step": 2,
                 "quote": "<Link href={`/communications/${module}/settings/policies/new?module=${module}`}> <Plus .../> New policy </Link>",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_scope_view.tsx",
+                "step": 3,
                 "quote": "<Label htmlFor=\"policy-name\">Name</Label> <Input ... placeholder=\"e.g., Trading Desk Visibility Policy\" />",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/components/employee_group_policy_builder/component_egp_builder.tsx",
+                "step": 4,
                 "quote": "<Text variant=\"base_bold\">Include people who are</Text>",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/components/employee_group_policy_builder/component_egp_builder.tsx",
+                "step": 5,
                 "quote": "<Text variant=\"base_bold\" className=\"mr-2\"> Except: </Text>",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/components/employee_group_policy_builder/component_egp_builder.tsx",
+                "step": 6,
                 "quote": "<Button variant=\"outline\" size=\"sm\" onClick={handlePreviewClick}> <Eye .../> Preview </Button> ... Policy preview",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/common/policies/policy_step_header.tsx",
+                "step": 7,
                 "quote": "Next: Define visibility rules <ArrowRight className=\"h-4 w-4\" />",
                 "verified": true
               },
               {
-                "step": 8,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_visibility_view.tsx",
+                "step": 8,
                 "quote": "<Text variant=\"small_medium\">Policy status:</Text> <SelectWrapper items={[{ value: PolicyStatus.Draft, label: \"Draft\" }, { value: PolicyStatus.Active, label: \"Active\" }]}",
                 "verified": true
               },
               {
-                "step": 9,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/visibility_builder/visibility_builder.tsx",
+                "step": 9,
                 "quote": "<Text variant=\"base_bold\">Include communications from</Text> ... placeholder=\"Search groups, employees, or aliases to include...\"",
                 "verified": true
               },
               {
-                "step": 10,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/visibility_builder/visibility_builder.tsx",
+                "step": 10,
                 "quote": "<Text variant=\"base_bold\">Exclude communications from</Text> ... placeholder=\"Search groups, employees, or aliases to exclude...\"",
                 "verified": true
               },
               {
-                "step": 11,
                 "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_wizard.tsx",
+                "step": 11,
                 "quote": "toast({ title: \"Policy created\", description: \"The visibility policy has been created successfully.\" }); ... actionButtonText = isEditMode ? \"Save changes\" : \"Create policy\"",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:06:43.749Z"
+            "checkedAt": "2026-09-16T16:06:43.749Z",
+            "confidence": "high",
+            "totalSteps": 11,
+            "unverified": [],
+            "verifiedSteps": 11
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:06:43.755Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:06:43.867Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to review and close an email as compliant or non-compliant",
@@ -7171,8 +7171,64 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_archive_tab.tsx",
+                "step": 1,
+                "quote": "children.push({ key: \"website\", title: \"Website\", path: \"/communications/website\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/website_home_header.tsx",
+                "step": 2,
+                "quote": "<Link href={`/communications/website/settings?tab=${manageTab}`}><Settings className=\"h-4 w-4\" />Manage</Link>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/page_website_archive_settings.tsx",
+                "step": 3,
+                "quote": "const TAB_TITLES = [\"Domains\", \"Subdomains\"];",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "step": 4,
+                "quote": "<PantheonButton onClick={onAddSubdomain} leftIcon={<Plus />} className=\"shrink-0\">Add subdomain</PantheonButton>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "step": 5,
+                "quote": "<Label useSatoshiFont>Display name</Label> ... placeholder=\"e.g. Company Homepage\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "step": 6,
+                "quote": "<Label useSatoshiFont>URL</Label> ... placeholder=\"https://example.com/page\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "step": 7,
+                "quote": "<SelectItem value=\"DAILY\">Daily</SelectItem> ... <SelectItem value=\"WEEKLY\">Weekly</SelectItem>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "step": 8,
+                "quote": "{isEditing ? \"Save changes\" : \"Add subdomain\"}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "step": 9,
+                "quote": "promise.then(() => setIsOpen(false))",
+                "verified": false
+              }
+            ],
+            "checkedAt": "2026-09-16T16:06:03.515Z",
             "confidence": "medium",
-            "verifiedSteps": 8,
             "totalSteps": 9,
             "unverified": [
               {
@@ -7180,67 +7236,11 @@
                 "reason": "Toast copy for a successful create was not found in this component (only error toasts are wired); the row appearing relies on the paginated table refetch, which is not directly observable from source "
               }
             ],
-            "steps": [
-              {
-                "step": 1,
-                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_archive_tab.tsx",
-                "quote": "children.push({ key: \"website\", title: \"Website\", path: \"/communications/website\" ...",
-                "verified": true
-              },
-              {
-                "step": 2,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/website_home_header.tsx",
-                "quote": "<Link href={`/communications/website/settings?tab=${manageTab}`}><Settings className=\"h-4 w-4\" />Manage</Link>",
-                "verified": true
-              },
-              {
-                "step": 3,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/page_website_archive_settings.tsx",
-                "quote": "const TAB_TITLES = [\"Domains\", \"Subdomains\"];",
-                "verified": true
-              },
-              {
-                "step": 4,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
-                "quote": "<PantheonButton onClick={onAddSubdomain} leftIcon={<Plus />} className=\"shrink-0\">Add subdomain</PantheonButton>",
-                "verified": true
-              },
-              {
-                "step": 5,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
-                "quote": "<Label useSatoshiFont>Display name</Label> ... placeholder=\"e.g. Company Homepage\"",
-                "verified": true
-              },
-              {
-                "step": 6,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
-                "quote": "<Label useSatoshiFont>URL</Label> ... placeholder=\"https://example.com/page\"",
-                "verified": true
-              },
-              {
-                "step": 7,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
-                "quote": "<SelectItem value=\"DAILY\">Daily</SelectItem> ... <SelectItem value=\"WEEKLY\">Weekly</SelectItem>",
-                "verified": true
-              },
-              {
-                "step": 8,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
-                "quote": "{isEditing ? \"Save changes\" : \"Add subdomain\"}",
-                "verified": true
-              },
-              {
-                "step": 9,
-                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
-                "quote": "promise.then(() => setIsOpen(false))",
-                "verified": false
-              }
-            ],
-            "checkedAt": "2026-09-16T16:06:03.515Z"
+            "verifiedSteps": 8
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:06:03.523Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:06:03.617Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to create a new case",
@@ -7655,77 +7655,77 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "high",
-            "verifiedSteps": 10,
-            "totalSteps": 10,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+                "step": 1,
                 "quote": "{ value: \"exports\", title: \"Exports\", href: \"/settings/exports\", icon: HardDriveDownload, content: <ExportsPage /> }",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "step": 2,
                 "quote": "aria-label=\"More actions\" ... <MoreVertical className=\"size-4\" />",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "step": 3,
                 "quote": "<DialogTitle>Rename export</DialogTitle> ... <Input label=\"Name\" value={name} ...",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "step": 4,
                 "quote": "if (exportToRename) setName(exportToRename.name);",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "step": 5,
                 "quote": "<Button onClick={handleRename} disabled={isRenaming || !name.trim()} loading={isRenaming}>Save</Button>",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "step": 6,
                 "quote": "toast({ title: \"Export renamed\" });",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "step": 7,
                 "quote": "aria-label=\"More actions\"",
                 "verified": true
               },
               {
-                "step": 8,
                 "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "step": 8,
                 "quote": "title=\"Delete export\" body={`Delete \"${exportToDelete?.name}\"? The download will no longer be available.`}",
                 "verified": true
               },
               {
-                "step": 9,
                 "file": "apps/hadrius-app/src/components/containers/simple_confirmation_dialog.tsx",
+                "step": 9,
                 "quote": "positiveText=\"Delete\" ... <Button variant={destructive ? \"destructive\" : \"default\"} onClick={onPositive} ...>{positiveText}</Button>",
                 "verified": true
               },
               {
-                "step": 10,
                 "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "step": 10,
                 "quote": "toast({ title: \"Export deleted\" });",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:06:24.773Z"
+            "checkedAt": "2026-09-16T16:06:24.773Z",
+            "confidence": "high",
+            "totalSteps": 10,
+            "unverified": [],
+            "verifiedSteps": 10
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:06:24.784Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:06:24.856Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to upload reviewed emails to test an AI compliance subrule",
@@ -9269,59 +9269,59 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "high",
-            "verifiedSteps": 7,
-            "totalSteps": 7,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx",
+                "step": 1,
                 "quote": "{ title: \"Overview\", path: \"/account-surveillance\" }",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_violations_table.tsx",
+                "step": 2,
                 "quote": "const TOP_FILTERS: { label: string; value: TopFilter }[] = [ { label: \"All\", value: \"ALL\" }, { label: \"Open\", ... }, { label: \"Closed\", value: \"CLOSED\" }, ... ]  /  CLOSED: \"Resolved\"",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_violations_table.tsx",
+                "step": 3,
                 "quote": "<Link href={getViolationHref(row.original.id)} ...>{formatFlagName(row.original.display_id)}</Link> ... onRowClick={(row) => router.push(getViolationHref(row.id))}",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/page_specific_violation.tsx",
+                "step": 4,
                 "quote": "{!!showActions && !!isTerminal && (<Button onClick={() => onOpenDialog(\"reopen\")} leftIcon={<RefreshCw />}>Reopen exception</Button>)}",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/component_violation_dialogs.tsx",
+                "step": 5,
                 "quote": "title=\"Reopen exception\" description={`This exception will move from ${fromStatusLabel} back to Open.`} ... <TextareaField label=\"Reason for reopening\" .../>",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/component_violation_dialogs.tsx",
+                "step": 6,
                 "quote": "{isLoading ? \"Reopening...\" : \"Reopen exception\"}",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/page_specific_violation.tsx",
+                "step": 7,
                 "quote": "onConfirm={({ note }) => applyStatusChange(\"OPEN\", ..., \"Exception reopened\")} ... STATUS_LABEL = { OPEN: \"Open\", ... } / <Typography>Review status</Typography>",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:07:10.799Z"
+            "checkedAt": "2026-09-16T16:07:10.799Z",
+            "confidence": "high",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:07:10.807Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:07:10.950Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to archive a flagged exception",
@@ -9941,59 +9941,59 @@
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
           "grounding": {
-            "confidence": "medium",
-            "verifiedSteps": 7,
-            "totalSteps": 7,
-            "unverified": [],
             "steps": [
               {
-                "step": 1,
                 "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx",
+                "step": 1,
                 "quote": "{ title: \"Feed monitor\", path: \"/account-surveillance/feed_monitor\" }",
                 "verified": true
               },
               {
-                "step": 2,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "step": 2,
                 "quote": "Loading relationship data...",
                 "verified": true
               },
               {
-                "step": 3,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "step": 3,
                 "quote": "<Text variant=\"header_title\">Client Relationship Builder</Text>\\n<Text ...>Visualize and manage client-company relationships.</Text>",
                 "verified": true
               },
               {
-                "step": 4,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "step": 4,
                 "quote": "<Controls />\\n<Background />",
                 "verified": true
               },
               {
-                "step": 5,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "step": 5,
                 "quote": "onConnect={onConnect}",
                 "verified": true
               },
               {
-                "step": 6,
                 "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "step": 6,
                 "quote": "Creating relationship...",
                 "verified": true
               },
               {
-                "step": 7,
                 "file": "apps/hadrius-app/src/api/trade_surveillance/api_trade_surveillance.ts",
+                "step": 7,
                 "quote": "fetcher: (path, data: CreateEdgeRequest) => postRequest(path, data).then(() => mutateGraph())",
                 "verified": true
               }
             ],
-            "checkedAt": "2026-09-16T16:07:30.431Z"
+            "checkedAt": "2026-09-16T16:07:30.431Z",
+            "confidence": "medium",
+            "totalSteps": 7,
+            "unverified": [],
+            "verifiedSteps": 7
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:07:30.438Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-16T16:07:30.563Z",
+          "planUpdatedBy": null
         },
         {
           "title": "How to search and filter representatives",
