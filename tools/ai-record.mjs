@@ -185,11 +185,16 @@ export const SNAPSHOT_FN = new Function(`
   // table would add 400 cells that all mean the same click as the row already in the list. Keep a
   // cell only when its own row isn't the click target, which is exactly the calendar-grid case
   // (clickable day <td>s inside a non-clickable <tr>) this was added for.
+  // The same rule covers a div[title] nested in a clickable cell: the calendar grid draws a task
+  // chip (title "Task - Due soon") inside each day <td>, and clicking the chip only bubbles to the
+  // cell. Listing it gave the agent a decoy that looked like the drawer's task row — it clicked the
+  // chip for 13 turns while the real row (a sibling drawer, no clickable ancestor) went untouched.
+  const ancestorIsTarget = (el) => { const anc = el.parentElement?.closest('td,tr'); return !!(anc && clickableCell(anc)); };
   const wanted = (el) => {
     if (!isPlainCell(el)) return true;
     if (el.getAttribute('role')) return true;
     if (!clickableCell(el)) return false;
-    if (el.tagName === 'TD') { const row = el.closest('tr'); if (row && clickableCell(row)) return false; }
+    if (el.tagName !== 'TR' && ancestorIsTarget(el)) return false;
     return true;
   };
   const found = Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr,td,div[title]'))
@@ -703,7 +708,10 @@ ${question}
 
 Answer in at most 6 short plain-text lines with exact UI labels in double quotes: what to click/fill next, or why the step cannot be done here (missing data, permissions, feature flag).`;
   try {
-    const out = await runClaude(prompt, { maxTurns: 5, timeout: 25000, model: planModel(), signal });
+    // A real answer is search_code -> read_file -> maybe one more search -> reply, which is 4-6
+    // tool turns; at maxTurns 5 / 25s the log showed 21 error_max_turns and 4 timeouts against
+    // zero useful answers. Consults are capped at 2 per job, so the extra budget is bounded.
+    const out = await runClaude(prompt, { maxTurns: 10, timeout: 90000, model: planModel(), signal });
     return String(out || '').trim().slice(0, 1200);
   } catch (err) {
     return `Source lookup unavailable (${err.message}). Proceed using visible elements on the page.`;

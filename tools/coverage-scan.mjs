@@ -246,7 +246,10 @@ function runGeminiCli(prompt, { timeout = 600000, signal, onMeta } = {}) {
   return new Promise((resolve, reject) => {
     const args = ['-p', prompt, '--output-format', 'json', '--approval-mode', 'plan', '--skip-trust'];
     const env = { ...process.env, GEMINI_CLI_TRUST_WORKSPACE: 'true' };
-    const child = execFile('gemini', args, { maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env }, (err, stdout, stderr) => {
+    // cwd matters: launchd starts the bridge with cwd "/", and gemini run from the filesystem root
+    // prints "You are running Gemini CLI in the root directory" and returns nothing usable — which
+    // is why the fallback never actually worked for jobs started by the background bridge.
+    const child = execFile('gemini', args, { cwd: REPO_ROOT, maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env }, (err, stdout, stderr) => {
       clearWatchdog();
       if (err?.name === 'AbortError') return reject(new Error('cancelled'));
       if (err && !stdout) return reject(new Error(`Gemini CLI failed: ${String(stderr || err.message).trim().slice(0, 500)}`));

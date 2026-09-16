@@ -416,6 +416,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     <key>PATH</key><string>$REPO_DIR/.venv/bin:$NODE_BIN_DIR:$HOME/.local/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$HOME/.npm-global/bin</string>
     <key>KBS_BRIDGE_PORT</key><string>8787</string>
   </dict>
+  <key>WorkingDirectory</key><string>$REPO_DIR</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$HOME/Library/Logs/kbstudio-ai-bridge.log</string>
