@@ -2595,6 +2595,115 @@
       "module": "People oversight",
       "workflows": [
         {
+          "title": "How to file a Form U4 residential history amendment",
+          "purpose": "Initiate and submit a Form U4 amendment updating a representative's residential history in the U4 filing wizard.",
+          "startRoute": "/people-oversight/u4-filings",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to People oversight > U4 filings",
+            "Click \"File New U4\" to open the \"Create new Form U4 filing\" dialog",
+            "Select the \"Amendment\" radio option and click \"Continue\"",
+            "On the \"New U4 amendment\" page, under \"Section 1: Select representative\", type into \"Search for a representative's name or email\" and click the matching representative row to select them",
+            "Under \"Section 2: Select amendment type\", select the \"Residential history\" radio option",
+            "Click \"Next: Enter amendment details\" to advance to the \"Enter details\" step",
+            "Under \"Section 1: Current & New Address\", in the \"New residential address\" block, enter values in \"Address line 1\", \"Address line 2\", \"Country\", \"State\", \"City\", and \"Postal code\", then set \"Effective date of new address\" and \"Move out date of previous address\" using the date pickers",
+            "Click \"Next: Review & submit\" to advance to the review step",
+            "On \"Section 1: Current & new address\" review, confirm the \"Amendment details\" block shows the new address values entered",
+            "Click \"Continue to signatures\" to save the amendment and proceed to the signatures overview"
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/pages/people-oversight/u4-filings/index.tsx",
+            "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+            "apps/hadrius-app/pages/finra/u4/new/amendment.tsx",
+            "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+            "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_prelim_info.tsx",
+            "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_questions.tsx",
+            "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_review.tsx"
+          ],
+          "prerequisites": [
+            "At least one employee/representative record with status ACTIVE and a populated CRD number must exist — the representative search only lists employees matching both conditions",
+            "The representative should already have residential history data on file for the 'Current residential address' summary to render, though this isn't required to submit a new address"
+          ],
+          "provisionable": "likely-already-present",
+          "blockerReason": "",
+          "suggestedSetupSteps": [],
+          "fileFixtureKind": null,
+          "grounding": {
+            "confidence": "high",
+            "verifiedSteps": 10,
+            "totalSteps": 10,
+            "unverified": [],
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/pages/people-oversight/u4-filings/index.tsx",
+                "quote": "export default function PeopleOversightU4FilingsPage() { return <U4DirectoryTab />; }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "quote": "<PantheonButton leftIcon={<Plus />}>File New U4</PantheonButton>",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "quote": "<RadioGroupItem value=\"amendment\" id=\"amendment\" /> ... <Link href={`/finra/u4/new/${filingType}`}>Continue</Link>",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_prelim_info.tsx",
+                "quote": "placeholder=\"Search for a representative's name or email\"",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_questions.tsx",
+                "quote": "{ value: \"RESIDENTIAL_HISTORY\", label: \"Residential history\", id: \"amendment-residential-history\" }",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "quote": "label: \"Next: Enter amendment details\"",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_questions.tsx",
+                "quote": "Text variant=\"small_leading_medium\">Address line 1 ... Effective date of new address ... Move out date of previous address",
+                "verified": true
+              },
+              {
+                "step": 8,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "quote": "label: \"Next: Review & submit\"",
+                "verified": true
+              },
+              {
+                "step": 9,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_review.tsx",
+                "quote": "<Text variant=\"small_leading_medium\">Amendment details</Text>",
+                "verified": true
+              },
+              {
+                "step": 10,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "quote": "onClick={handleSaveAndContinueToSignatures} ... Continue to signatures",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-16T16:04:03.491Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:04:03.502Z",
+          "planUpdatedBy": "stephenskalamera"
+        },
+        {
           "title": "How to create a disclosure template for People oversight",
           "purpose": "Create a new employee-facing disclosure questionnaire template (e.g. for gifts, OBA, or private placements) from the Disclosures Template library so it can later be assigned to employees.",
           "startRoute": "/people-oversight/disclosures",
@@ -4514,227 +4623,124 @@
         },
         {
           "title": "How to bulk transfer employees to a new branch",
-          "purpose": "Select multiple employees in a branch's Personnel tab and transfer them to a different branch, automatically generating the related Form U4 (and Form BR, if applicable) amendments.",
-          "startRoute": "/people-oversight/people-directory",
-          "trigger": "button \"Transfer {N}\"",
+          "purpose": "From a branch's Personnel tab, select multiple employees, transfer them to a different branch, and review the auto-generated Form U4 (and Form BR, if applicable) amendment filings.",
+          "startRoute": "/branches",
+          "trigger": "",
           "priority": "medium",
           "steps": [
-            "Navigate to People directory (a standalone top-level tab in the sidebar, not nested under People oversight)",
-            "Click the \"Branches\" section in the sidebar (its own top-level tab) to open the branch oversight dashboard",
-            "Click on a branch row in the branch list (under the \"Branch\" view, the default segmented-control view) to open its detail page",
+            "Navigate to Branches > Branches",
+            "In the \"Branch\" view (the default, active segmented-control option on the Branches page), click a branch row to open its detail page",
             "Click the \"Personnel\" tab on the branch detail page",
-            "Select the checkboxes next to the employees you want to transfer in the Personnel table",
-            "Click \"Transfer {N}\" to open the bulk transfer dialog for the selected employees",
-            "In the \"Transfer [N] employees to another branch\" dialog, select the destination branch in \"Transfer to branch\"",
-            "Select the departure date in \"End date at current branch\"",
-            "Select the effective date in \"Start date at new branch\"",
-            "Click \"Transfer to branch\" to confirm and submit the bulk transfer",
-            "Note the confirmation dialog title is exactly \"Filings created\", and the subtext (successMessage) reports counts of Form BR and/or Form U4 amendments (e.g. \"Successfully created 1 Form BR amendment and 2 Form U4 amendments\") — Form BR amendments only appear if the branch is FINRA-registered and a location-type/profile change triggers one; for a plain personnel transfer only Form U4 amendments per transferred employee are typically listed, matching the plan's \"(and Form BR, if applicable)\" caveat.",
-            "Click \"Continue to filings\" to review the newly created U4 amendment filings, or \"Close\" to dismiss the dialog"
+            "Check the checkbox(es) in the leftmost column of the Personnel table for the employee rows you want to transfer",
+            "Click the \"Transfer {N}\" button that appears in the toolbar once employees are selected",
+            "In the \"Transfer [N] employee(s) to another branch\" dialog, select the destination branch from the \"Transfer to branch\" combobox (placeholder \"Select target branch\")",
+            "Pick a date in the \"End date at current branch\" date picker",
+            "Pick a date in the \"Start date at new branch\" date picker",
+            "Click the \"Transfer to branch\" button to submit",
+            "Confirm the dialog title now reads \"Filings created\", listing any \"Form BR amendments\" and \"Form U4 amendments\" created for the transfer",
+            "Click \"Continue to filings\" to go to the U4 filings list, or click \"Close\" to dismiss the dialog"
           ],
-          "evidence": [
-            {
-              "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
-              "quote": "title: \"People directory\",\n    path: \"/people-oversight/people-directory\",",
-              "route": "/people-oversight/people-directory",
-              "symbol": "useTabs",
-              "instruction": "Navigate to People oversight > People directory",
-              "controlLabel": "People directory"
-            },
-            {
-              "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_branch_tabs.tsx",
-              "quote": "key: \"branches\",\n      title: \"Branches\",\n      path: \"/branches\",",
-              "route": "/branches",
-              "symbol": "useBranchTab",
-              "instruction": "Click the \"Branches\" section in the sidebar to open the branch oversight dashboard",
-              "controlLabel": "Branches"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/pages/branch_dashboard_page.tsx",
-              "quote": "onBranchClick={(branch) => router.push(buildBranchDetailHref(branch))}",
-              "route": "/branches",
-              "symbol": "BranchDashboardPage",
-              "instruction": "Click on a branch row in the branch list (e.g. under the \"Branch\" view) to open its detail page",
-              "controlLabel": "Branch row"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/pages/branch_details_page.tsx",
-              "quote": "personnel: \"Personnel\",",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "DETAIL_TAB_LABELS",
-              "instruction": "Click the \"Personnel\" tab on the branch detail page",
-              "controlLabel": "Personnel"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/tabs/personnel.tsx",
-              "quote": "enableSelection\n            selectedRows={selectedBranchIndividuals}\n            onSelectedRowsChange={(rows) => {\n              setSelectedBranchIndividuals(rows);\n            }}",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "Personnel",
-              "instruction": "Select the checkboxes next to the employees you want to transfer in the Personnel table",
-              "controlLabel": "row selection checkbox"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/tabs/personnel.tsx",
-              "quote": "<Button variant=\"outline\" type=\"button\" onClick={handleBulkTransfer}>\n                  <Icon icon={ArrowRightLeft} size={16} />\n                  <Typography variant=\"controlText\">Transfer {selectedBranchIndividuals.length}</Typography>\n                </Button>",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "Personnel",
-              "instruction": "Click \"Transfer {N}\" to open the bulk transfer dialog for the selected employees",
-              "controlLabel": "Transfer {N}"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-              "quote": "<Text variant=\"base_leading_bold\">Transfer to branch</Text>\n        <Combobox\n          options={branchOptions}\n          value={targetBranchId}\n          onValueChange={(value) => setTargetBranchId(value)}\n          placeholder=\"Select target branch\"",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "TransferFormView",
-              "instruction": "In the \"Transfer [N] employees to another branch\" dialog, select the destination branch in \"Transfer to branch\"",
-              "controlLabel": "Transfer to branch"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-              "quote": "<Text variant=\"base_leading_bold\">End date at current branch</Text>\n          <DatePicker date={endDate} setDate={setEndDate} placeholder=\"Select end date\" className=\"w-full\" />",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "TransferFormView",
-              "instruction": "Select the departure date in \"End date at current branch\"",
-              "controlLabel": "End date at current branch"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-              "quote": "<Text variant=\"base_leading_bold\">Start date at new branch</Text>\n          <DatePicker date={startDate} setDate={setStartDate} placeholder=\"Select start date\" className=\"w-full\" />",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "TransferFormView",
-              "instruction": "Select the effective date in \"Start date at new branch\"",
-              "controlLabel": "Start date at new branch"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-              "quote": "<Button\n          variant=\"default\"\n          onClick={onConfirm}\n          type=\"button\"\n          loading={bulkTransferBranchEmployeesLoading}\n          disabled={!targetBranchId}\n        >\n          {!bulkTransferBranchEmployeesLoading && <ArrowRightLeft className=\"h-4 w-4\" />} Transfer to branch",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "TransferFormView",
-              "instruction": "Click \"Transfer to branch\" to confirm and submit the bulk transfer",
-              "controlLabel": "Transfer to branch"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-              "quote": "{showResults\n                  ? \"Filings created\"\n                  : `Transfer [${employees.length}] employee${employees.length > 1 ? \"s\" : \"\"} to another branch`}",
-              "route": "/branches/{branchId}?tab=personnel",
-              "symbol": "BulkTransferEmployeesModal",
-              "instruction": "Review the \"Filings created\" confirmation screen showing the generated Form U4 (and Form BR, if applicable) amendments",
-              "controlLabel": "Filings created"
-            },
-            {
-              "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-              "quote": "<Link href={`/people-oversight/u4-filings?highlight=${createdFilings.map((f) => f.filing_id).join(\",\")}`}>\n              Continue to filings\n            </Link>",
-              "route": "/people-oversight/u4-filings",
-              "symbol": "TransferResultsView",
-              "instruction": "Click \"Continue to filings\" to review the newly created U4 amendment filings, or \"Close\" to dismiss the dialog",
-              "controlLabel": "Continue to filings"
-            }
-          ],
+          "evidence": [],
           "sources": [
-            "apps/hadrius-app/pages/people-oversight/people-directory/index.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/employees/page_people_oversight_upsell.tsx",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
             "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_branch_tabs.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/pages/branches_home_page.tsx",
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/pages/branch_dashboard_page.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/helpers/branch_routes.ts",
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/pages/branch_details_page.tsx",
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/tabs/personnel.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx"
+            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+            "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+            "apps/hadrius-app/pages/branches/index.tsx",
+            "apps/hadrius-app/pages/branches/[branchId]/index.tsx"
           ],
           "prerequisites": [
-            "Admin/write access to Branches (Branches feature is enabled for this tenant, so this is met).",
-            "A completed FINRA FirmProfile for the company's firm — required for the FINRA-integrated transfer path (the only path that creates Form U4/BR amendments) to run at all. This is currently MISSING for company 1013: finra_firmprofile has 0 rows and finra_finraapicredentials has 0 rows, despite a Firm record existing (Antoninus Capital, LLC, CRD 298431).",
-            "At least two active, CRD-numbered branches with assigned personnel to transfer between (already present: 6 of 8 branches — NY HQ, Greenwich, Chicago, Austin, Boston, Miami — are ACTV with crd_number and have personnel).",
-            "Selected employees must have an active FINRA registration (a FirmAssociation with a finra_profile under the firm) — otherwise the API rejects the transfer with a 'missing filing firm associations' error."
+            "Branch oversight must be enabled for the company (feature gate `useBranchOversightEnabled`/`useBranchOversightEnabledOptimistic`) or the \"Branches\" nav tab and page are hidden/blocked",
+            "The user must have branch-view permission (`canViewBranches`) or ModuleAccessView blocks the page",
+            "At least two active branches must exist (source branch with personnel, plus a destination branch with `branch_status_code === \"ACTV\"`) — if the source branch is FINRA-registered, the destination branch must also have a CRD number, or it won't appear in \"Transfer to branch\" options",
+            "The source branch must already have at least one employee assigned in its Personnel tab to select for transfer"
           ],
-          "provisionable": "structurally-blocked",
-          "blockerReason": "hadrius_backend/hadrius/finra/br/service_views_br.py, bulk_transfer_branch_employees() (~line 471): `if not (firm_profile := FirmProfile.objects.filter(company=company).first()): raise ResourceNotFoundException(\"Firm profile not found\")`. This FINRA path (the only one that creates Form U4/BR amendments) is selected whenever company.finra_enabled() and both source and target branches have a crd_number (hadrius_backend/hadrius/branches/views_branches.py post_transfer_branch_personnel, ~line 329) — true for company 1013 (finra_api_enabled=ACTIVE; 6 of its 8 branches are ACTV with crd_number). Live DB query confirms company 1013 has zero finra_firmprofile rows and zero finra_finraapicredentials rows. Creating a FirmProfile via the app's own UI requires the 'Onboard FINRA firm' flow (hadrius_backend/hadrius/finra/firm/views_firm.py post_onboard_finra_firm_profile), which calls the real external FINRA API (finra_client(...).get_access_token / get_firm_profile) using client_id/client_secret credentials that don't exist for this tenant — not something an operator can set up from within a recording session. Without it, any transfer between two CRD-numbered branches throws a server error at step 10, and the 'Filings created' screen (steps 11-12) is unreachable; the only workaround (transferring between the two non-FINRA branches, Scottsdale/Denver) avoids the error but produces zero U4/BR filings, defeating the plan's stated purpose.",
-          "planUpdatedAt": "2026-09-16T06:16:39.235Z",
-          "planUpdatedBy": "stephenskalamera",
+          "provisionable": "self-serve-quick",
+          "blockerReason": "",
+          "suggestedSetupSteps": [],
+          "fileFixtureKind": null,
           "grounding": {
+            "confidence": "high",
+            "verifiedSteps": 11,
+            "totalSteps": 11,
+            "unverified": [],
             "steps": [
               {
-                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
                 "step": 1,
-                "quote": "tabs.push({ key: \"people_directory\", title: \"People directory\", path: \"/people-oversight/people-directory\", icon: ContactRound, children: [] });",
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
+                "quote": "title={\"Branches\"}\n          path={branchTab.path}",
                 "verified": true
               },
               {
-                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_branch_tabs.tsx",
                 "step": 2,
-                "quote": "return { key: \"branch_oversight\", title: \"Branches\", path: \"/branches\", icon: Building2, children };",
-                "verified": true
-              },
-              {
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/pages/branch_dashboard_page.tsx",
-                "step": 3,
-                "quote": "<SegmentedControllerItem isActive={viewMode === \"branch\"} onClick={() => setViewMode(\"branch\")}>Branch</SegmentedControllerItem> ... onBranchClick={(branch) => router.push(buildBranchDetailHref(branch))}",
+                "quote": "<SegmentedControllerItem isActive={viewMode === \"branch\"} onClick={() => setViewMode(\"branch\")}>\n                Branch\n              </SegmentedControllerItem>",
                 "verified": true
               },
               {
+                "step": 3,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/pages/branch_details_page.tsx",
-                "step": 4,
                 "quote": "personnel: \"Personnel\",",
                 "verified": true
               },
               {
+                "step": 4,
                 "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "quote": "<DataTableSelectCell ... onCheckedChange={(checked) => { ... handleSelectRow(rowData, checked); }}",
+                "verified": true
+              },
+              {
                 "step": 5,
-                "quote": "if (enableSelection) { tableColumns.unshift({ id: \"pantheon-selection\", ... cell: ... <DataTableSelectCell ... onCheckedChange={(checked) => { ... handleSelectRow(rowData, checked); } } ... /> ...",
-                "verified": true
-              },
-              {
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/tabs/personnel.tsx",
+                "quote": "<Typography variant=\"controlText\">Transfer {selectedBranchIndividuals.length}</Typography>",
+                "verified": true
+              },
+              {
                 "step": 6,
-                "quote": "<Button variant=\"outline\" type=\"button\" onClick={handleBulkTransfer}><Icon icon={ArrowRightLeft} size={16} /><Typography variant=\"controlText\">Transfer {selectedBranchIndividuals.length}</Typography></Button>",
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "quote": "<Text variant=\"base_leading_bold\">Transfer to branch</Text>\n        <Combobox ... placeholder=\"Select target branch\"",
                 "verified": true
               },
               {
-                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
                 "step": 7,
-                "quote": "<Text variant=\"base_leading_bold\">Transfer to branch</Text> <Combobox options={branchOptions} value={targetBranchId} onValueChange={(value) => setTargetBranchId(value)} placeholder=\"Select target branch\" ...",
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "quote": "<Text variant=\"base_leading_bold\">End date at current branch</Text>",
                 "verified": true
               },
               {
-                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
                 "step": 8,
-                "quote": "<Text variant=\"base_leading_bold\">End date at current branch</Text> <DatePicker date={endDate} setDate={setEndDate} placeholder=\"Select end date\" ...",
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "quote": "<Text variant=\"base_leading_bold\">Start date at new branch</Text>",
                 "verified": true
               },
               {
-                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
                 "step": 9,
-                "quote": "<Text variant=\"base_leading_bold\">Start date at new branch</Text> <DatePicker date={startDate} setDate={setStartDate} placeholder=\"Select start date\" ...",
-                "verified": true
-              },
-              {
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-                "step": 10,
                 "quote": "{!bulkTransferBranchEmployeesLoading && <ArrowRightLeft className=\"h-4 w-4\" />} Transfer to branch",
                 "verified": true
               },
               {
+                "step": 10,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-                "step": 11,
-                "quote": "{showResults ? \"Filings created\" : `Transfer [${employees.length}] employee${employees.length > 1 ? \"s\" : \"\"} to another branch`}",
+                "quote": "{showResults ? \"Filings created\" : ...}",
                 "verified": true
               },
               {
+                "step": 11,
                 "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
-                "step": 12,
-                "quote": "<Button variant=\"ghost\" onClick={onCancel}>Close</Button> {createdFilings.length > 0 && (<Button variant=\"default\" asChild><Link href={`/people-oversight/u4-filings?highlight=...`}>Continue to filings</Link></Button>)}",
+                "quote": "<Button variant=\"ghost\" onClick={onCancel}>Close</Button> ... Continue to filings",
                 "verified": true
               }
             ],
-            "source": "codebase verification (per-step proof)",
-            "checkedAt": "2026-09-16T06:16:39.128Z",
-            "confidence": "high",
-            "totalSteps": 12,
-            "unverified": [],
-            "corrections": 1,
-            "verifiedSteps": 12
-          }
+            "checkedAt": "2026-09-16T16:04:43.759Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:04:43.768Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to edit an employee's trade monitoring configuration",
@@ -4911,68 +4917,157 @@
         },
         {
           "title": "How to file a new Form U5 for a departing representative",
-          "purpose": "Create a Form U5 termination filing for a departing representative through the multi-step 'New Form U5 filing' wizard, collect the firm and individual signatures, then validate and file it to FINRA from the filing's detail page.",
+          "purpose": "Create a Form U5 termination filing for a departing representative through the seven-step 'New Form U5 filing' wizard, collect the firm and individual signatures, then validate and file it to FINRA from the filing's detail page.",
           "startRoute": "/people-oversight/u5-filings",
           "trigger": "",
           "priority": "medium",
           "steps": [
             "Navigate to People oversight > U5 filings (the \"Form U5 directory\" page opens)",
-            "Click \"File New U5\" in the toolbar; the \"New Form U5 filing\" page opens at /finra/u5/new with a vertical stepper (\"Preliminary information\", \"General information\", \"Termination information\", \"Disclosures\", \"Disclosure reporting pages\", \"Review\", \"Signatures\")",
-            "On \"Preliminary information\", under \"Select employee\", type in the \"Search for a representative's name or email\" box and pick the departing representative, then click \"Next: General information\"",
-            "Review the prefilled \"General information\" step and click \"Next: Termination information\"",
-            "On \"Termination information\" under \"Section 1: Termination details\", answer \"Is this a full termination?\" with the Yes/No radio",
-            "Select a \"Reason for termination:\" radio (\"Deceased\", \"Discharged\", \"Other\", \"Permitted to resign\", or \"Voluntary\"); if you chose Discharged, Permitted to resign, or Other, fill in the required \"Termination explanation:\" textarea",
-            "Pick the termination date with the \"Select termination date\" date picker, then click \"Next: Disclosures\"",
-            "Answer the \"Disclosures\" questions and click \"Next: Disclosure reporting pages\"; complete any required DRPs and click \"Next: Review\"",
-            "On \"Review\", click \"Save and proceed to signatures\"; a \"U5 filing created\" toast appears and the stepper moves to \"Signatures\"",
-            "Under \"Firm acknowledgment\", enter \"Type or print name of appropriate signatory\", tick the checkbox \"I verify the accuracy and completeness of the information contained in and with this form.\", and click \"Sign firm acknowledgment\" (toast \"Signature submitted\"); then under \"Individual acknowledgment and consent\" tick \"Electronic signature of individual\" and click \"Sign individual acknowledgment\"",
-            "Go back to People oversight > U5 filings and click \"View\" on the new row to open the filing detail page (/finra/u5/{id})",
-            "Click \"Validate filing\"; once the status badge shows \"Ready to file\", click \"File U5 to FINRA\"",
-            "In the \"Submit U5 filing\" dialog, click \"Submit filing\""
+            "Click \"File New U5\" to open the \"New Form U5 filing\" wizard at /finra/u5/new, with a vertical stepper listing \"Preliminary information\", \"General information\", \"Termination information\", \"Disclosures\", \"Disclosure reporting pages\", \"Review\", and \"Signatures\"",
+            "On \"Preliminary information\" under \"Section 1: Select representative\", type into the \"Search for a representative's name or email\" box under \"Select employee\" and choose the departing representative from the results; under \"Section 2: Firm information\" choose the firm from \"Select firm\" if more than one primary firm association exists (it auto-selects if there is only one), then click \"Next: General information\"",
+            "On \"General information\", review the read-only \"Section 1: Personal details\" and \"Section 2: Office of employment\" fields, then under \"Section 3: Current residential address\" fill in any missing required fields (\"Address line 1\", \"Start date\", \"City\", \"State\", \"Country\", \"Zip code\") — these are pre-filled from the employee's most recent address on file if one exists — then click \"Next: Termination information\"",
+            "On \"Termination information\" under \"Section 1: Termination details\", answer \"Is this a full termination?\" using the Yes/No radio",
+            "For a full termination, select a \"Reason for termination:\" radio (\"Deceased\", \"Discharged\", \"Other\", \"Permitted to resign\", or \"Voluntary\"); if you chose Discharged, Permitted to resign, or Other, fill in the required \"Termination explanation:\" textarea, then pick the date in \"Date terminated (MM/DD/YYYY):\" using the \"Select termination date\" date picker",
+            "Answer \"Is this a multiple termination with one or more firms affiliated with the filing firm?\" under \"Affiliated firm termination\", then click \"Next: Disclosures\"",
+            "On \"7. Disclosure questions\", answer each Yes/No disclosure question in sections 7A–7F (or check the optional \"Disclosure certification checkbox\" to skip 7A, 7C, 7D, 7E if the firm already reported them on Form U4), then click \"Next: Disclosure reporting pages\"",
+            "On \"Disclosure reporting pages\" — a read-only confirmation screen that always shows \"No disclosure reporting pages required\" — click \"Next: Review\"",
+            "On \"Review\", check the summarized filing details, then click \"Save and proceed to signatures\"; a \"U5 filing created\" toast appears and the stepper advances to \"Signatures\"",
+            "Under \"Firm acknowledgment\", fill in \"Person to contact for further information\", \"Telephone # of person to contact\", and \"Type or print name of appropriate signatory\", tick the checkbox labeled \"I verify the accuracy and completeness of the information contained in and with this form.\", and click \"Sign firm acknowledgment\" (toast \"Signature submitted\")",
+            "Under \"Individual acknowledgment and consent\", confirm the pre-filled \"Type or print name of individual\" field, tick the checkbox labeled \"Electronic signature of individual\", and click \"Sign individual acknowledgment\" (toast \"Signature submitted\")",
+            "Return to People oversight > U5 filings and click \"View\" on the new row to open the filing detail page at /finra/u5/{id}",
+            "Click \"Validate filing\"; if a dialog titled \"Employee SSN Required\" appears, enter the SSN and click \"Validate\" to retry — once validation succeeds a \"Filing validated\" toast appears and the status badge changes to \"Ready to file: Please file to FINRA\"",
+            "Click \"File U5 to FINRA\", then in the \"Submit U5 filing\" dialog click \"Submit filing\" to send the filing to FINRA (toast \"U5 filing submitted\")"
           ],
           "evidence": [],
           "sources": [
             "apps/hadrius-app/pages/people-oversight/u5-filings/index.tsx",
             "apps/hadrius-app/pages/finra/u5/new.tsx",
-            "apps/hadrius-app/pages/finra/index.tsx",
-            "apps/hadrius-app/src/pages/finra/page_finra_home.tsx",
+            "apps/hadrius-app/pages/finra/u5/[id].tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
             "apps/hadrius-app/src/pages/finra/u5_filings/tab_u5_directory.tsx",
             "apps/hadrius-app/src/pages/finra/u5_filings/page_new_u5_filing.tsx",
             "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_preliminary_info.tsx",
+            "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_general_info.tsx",
             "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+            "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_disclosures.tsx",
+            "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_drps.tsx",
             "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_signatures.tsx",
-            "apps/hadrius-app/src/pages/finra/u5_filings/page_specific_u5.tsx",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/use_tab_states.ts"
+            "apps/hadrius-app/src/pages/finra/u5_filings/validation_u5.ts",
+            "apps/hadrius-app/src/pages/finra/u5_filings/page_specific_u5.tsx"
           ],
-          "status": "missing",
           "prerequisites": [
-            "Company feature 'employee_c8e' enabled (People oversight sidebar)",
-            "company.finra_api_enabled === 'ACTIVE' (or a sandbox company) so the FINRA tabs are visible",
-            "At least one FINRA API credential saved for the firm (the 'U4 filings'/'U5 filings' sidebar items only render when credentials exist)",
-            "At least one registered employee (with CRD) to select as the departing representative",
-            "Live FINRA Gateway credentials are needed for the final 'Validate filing' and 'File U5 to FINRA' steps"
+            "The People oversight sidebar only shows the \"U5 filings\" tab when compliance is enabled, the FINRA tab is visible, and the firm has FINRA credentials configured (use_employee_tab.tsx) — a fresh company may not see this tab at all",
+            "The employee picker in step 3 only lists employees who already have an initial U4 filing and do not already have an existing U5 filing (component_u5_preliminary_info.tsx comment/description text)",
+            "The representative needs at least one active primary (\"PRIMARY\" firm_type) firm association or the \"Select firm\" dropdown will show no options",
+            "\"Validate filing\" requires the filing firm to have FINRA API credentials configured, or validation is blocked with a \"No FINRA API credentials\" toast (page_specific_u5.tsx handleValidate)",
+            "Validating or submitting can require the employee's SSN on file; if missing, an \"Employee SSN Required\" dialog blocks the action until an SSN is entered"
           ],
           "provisionable": "needs-deliberate-setup",
           "blockerReason": "",
-          "suggestedSetupSteps": [
-            "Add a FINRA API credential (Branches > Branches > \"Add branch\" > \"FINRA\" > \"Next\" opens \"Automate your setup by connecting to FINRA\"; fill \"Client ID\", \"Client secret\", \"Expiration date\", \"Permissions\" and click \"Save & Test Connection\")",
-            "Ensure the departing representative exists in People oversight > People directory",
-            "For a recording without live FINRA access, stop after the \"Signatures\" step; \"Validate filing\" and \"File U5 to FINRA\" call the FINRA Gateway"
-          ],
+          "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:34.682Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "note": "Rewrote entirely. The original sources (src/pages/finra/index.tsx, u5_filing_dialog.tsx) do not exist and there is no 'New filing' dialog with 'Filing type'/'Representative'/'Termination type' fields; the real UI is a full-page stepper reached via \"File New U5\". /finra with no tab redirects to /settings/finra-api, so startRoute is now /people-oversight/u5-filings (the sidebar item lives under Peop",
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "medium",
-            "totalSteps": 13,
+            "confidence": "high",
+            "verifiedSteps": 15,
+            "totalSteps": 15,
             "unverified": [],
-            "verifiedSteps": 13
-          }
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+                "quote": "{ key: \"u5_filings\", title: \"U5 filings\", path: \"/people-oversight/u5-filings\" }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/tab_u5_directory.tsx",
+                "quote": "File New U5",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_preliminary_info.tsx",
+                "quote": "placeholder=\"Search for a representative's name or email\" ... Select firm",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_general_info.tsx",
+                "quote": "Section 3: Current residential address ... RequiredLabel required>Address line 1",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+                "quote": "Is this a full termination?",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+                "quote": "Discharged ... Termination explanation: ... placeholder=\"Select termination date\"",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+                "quote": "Is this a multiple termination with one or more firms affiliated with the filing firm?",
+                "verified": true
+              },
+              {
+                "step": 8,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_disclosures.tsx",
+                "quote": "7. Disclosure questions ... Disclosure certification checkbox (optional):",
+                "verified": true
+              },
+              {
+                "step": 9,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_drps.tsx",
+                "quote": "No disclosure reporting pages required",
+                "verified": true
+              },
+              {
+                "step": 10,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_new_u5_filing.tsx",
+                "quote": "Save and proceed to signatures ... toast({ title: \"U5 filing created\" ... })",
+                "verified": true
+              },
+              {
+                "step": 11,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_signatures.tsx",
+                "quote": "I verify the accuracy and completeness of the information contained in and with this form. ... Sign firm acknowledgment",
+                "verified": true
+              },
+              {
+                "step": 12,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_signatures.tsx",
+                "quote": "Electronic signature of individual ... Sign individual acknowledgment",
+                "verified": true
+              },
+              {
+                "step": 13,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/tab_u5_directory.tsx",
+                "quote": "<Link href={`/finra/u5/${filing.id}`}>",
+                "verified": true
+              },
+              {
+                "step": 14,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_specific_u5.tsx",
+                "quote": "Validate filing ... Employee SSN Required ... READY_TO_FILE: \"Ready to file: Please file to FINRA\"",
+                "verified": true
+              },
+              {
+                "step": 15,
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_specific_u5.tsx",
+                "quote": "File U5 to FINRA ... AlertDialogTitle>Submit U5 filing ... Submit filing",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-16T16:05:34.960Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:05:34.965Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to delete or reject U4 filings in bulk",
@@ -5074,56 +5169,120 @@
         },
         {
           "title": "How to file a new Form U4 for a representative",
-          "purpose": "Create an initial Form U4 filing for an employee from the U4 filings list, work through the U4 sections, create the filing, and record the 15A/15B signatures.",
+          "purpose": "Create an initial Form U4 filing for an employee from the U4 filings directory, complete every wizard section, submit the filing, and record its 15A/15B (and optional 15C) signatures.",
           "startRoute": "/people-oversight/u4-filings",
           "trigger": "",
           "priority": "medium",
           "steps": [
             "Navigate to People oversight > U4 filings",
-            "Click \"File New U4\". The \"Create new Form U4 filing\" dialog opens (\"Select the type of filing you want to create\").",
-            "Select \"Initial\" and click \"Continue\". The \"Initial U4 filing\" page opens (/finra/u4/new/initial) with a vertical stepper: Preliminary information, General information, Registration information, Affiliated firms registration, Residential history, Employment history, Other business activities, Disclosures, Disclosure reporting pages, Review, Signatures, Sign.",
-            "In \"Section 1: Select representative\", type in \"Search for a representative's name or email\" and pick the employee; confirm the firm under \"Section 2: Firm information\". Click \"Next: General information\".",
-            "Complete each section in turn, clicking the \"Next: <section>\" button after each (\"Previous\" goes back).",
-            "On the \"Review and submit\" step, click \"Create Filing and Proceed to Signatures\".",
-            "In the \"Confirm U4 filing submission\" dialog, type CONFIRM in the input and click \"Submit\". The filing is created and the \"Form U4 signatures\" overview opens.",
-            "Next to \"15A: Individual acknowledgment and consent\", click \"Sign on their behalf\"; fill \"Date (MM/DD/YYYY)\" and \"Printed name\", tick \"Electronic signature\", and click \"Sign section 15A\".",
-            "Next to \"15B: Firm signatory representations\", click \"Sign now\" and complete the firm signature the same way.",
-            "Return to People oversight > U4 filings; the new filing appears in the table where it can be validated and submitted."
+            "Click \"File New U4\" to open the \"Create new Form U4 filing\" dialog (\"Select the type of filing you want to create\").",
+            "With \"Initial\" selected in the radio group, click \"Continue\". The \"Initial U4 filing\" page opens at /finra/u4/new/initial with a vertical stepper: Preliminary information, General information, Registration information, Affiliated firms registration, Residential history, Employment history, Other business activities, Disclosures, Disclosure reporting pages, Review, Signatures, Sign.",
+            "On \"Preliminary information\", under \"Section 1: Select representative\" type into \"Search for a representative's name or email\" and click the matching employee row to select them; under \"Section 2: Firm information\", if more than one firm is eligible, choose one from the \"Select a firm\" combobox. Click \"Next: General information\".",
+            "Work through each remaining section in order — General information, Registration information, Affiliated firms registration, Residential history, Employment history, Other business activities, Disclosures, Disclosure reporting pages — filling in each section's fields and clicking the \"Next: <next section name>\" button in the page header after each (\"Previous\" returns to the prior section).",
+            "On the \"Review\" step (header text reads \"Review and submit\"), review the accordions of entered data, then click \"Create Filing and Proceed to Signatures\".",
+            "In the \"Confirm U4 filing submission\" dialog, type CONFIRM into the input field and click \"Submit\". The filing is created and the \"Form U4 signatures\" page opens.",
+            "Next to \"15A: Individual acknowledgment and consent\", click \"Sign on their behalf\"; on the Section 15A screen set \"Date (MM/DD/YYYY)\", type the \"Printed name\", tick the \"Electronic signature\" checkbox, and click \"Sign section 15A\".",
+            "Back on the signatures overview, next to \"15B: Firm signatory representations\", click \"Sign now\"; set the signing date, type the \"Printed name\", tick \"Electronic signature of appropriate signatory\", and click \"Sign section 15B\".",
+            "(If applicable) next to \"15C: Temporary registration acknowledgement\", click \"Sign on their behalf\" and complete the same date/printed-name/checkbox flow, then click \"Sign section 15C\"."
           ],
           "evidence": [],
           "sources": [
-            "apps/hadrius-app/pages/people-oversight/u4-filings/index.tsx",
-            "apps/hadrius-app/pages/finra/u4/new/initial.tsx",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
             "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
             "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_filing.tsx",
             "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_preliminary_info.tsx",
+            "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_review.tsx",
+            "apps/hadrius-app/src/pages/finra/components/component_type_confirmation_dialog.tsx",
             "apps/hadrius-app/src/pages/finra/u4_filings/tab_specific_u4_signatures.tsx",
-            "apps/hadrius-app/src/pages/finra/components/component_type_confirmation_dialog.tsx"
+            "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_signatures.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx"
           ],
-          "status": "missing",
           "prerequisites": [
-            "Company feature flag employee_c8e (People oversight compliance) and finra_api_enabled = ACTIVE",
-            "At least one FINRA API credential for the firm - the \"U4 filings\" sidebar item is hidden otherwise",
-            "An employee record for the representative without an existing initial U4",
-            "Personal data for the U4 sections (residential/employment history, disclosures) - an initial U4 is a long, data-heavy form"
+            "The \"U4 filings\" nav tab only renders when compliance is enabled AND finraTabVisible AND the company already has at least one FINRA credential configured (hasFinraCredentials) — use_employee_tab.tsx:18-116.",
+            "At least one active employee must exist to appear in the representative search (only employees with status ACTIVE, or an existing INITIAL filing, are selectable) — component_u4_preliminary_info.tsx:23-28.",
+            "At least one firm profile must exist; if more than one firm is eligible a specific firm must be chosen manually from the combobox — component_u4_preliminary_info.tsx:143-206.",
+            "The employee must not already have an INITIAL U4 filing in progress that blocks starting a new one (the directory tracks filings per employee)."
           ],
-          "provisionable": "structurally-blocked",
-          "blockerReason": "The \"U4 filings\" sidebar item appears only when useGetAllFinraCredentials returns credentials (use_employee_tab.tsx) and company.finra_api_enabled is ACTIVE; FINRA API gateway credentials come from FINRA's external system and cannot be created inside Hadrius. If the demo firm already has credentials, treat as needs-deliberate-setup.",
+          "provisionable": "needs-deliberate-setup",
+          "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:35.400Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "note": "Original sources (src/pages/finra/u4/..., create_u4_modal.tsx, amendment_wizard.tsx) do not exist. The original steps described the Amendment path (\"New U4 amendment\" page with \"Next: Enter amendment details\", \"Next: Review & submit\", \"Continue to signatures\" - those labels do exist in page_new_u4_amendment.tsx), but the title asks for a NEW Form U4, which is the \"Initial\" option, so the plan was ",
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
             "confidence": "medium",
+            "verifiedSteps": 9,
             "totalSteps": 10,
-            "unverified": [],
-            "verifiedSteps": 10
-          }
+            "unverified": [
+              {
+                "step": 10,
+                "reason": "15C only appears/is required when the employee requests Temporary Registration; could not confirm from code exactly which registration inputs make sig15C mandatory vs. optional, so this step may not a"
+              }
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+                "quote": "{ key: \"u4_filings\", title: \"U4 filings\", path: \"/people-oversight/u4-filings\" }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "quote": "<PantheonButton leftIcon={<Plus />}>File New U4</PantheonButton> ... <DialogTitle>Create new Form U4 filing</DialogTitle>",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "quote": "<Link href={`/finra/u4/new/${filingType}`}>Continue</Link>",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_preliminary_info.tsx",
+                "quote": "placeholder=\"Search for a representative's name or email\" ... Text variant=\"extra_large_leading_medium\">Section 1: Select representative",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_filing.tsx",
+                "quote": "Next: {stepLabels[currentStep + 1]}",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_filing.tsx",
+                "quote": "Create Filing and Proceed to Signatures",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/pages/finra/components/component_type_confirmation_dialog.tsx",
+                "quote": "Type <span ...>{confirmWord}</span> to confirm ... confirmWord = \"CONFIRM\"",
+                "verified": true
+              },
+              {
+                "step": 8,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_specific_u4_signatures.tsx",
+                "quote": "Text variant=\"small_medium\">Sign on their behalf ... Sign section 15A",
+                "verified": true
+              },
+              {
+                "step": 9,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/inital_u4/component_u4_signatures.tsx",
+                "quote": "Sign section 15B ... Electronic signature of appropriate signatory",
+                "verified": true
+              },
+              {
+                "step": 10,
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_specific_u4_signatures.tsx",
+                "quote": "Section15C ... Sign section 15C",
+                "verified": false
+              }
+            ],
+            "checkedAt": "2026-09-16T16:04:36.707Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:04:36.717Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "status": "missing",
@@ -5172,58 +5331,94 @@
       "workflows": [
         {
           "title": "How to generate and download a branch exam follow-up letter",
-          "purpose": "Generate the branch exam follow-up letter (findings, corrective actions, response instructions) addressed to the branch person in charge from the exam's 'Follow-up letter' tab, then download it or save an earlier version as PDF.",
+          "purpose": "Open a branch exam's Follow-up letter tab, generate the letter, review its content, and download it as a file.",
           "startRoute": "/branch-exams",
           "trigger": "",
           "priority": "medium",
           "steps": [
             "Navigate to Branches > All exams",
-            "Click the exam's row in the table to open the exam detail page (/branches/{branchId}/exams/{examId})",
+            "Click a row in the exams table to open that exam's detail page (navigates to /branches/{branchId}/exams/{examId}?view=overview)",
             "Click the \"Follow-up letter\" tab",
-            "In the \"Versions\" panel click \"Generate\" (the empty state reads \"No saved versions yet. Generate a follow-up letter to create version 1.\"); a \"Follow-up letter generated\" toast appears and \"Version 1\" is listed with a \"Latest\" badge",
-            "Review the \"Follow-up letter — Version 1\" preview: the \"To\" row shows the branch's person in charge, and the letter has \"Purpose\", \"Scope\", \"Areas examined\", \"Findings and Corrective Actions\" and \"Response Instructions\" sections",
-            "Click \"Download\" in the preview header to download the letter",
-            "If findings change later, click \"Regenerate\" in the \"Versions\" panel to create a new version; select an older version and click \"Save as PDF\" (opens the print dialog) or \"View latest\" to return"
+            "In the \"Versions\" panel, click \"Generate\" (shown when no letter exists yet; the empty state reads \"No saved versions yet. Generate a follow-up letter to create version 1.\")",
+            "Wait for the \"Follow-up letter generated\" toast (\"The follow-up letter is ready to download.\") and for \"Version 1\" with a \"Latest\" badge to appear in the \"Versions\" panel",
+            "Review the \"Follow-up letter — Version 1\" preview panel: check the \"To\" row for the branch's person in charge, and the letter's \"Purpose\", \"Scope\", \"Areas examined\", \"Findings and Corrective Actions\", and \"Response Instructions\" sections",
+            "Click \"Download\" in the top-right of the preview panel to download the letter"
           ],
           "evidence": [],
           "sources": [
             "apps/hadrius-app/pages/branch-exams/index.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/pages/branch_exams_home_page.tsx",
+            "apps/hadrius-app/pages/branches/[branchId]/exams/[examId]/index.tsx",
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/pages/branch_exams_dashboard_page.tsx",
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/pages/branch_exam_details_page.tsx",
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/tabs/follow_up_letter.tsx",
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/tabs/remediation.tsx",
-            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/shared/helpers/branch_permissions_helper.ts",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_branch_tabs.tsx"
+            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/components/exam_finding_detail_sheet.tsx",
+            "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/shared/components/branch_oversight_tabs.tsx"
           ],
-          "status": "missing",
           "prerequisites": [
-            "Company feature 'branches_enabled'",
-            "User is a super admin or has the branch manage role (canGenerateFollowUpLetter = canManageBranches)",
-            "An existing branch exam with at least one finding marked \"Include in follow-up letter\" (otherwise the letter reads \"No findings are marked for the follow-up and exit letters.\")",
-            "The branch should have a person in charge assigned so the \"To\" row is populated"
+            "At least one branch exam must already exist in the company (created via the New branch exam flow) to have a row to click into.",
+            "For findings to appear under \"Findings and Corrective Actions\" in the letter, each finding must have its \"include_in_follow_up_letter\" flag set — toggled in the finding's detail sheet, labeled \"Included in follow-up and exit letters\" vs \"Not included in follow-up and exit letters\" — otherwise the letter shows \"No findings are marked for the follow-up and exit letters.\"",
+            "The branch should have a person in charge assigned (branch_profile.branch_manager_id) for the \"To\" recipient row to show a real name instead of \"No person in charge\".",
+            "User must have branch-exam view/access permission and the company must have branch oversight enabled (gated by ModuleAccessView / useBranchOversightEnabled)."
           ],
-          "provisionable": "needs-deliberate-setup",
+          "provisionable": "self-serve-quick",
           "blockerReason": "",
-          "suggestedSetupSteps": [
-            "Open a branch (Branches > Branches > click a row) and click \"Schedule exam\" to create an exam",
-            "Log at least one finding on the exam (see 'How to log a corrective finding during a branch exam') and mark it \"Include in follow-up letter\"",
-            "Confirm the branch has a person in charge (Branch details / Personnel tab)"
-          ],
+          "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:35.888Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "note": "The original plan's UI does not exist: there is no 'Remediations' tab with checkboxes, no 'Follow-up notes' or 'Due date' fields and no 'Send follow-up' button, and both listed source paths are invented. The real 'Issue follow-up' release dialog (delivery options \"Letter and task link\"/\"Letter only\"/\"Task link only\", \"Review before issuing\", \"Issue follow-up\") IS implemented in remediation.tsx but",
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "medium",
+            "confidence": "high",
+            "verifiedSteps": 7,
             "totalSteps": 7,
             "unverified": [],
-            "verifiedSteps": 7
-          }
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/shared/components/branch_oversight_tabs.tsx",
+                "quote": "{ key: \"branch-exams\", href: \"/branch-exams\", label: \"All exams\" }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/pages/branch_exams_dashboard_page.tsx",
+                "quote": "onRowClick={(row) => { void router.push(getBranchExamHref(row)); }}",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/pages/branch_exam_details_page.tsx",
+                "quote": "{ name: \"follow-up-letter\", title: \"Follow-up letter\" }",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "quote": "No saved versions yet. Generate a follow-up letter to create version 1.",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "quote": "title: \"Follow-up letter generated\", description: \"The follow-up letter is ready to download.\"",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "quote": "<LetterSection title=\"Purpose\">...<LetterSection title=\"Scope\">...<LetterSection title=\"Findings and Corrective Actions\">...<LetterSection title=\"Response Instructions\">",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branch_exams/detail_view/components/branch_exam_follow_up_letter_preview.tsx",
+                "quote": "<Button type=\"button\" size=\"sm\" loading={isDownloading} onClick={handleDownload}>Download",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-16T16:05:34.636Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:05:34.644Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to export a branch exam's remediation tracker to CSV",
@@ -6328,21 +6523,22 @@
       "workflows": [
         {
           "title": "How to create a visibility (information barrier) policy for instant messages",
-          "purpose": "Create a visibility barrier policy under Instant messages settings that defines which employees or groups the policy applies to and whose communications they can or cannot see.",
+          "purpose": "Create a scoped visibility barrier policy that controls which employees' instant-message communications a defined group of people can or cannot see.",
           "startRoute": "/communications/im/settings?tab=policies",
           "trigger": "",
           "priority": "medium",
           "steps": [
-            "Navigate to Communications > Instant messages, then open /communications/im/settings?tab=policies (the \"Message management\" page) and confirm the \"Policies\" tab is selected",
-            "Click \"New policy\" — the \"Create visibility policy\" wizard opens on step \"Define policy scope\"",
-            "Enter a name in the \"Name\" field (placeholder \"e.g., Trading Desk Visibility Policy\")",
-            "Under \"Define policy scope\", use the \"Include people who are\" builder to add at least one group or employee; optionally add exceptions under \"Except:\"",
-            "Optionally click \"Preview\" to see the employees currently matched by the scope",
-            "Click \"Next: Define visibility rules\" to move to step 2 (\"Section 2: Visibility rules\")",
-            "Leave \"Policy status:\" set to \"Active\" or change it to \"Draft\"",
-            "Use \"Include communications from\" and \"Exclude communications from\" to search and add groups, employees, or aliases",
-            "Review the plain-language summary under \"Section 3: Rule summary\"",
-            "Click \"Create policy\" — a \"Policy created\" toast appears and you are returned to the Policies tab where the new policy is listed"
+            "Navigate to Communications > Instant messages, then open the \"Instant messages\" settings page (\"Message management\") and select the \"Policies\" tab",
+            "Click \"New policy\" to open the policy wizard on step 1, \"Create visibility policy\"",
+            "In the \"Policy name\" section, enter a name in the \"Name\" field (e.g., matching placeholder \"e.g., Trading Desk Visibility Policy\")",
+            "In the \"Define policy scope\" section, under \"Include people who are\", type into the search field and select at least one group or employee from the dropdown to add it as a scope chip",
+            "Optionally, under \"Except:\" in the same builder, search and select groups or employees to exclude from the scope",
+            "Optionally, click the \"Preview\" button to open the \"Policy preview\" panel and confirm which employees match the scope",
+            "Click \"Next: Define visibility rules\" to advance to step 2",
+            "In the \"Policy status:\" dropdown, leave it set to \"Active\" or change it to \"Draft\"",
+            "Under \"Include communications from\", type into the \"Search groups, employees, or aliases to include...\" field and select items to add them as chips",
+            "Optionally, under \"Exclude communications from\", type into the \"Search groups, employees, or aliases to exclude...\" field and select items to exclude",
+            "Review the plain-language summary under \"Section 3: Rule summary\", then click \"Create policy\" — a \"Policy created\" toast confirms success and you are redirected to the Policies tab"
           ],
           "evidence": [],
           "sources": [
@@ -6353,32 +6549,99 @@
             "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_wizard.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/common/policies/policy_step_header.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_scope_view.tsx",
-            "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_visibility_view.tsx",
             "apps/hadrius-app/src/components/employee_group_policy_builder/component_egp_builder.tsx",
-            "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/visibility_builder/visibility_builder.tsx"
+            "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_visibility_view.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/visibility_builder/visibility_builder.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_archive_tab.tsx"
           ],
-          "status": "missing",
           "prerequisites": [
-            "Comms review module access and company feature \"comms_review\" (header tabs are hidden otherwise)",
-            "Permission comms_review.visibility_barriers.view_edit — without it the \"Policies\" tab is not shown",
-            "Company comms_review_config.instant_messages_status not DISABLED (Instant messages sidebar tab)",
-            "At least one employee or employee group to select in the scope builder"
+            "User needs the \"comms_review.visibility_barriers.view_edit\" permission — without it, the \"Policies\" tab is hidden and only \"Alias\" shows",
+            "Company must have the \"comms_review\" feature enabled and the Instant Messages tab visible (instantMessagesTabVisible) for the Communications > Instant messages nav item and header actions to appear",
+            "At least one employee group or employee must exist in People > Employees/Groups to add to \"Include people who are\" — the wizard blocks \"Next\" until at least one is selected",
+            "IM aliases (if you want to include/exclude by alias rather than employee/group in step 2) must already be linked via the Alias tab — optional, not required to complete the flow"
           ],
-          "provisionable": "likely-already-present",
+          "provisionable": "self-serve-quick",
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:39.196Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
             "confidence": "high",
-            "totalSteps": 10,
+            "verifiedSteps": 11,
+            "totalSteps": 11,
             "unverified": [],
-            "verifiedSteps": 10
-          }
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/info_barriers_view.tsx",
+                "quote": "title=\"Message management\" ... { key: \"policies\", label: \"Policies\" }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/common/policies/policies_tab.tsx",
+                "quote": "<Link href={`/communications/${module}/settings/policies/new?module=${module}`}> <Plus .../> New policy </Link>",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_scope_view.tsx",
+                "quote": "<Label htmlFor=\"policy-name\">Name</Label> <Input ... placeholder=\"e.g., Trading Desk Visibility Policy\" />",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/components/employee_group_policy_builder/component_egp_builder.tsx",
+                "quote": "<Text variant=\"base_bold\">Include people who are</Text>",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/components/employee_group_policy_builder/component_egp_builder.tsx",
+                "quote": "<Text variant=\"base_bold\" className=\"mr-2\"> Except: </Text>",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/components/employee_group_policy_builder/component_egp_builder.tsx",
+                "quote": "<Button variant=\"outline\" size=\"sm\" onClick={handlePreviewClick}> <Eye .../> Preview </Button> ... Policy preview",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/common/policies/policy_step_header.tsx",
+                "quote": "Next: Define visibility rules <ArrowRight className=\"h-4 w-4\" />",
+                "verified": true
+              },
+              {
+                "step": 8,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_visibility_view.tsx",
+                "quote": "<Text variant=\"small_medium\">Policy status:</Text> <SelectWrapper items={[{ value: PolicyStatus.Draft, label: \"Draft\" }, { value: PolicyStatus.Active, label: \"Active\" }]}",
+                "verified": true
+              },
+              {
+                "step": 9,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/visibility_builder/visibility_builder.tsx",
+                "quote": "<Text variant=\"base_bold\">Include communications from</Text> ... placeholder=\"Search groups, employees, or aliases to include...\"",
+                "verified": true
+              },
+              {
+                "step": 10,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/components/visibility_builder/visibility_builder.tsx",
+                "quote": "<Text variant=\"base_bold\">Exclude communications from</Text> ... placeholder=\"Search groups, employees, or aliases to exclude...\"",
+                "verified": true
+              },
+              {
+                "step": 11,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/comms_review/info_barriers/views/policy_wizard.tsx",
+                "quote": "toast({ title: \"Policy created\", description: \"The visibility policy has been created successfully.\" }); ... actionButtonText = isEditMode ? \"Save changes\" : \"Create policy\"",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-16T16:06:43.749Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:06:43.755Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to review and close an email as compliant or non-compliant",
@@ -6871,49 +7134,113 @@
         },
         {
           "title": "How to add a website subdomain for archiving",
-          "purpose": "Register a website URL (subdomain) to be crawled and archived on a chosen cadence from Website archive settings.",
+          "purpose": "From Website archive settings, open the Subdomains tab and register a new URL with a display name and archive cadence so Hadrius captures and archives that site on a schedule.",
           "startRoute": "/communications/website",
           "trigger": "",
           "priority": "medium",
           "steps": [
             "Navigate to Communications > Website",
-            "Click \"Manage\" in the \"Website\" page header to open \"Website archive settings\"",
+            "Click \"Manage\" in the page header to open Website archive settings",
             "Click the \"Subdomains\" tab",
-            "Click \"Add subdomain\"",
-            "In the \"Add a subdomain to archive\" dialog, enter a label in \"Display name\" (placeholder \"e.g. Company Homepage\")",
-            "Enter the web address in \"URL\" (placeholder \"https://example.com/page\")",
-            "Choose \"Daily\", \"Weekly\" (default), \"Monthly\", \"Quarterly\" or \"Yearly\" from \"Archive cadence\"",
-            "Click \"Add subdomain\" — the dialog closes and the new row appears in the \"Subdomains\" table"
+            "Click \"Add subdomain\" (the button with the plus icon, next to the search bar)",
+            "In the \"Add a subdomain to archive\" dialog, enter a name in the \"Display name\" field (placeholder \"e.g. Company Homepage\")",
+            "Enter the web address in the \"URL\" field (placeholder \"https://example.com/page\")",
+            "Choose \"Daily\", \"Weekly\", \"Monthly\", \"Quarterly\", or \"Yearly\" from the \"Archive cadence\" dropdown (defaults to \"Weekly\")",
+            "Click \"Add subdomain\" at the bottom of the dialog to save",
+            "Confirm the dialog closes and the new entry appears as a row in the \"Subdomains\" table"
           ],
           "evidence": [],
           "sources": [
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_archive_tab.tsx",
             "apps/hadrius-app/pages/communications/website/index.tsx",
-            "apps/hadrius-app/pages/communications/website/settings.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/website/pages/page_website_home.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/website/components/website_home_header.tsx",
+            "apps/hadrius-app/pages/communications/website/settings.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/website/components/page_website_archive_settings.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/use_tab_states.ts"
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/use_tab_states.ts",
+            "apps/hadrius-app/src/api/auth/types_company.ts"
           ],
-          "status": "missing",
           "prerequisites": [
-            "Comms review module access and company.web_archiving = ACTIVE (shows the Website sidebar tab)"
+            "The company's `web_archiving` feature must be set to \"ACTIVE\" (enum: ACTIVE/INACTIVE/HIDDEN/DEMO on the company record) — otherwise the \"Website\" sub-tab under Communications never renders, and there is no self-serve toggle for this in the app UI.",
+            "The user must have comms-review access (`canAccessCommsReview`) to see the Communications archive tabs at all.",
+            "The URL entered must not already exist as a subdomain setting for the company (the URL field is locked/disabled when editing an existing entry, implying uniqueness is enforced)."
           ],
-          "provisionable": "none-needed",
+          "provisionable": "needs-deliberate-setup",
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:40.935Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "high",
-            "totalSteps": 8,
-            "unverified": [],
-            "verifiedSteps": 8
-          }
+            "confidence": "medium",
+            "verifiedSteps": 8,
+            "totalSteps": 9,
+            "unverified": [
+              {
+                "step": 9,
+                "reason": "Toast copy for a successful create was not found in this component (only error toasts are wired); the row appearing relies on the paginated table refetch, which is not directly observable from source "
+              }
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_archive_tab.tsx",
+                "quote": "children.push({ key: \"website\", title: \"Website\", path: \"/communications/website\" ...",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/website_home_header.tsx",
+                "quote": "<Link href={`/communications/website/settings?tab=${manageTab}`}><Settings className=\"h-4 w-4\" />Manage</Link>",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/page_website_archive_settings.tsx",
+                "quote": "const TAB_TITLES = [\"Domains\", \"Subdomains\"];",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "quote": "<PantheonButton onClick={onAddSubdomain} leftIcon={<Plus />} className=\"shrink-0\">Add subdomain</PantheonButton>",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "quote": "<Label useSatoshiFont>Display name</Label> ... placeholder=\"e.g. Company Homepage\"",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "quote": "<Label useSatoshiFont>URL</Label> ... placeholder=\"https://example.com/page\"",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "quote": "<SelectItem value=\"DAILY\">Daily</SelectItem> ... <SelectItem value=\"WEEKLY\">Weekly</SelectItem>",
+                "verified": true
+              },
+              {
+                "step": 8,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "quote": "{isEditing ? \"Save changes\" : \"Add subdomain\"}",
+                "verified": true
+              },
+              {
+                "step": 9,
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/website/components/tab_website_archive_subdomains.tsx",
+                "quote": "promise.then(() => setIsOpen(false))",
+                "verified": false
+              }
+            ],
+            "checkedAt": "2026-09-16T16:06:03.515Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:06:03.523Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to create a new case",
@@ -7292,56 +7619,113 @@
         },
         {
           "title": "How to rename or delete an export in Settings > Exports",
-          "purpose": "Use the Exports page under Settings to rename an existing export (email, instant message, or other module) or delete it so its download is no longer available.",
+          "purpose": "From the Settings > Exports table (which lists exports from every module, including Communications' email/instant-message/website exports), rename an export via the row's actions menu or permanently delete it.",
           "startRoute": "/settings/exports",
           "trigger": "",
           "priority": "medium",
           "steps": [
-            "Click the \"Settings\" gear icon at the bottom of the sidebar, then click the \"Exports\" tab (URL /settings/exports)",
-            "Locate the export in the table (use \"Search exports by name\" if needed) and open its row-actions menu",
-            "Click \"Rename\" — the \"Rename export\" dialog opens",
-            "Edit the value in the \"Name\" field and click \"Save\"",
-            "Confirm the toast \"Export renamed\" and the updated name in the table",
-            "Open the row-actions menu on the export again and click \"Delete\"",
-            "In the \"Delete export\" confirmation dialog (\"Delete \"<name>\"? The download will no longer be available.\"), click \"Delete\"",
-            "Confirm the toast \"Export deleted\" and that the row is gone from the table"
+            "Navigate to Settings > Exports",
+            "In the exports table, click the \"More actions\" icon-only button (vertical-ellipsis / MoreVertical icon, at the right end of the export's row)",
+            "Click \"Rename\" in the actions menu — the \"Rename export\" dialog opens with a \"Name\" field pre-filled with the export's current name",
+            "Edit the value in the \"Name\" field",
+            "Click \"Save\" to confirm the rename",
+            "Confirm the \"Export renamed\" toast appears",
+            "Click the \"More actions\" icon-only button on the same (or another) row again",
+            "Click \"Delete\" in the actions menu — the \"Delete export\" confirmation dialog opens showing the body text 'Delete \"<name>\"? The download will no longer be available.'",
+            "Click \"Delete\" in the dialog to confirm the destructive action (or \"Cancel\" to back out)",
+            "Confirm the \"Export deleted\" toast appears and the row is removed from the table"
           ],
           "evidence": [],
           "sources": [
             "apps/hadrius-app/pages/settings/exports.tsx",
             "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+            "apps/hadrius-app/src/pages/coreloop/account/account_settings_tab_page.tsx",
             "apps/hadrius-app/src/pages/coreloop/exports/page_exports.tsx",
             "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
-            "apps/hadrius-app/src/pages/coreloop/exports/export_presentation.tsx",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/footer.tsx",
-            "apps/hadrius-app/pages/communications/exports/index.tsx",
-            "apps/hadrius-app/src/pages/coreloop/archive/email/exports/tab_communications_exports.tsx",
-            "apps/hadrius-app/src/pages/coreloop/archive/email/exports/communications_exports_table.tsx"
+            "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+            "apps/hadrius-app/src/components/containers/simple_confirmation_dialog.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/footer.tsx"
           ],
-          "status": "missing",
           "prerequisites": [
-            "At least one export exists that the user can see (the Settings > Exports page lists the user's own exports, or the whole company's for admins)",
-            "Exports are created from their source module (e.g. a case export via \"Create export\" on a dataset, or an email/IM archive export); they cannot be created from this page"
+            "At least one export must already exist in the company (created from any module, e.g. an email/IM/website archive export from Communications) — the table shows an empty state otherwise.",
+            "No special role/permission is required: component_account_settings_header.tsx explicitly notes the Exports tab is ungated for all users, though each user typically only sees their own exports (admins see the whole company's)."
           ],
-          "provisionable": "needs-deliberate-setup",
+          "provisionable": "likely-already-present",
           "blockerReason": "",
-          "suggestedSetupSteps": [
-            "Create a case export: Communications > Cases > open a case > \"Datasets\" tab > view a dataset > \"Create export\" > enter \"Export folder name\" > \"Create export\"",
-            "Return to Settings > Exports and confirm the export appears in the table"
-          ],
+          "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:42.264Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "note": "The original startRoute /communications/exports (Communications > Exports, CommsExportPage) has NO rename or delete actions — its row menu only offers download, \"Copy export details\" and \"View original search\". Rename/Delete live on the Settings > Exports page (/settings/exports, ExportsPage) which lists exports across modules (Email, Instant messages, Cases, etc.). Rewrote the plan around that pa",
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "medium",
-            "totalSteps": 8,
+            "confidence": "high",
+            "verifiedSteps": 10,
+            "totalSteps": 10,
             "unverified": [],
-            "verifiedSteps": 8
-          }
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+                "quote": "{ value: \"exports\", title: \"Exports\", href: \"/settings/exports\", icon: HardDriveDownload, content: <ExportsPage /> }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "quote": "aria-label=\"More actions\" ... <MoreVertical className=\"size-4\" />",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "quote": "<DialogTitle>Rename export</DialogTitle> ... <Input label=\"Name\" value={name} ...",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "quote": "if (exportToRename) setName(exportToRename.name);",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "quote": "<Button onClick={handleRename} disabled={isRenaming || !name.trim()} loading={isRenaming}>Save</Button>",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "quote": "toast({ title: \"Export renamed\" });",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "quote": "aria-label=\"More actions\"",
+                "verified": true
+              },
+              {
+                "step": 8,
+                "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "quote": "title=\"Delete export\" body={`Delete \"${exportToDelete?.name}\"? The download will no longer be available.`}",
+                "verified": true
+              },
+              {
+                "step": 9,
+                "file": "apps/hadrius-app/src/components/containers/simple_confirmation_dialog.tsx",
+                "quote": "positiveText=\"Delete\" ... <Button variant={destructive ? \"destructive\" : \"default\"} onClick={onPositive} ...>{positiveText}</Button>",
+                "verified": true
+              },
+              {
+                "step": 10,
+                "file": "apps/hadrius-app/src/pages/coreloop/exports/export_dialogs.tsx",
+                "quote": "toast({ title: \"Export deleted\" });",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-16T16:06:24.773Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:06:24.784Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to upload reviewed emails to test an AI compliance subrule",
@@ -8853,53 +9237,91 @@
         },
         {
           "title": "How to reopen a closed exception in Account surveillance",
-          "purpose": "Find a closed (or escalated) exception on the Account surveillance overview, open its detail page, and reopen it with a required reason so it returns to the Open review queue.",
+          "purpose": "From the Account surveillance Overview, filter the Exceptions table to Closed, open the exception's detail page, and reopen it with a required reason so it moves back to Open.",
           "startRoute": "/account-surveillance",
           "trigger": "",
           "priority": "medium",
           "steps": [
             "Navigate to Account surveillance > Overview",
-            "Scroll to the \"Exceptions\" table and click the \"Closed\" filter chip (the chips are \"All\", \"Open\", \"New\", \"Escalated\", \"Closed\", \"Archived\") to list resolved exceptions; rows show a \"Resolved\" status badge.",
-            "Click the exception row (or its Case ID link) to open the exception detail page.",
-            "In the page header, click \"Reopen exception\" (this button only appears when the exception is not Open).",
-            "In the \"Reopen exception\" dialog (\"This exception will move from Closed back to Open.\"), type the rationale in the \"Reason for reopening\" field.",
-            "Click \"Reopen exception\" to confirm.",
-            "Verify the \"Exception reopened\" toast, that the \"Review status\" badge in the right rail now reads \"Open\", and that the header again shows the \"Escalate\" and \"Close\" buttons."
+            "In the \"Exceptions\" table, click the \"Closed\" filter chip (the row of chips reads \"All\", \"Open\", \"New\", \"Escalated\", \"Closed\", \"Archived\") to list resolved exceptions; their \"Status\" column shows a \"Resolved\" badge.",
+            "Click the exception's \"Case ID\" value (the formatted flag name link in the first column), or click anywhere else in its row, to open the exception detail page.",
+            "In the page header, click \"Reopen exception\" (this button, with the refresh icon, only appears when the exception's status is not Open).",
+            "In the \"Reopen exception\" dialog (subtitle: \"This exception will move from Closed back to Open.\"), type your rationale into the \"Reason for reopening\" textarea field.",
+            "Click \"Reopen exception\" in the dialog footer to submit (the button reads \"Reopening...\" while the request is in flight).",
+            "Confirm the \"Exception reopened\" toast appears, and that the \"Review status\" badge in the right rail now reads \"New\" (the Open-status badge shown for the OPEN status) while the header again shows the \"Escalate\" and \"Close\" buttons in place of \"Reopen exception\"."
           ],
           "evidence": [],
           "sources": [
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx",
             "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_account_surveillance.tsx",
             "apps/hadrius-app/src/pages/coreloop/trade_surveillance/alerts/page_ts_overview.tsx",
             "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_violations_table.tsx",
+            "apps/hadrius-app/pages/account-surveillance/rules/violations/[id].tsx",
             "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/page_specific_violation.tsx",
             "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/component_violation_dialogs.tsx",
-            "apps/hadrius-app/pages/account-surveillance/rules/violations/[id].tsx"
+            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx"
           ],
-          "status": "missing",
           "prerequisites": [
-            "Account surveillance module enabled for the company (company feature \"trade_surveillance\") and the user has access to it (useCanAccessTradeSurveillance); otherwise the page shows the ModuleAccessView upsell.",
-            "At least one exception in Closed or Escalated status (the \"Reopen exception\" button only renders when status is not Open)."
+            "At least one rule violation ('exception') that is already in Closed status must exist — a fresh company with no closed exceptions will show an empty Closed-filtered table.",
+            "The Account surveillance module must be enabled for the company and accessible to the user (the page gates on useCompanyHasFeature('trade_surveillance') and useCanAccessTradeSurveillance() and shows an upsell/no-access view otherwise)."
           ],
-          "provisionable": "needs-deliberate-setup",
+          "provisionable": "likely-already-present",
           "blockerReason": "",
-          "suggestedSetupSteps": [
-            "Exceptions only exist once trade data has been ingested: either a custodian feed is connected (Account surveillance > Feed monitor) or a CSV/XLSX is uploaded at /account-surveillance/import_data for a configured custodian.",
-            "With trades present, create an exception either by running a rule (Overview > \"Rule library\" > row menu > \"Run now\") or manually: Account surveillance > Trades, tick one or more trade rows, click \"Create manual exception\", fill \"Title\", pick a severity, and click \"Create exception\".",
-            "Open the new exception and click \"Close\" in the header, pick a \"Determination\", fill \"Resolution summary\", and click \"Close exception\" so there is a closed exception to reopen."
-          ],
+          "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:48.360Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
             "confidence": "high",
+            "verifiedSteps": 7,
             "totalSteps": 7,
             "unverified": [],
-            "verifiedSteps": 7
-          }
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx",
+                "quote": "{ title: \"Overview\", path: \"/account-surveillance\" }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_violations_table.tsx",
+                "quote": "const TOP_FILTERS: { label: string; value: TopFilter }[] = [ { label: \"All\", value: \"ALL\" }, { label: \"Open\", ... }, { label: \"Closed\", value: \"CLOSED\" }, ... ]  /  CLOSED: \"Resolved\"",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_violations_table.tsx",
+                "quote": "<Link href={getViolationHref(row.original.id)} ...>{formatFlagName(row.original.display_id)}</Link> ... onRowClick={(row) => router.push(getViolationHref(row.id))}",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/page_specific_violation.tsx",
+                "quote": "{!!showActions && !!isTerminal && (<Button onClick={() => onOpenDialog(\"reopen\")} leftIcon={<RefreshCw />}>Reopen exception</Button>)}",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/component_violation_dialogs.tsx",
+                "quote": "title=\"Reopen exception\" description={`This exception will move from ${fromStatusLabel} back to Open.`} ... <TextareaField label=\"Reason for reopening\" .../>",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/component_violation_dialogs.tsx",
+                "quote": "{isLoading ? \"Reopening...\" : \"Reopen exception\"}",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/rules/page_specific_violation.tsx",
+                "quote": "onConfirm={({ note }) => applyStatusChange(\"OPEN\", ..., \"Exception reopened\")} ... STATUS_LABEL = { OPEN: \"Open\", ... } / <Typography>Review status</Typography>",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-16T16:07:10.799Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:07:10.807Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to archive a flagged exception",
@@ -9485,48 +9907,93 @@
         },
         {
           "title": "How to view and link entities in the Client Relationship Builder graph",
-          "purpose": "Open the Company structure graph to see how the firm, representatives, clients, and accounts are connected, and draw a new relationship edge between two nodes.",
+          "purpose": "Open the Client Relationship Builder graph to visualize how the company, representatives, clients, and accounts connect, and draw a new relationship edge by dragging between two node handles.",
           "startRoute": "/account-surveillance/company_structure",
           "trigger": "",
           "priority": "medium",
           "steps": [
-            "Navigate directly to /account-surveillance/company_structure (the page is titled \"Company structure\" and is not linked from the Account surveillance sidebar)",
-            "Wait for the \"Loading relationship data...\" indicator to disappear; the \"Client Relationship Builder\" card (\"Visualize and manage client-company relationships.\") shows the graph canvas",
-            "Use the graph controls in the bottom-left of the canvas to zoom in/out or fit the view and locate the source and target nodes (nodes are labelled with the entity's display name)",
-            "Drag from the connection handle at the bottom of the source node to the handle at the top of the target node",
-            "Release on the target node; a \"Creating relationship...\" indicator appears in the bottom-right corner while the edge is saved",
-            "Confirm the new edge is drawn between the two nodes on the canvas"
+            "Navigate to Account surveillance > Company structure",
+            "Navigate directly to /account-surveillance/company_structure by typing the URL — this page is not linked from the \"Account surveillance\" sidebar tab, whose only subtabs are \"Overview\", \"Representatives\", \"Clients\", \"Accounts\", \"Trades\", and \"Feed monitor\"",
+            "Wait for the page header \"Company structure\" to render, then wait for the \"Loading relationship data...\" spinner text to disappear as the graph data loads",
+            "Below the \"Client Relationship Builder\" title and its \"Visualize and manage client-company relationships.\" subtitle, the graph canvas renders nodes labeled with each entity's display name (company, representative, client, or account) connected by labeled edges (e.g. \"OWNS\", \"MANAGES\")",
+            "Use the zoom/fit controls in the bottom-left of the canvas (the React Flow \"Controls\" widget) to pan and zoom to locate the two nodes you want to connect",
+            "Click and drag from the connection handle on the source node to the connection handle on the target node to draw a new edge between them",
+            "Release the mouse over the target node to complete the connection; a floating status box reading \"Creating relationship...\" appears in the bottom-right corner while the new edge is saved to the backend",
+            "Confirm the new edge now persists between the two nodes on the canvas (the edge is optimistically drawn immediately, then the graph refreshes from the server)"
           ],
           "evidence": [],
           "sources": [
             "apps/hadrius-app/pages/account-surveillance/company_structure/index.tsx",
             "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+            "apps/hadrius-app/src/api/trade_surveillance/api_trade_surveillance.ts",
+            "apps/hadrius-app/src/api/trade_surveillance/types.ts",
+            "apps/hadrius-app/generated/graph_data.ts",
             "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx"
           ],
-          "status": "missing",
           "prerequisites": [
-            "Account surveillance module enabled for the company and user has trade surveillance access",
-            "Relationship graph data must exist: at least a company node plus representatives/clients/accounts, which come from ingested trade/holdings data (custodian feed or the Import data upload); otherwise the page shows \"No relationship data found.\""
+            "Account surveillance module must be enabled for the company (the entire \"Account surveillance\" nav tab, including this route's parent section, is hidden when trade surveillance access is disabled via module permissions)",
+            "The company must already have relationship graph data — representatives, clients, and/or accounts already onboarded — otherwise the page shows \"No relationship data found.\"",
+            "This route is not reachable via any sidebar link; a user must know and type the exact URL /account-surveillance/company_structure",
+            "The page's own source is explicitly commented \"//Unused page\", indicating it is dead/unmaintained code in production, not an intentionally exposed feature"
           ],
-          "provisionable": "needs-deliberate-setup",
-          "blockerReason": "",
-          "suggestedSetupSteps": [
-            "Go to /account-surveillance/import_data, choose a \"Custodian\", pick a CSV/XLSX file under \"Input CSV/XLSX\" and click \"Upload and Proceed\" so representatives, clients and accounts exist",
-            "Return to /account-surveillance/company_structure once processing has finished"
-          ],
+          "provisionable": "structurally-blocked",
+          "blockerReason": "The route works and the graph/edge-creation logic is implemented, but the page is not linked anywhere in the app UI (confirmed absent from the \"Account surveillance\" sidebar subtabs in use_trade_surveillance_tab.tsx) and its own file (apps/hadrius-app/pages/account-surveillance/company_structure/index.tsx) is annotated \"//Unused page\" by the developers — so a normal user cannot discover or reach it through any click path, only by typing the URL directly.",
+          "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:52.153Z",
-          "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "note": "Original source path (coreloop/account_surveillance/company_structure.tsx) does not exist; the real component is page_relationship_builder.tsx. The page file is annotated \"//Unused page\" and is not in the sidebar subtabs, so it is reached only by URL. Removed the claim that the new edge shows an \"OWNS\"/\"MANAGES\" label: onConnect adds the edge optimistically with no label, and there is no explicit ",
-            "steps": [],
-            "source": "codebase audit (agent verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "low",
-            "totalSteps": 6,
+            "confidence": "medium",
+            "verifiedSteps": 7,
+            "totalSteps": 7,
             "unverified": [],
-            "verifiedSteps": 6
-          }
+            "steps": [
+              {
+                "step": 1,
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx",
+                "quote": "{ title: \"Feed monitor\", path: \"/account-surveillance/feed_monitor\" }",
+                "verified": true
+              },
+              {
+                "step": 2,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "quote": "Loading relationship data...",
+                "verified": true
+              },
+              {
+                "step": 3,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "quote": "<Text variant=\"header_title\">Client Relationship Builder</Text>\\n<Text ...>Visualize and manage client-company relationships.</Text>",
+                "verified": true
+              },
+              {
+                "step": 4,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "quote": "<Controls />\\n<Background />",
+                "verified": true
+              },
+              {
+                "step": 5,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "quote": "onConnect={onConnect}",
+                "verified": true
+              },
+              {
+                "step": 6,
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/page_relationship_builder.tsx",
+                "quote": "Creating relationship...",
+                "verified": true
+              },
+              {
+                "step": 7,
+                "file": "apps/hadrius-app/src/api/trade_surveillance/api_trade_surveillance.ts",
+                "quote": "fetcher: (path, data: CreateEdgeRequest) => postRequest(path, data).then(() => mutateGraph())",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-16T16:07:30.431Z"
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-16T16:07:30.438Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to search and filter representatives",

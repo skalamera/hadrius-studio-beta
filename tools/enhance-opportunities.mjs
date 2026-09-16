@@ -3,7 +3,11 @@ import path from 'node:path';
 
 const TARGET_MODULES = [
   'testing program',
-  'people oversight'
+  'people oversight',
+  'branches',
+  'communications',
+  'marketing',
+  'account surveillance'
 ];
 
 const BRIDGE_URL = 'http://localhost:8787';
