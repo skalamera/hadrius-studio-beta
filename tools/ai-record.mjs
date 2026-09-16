@@ -180,10 +180,32 @@ export const SNAPSHOT_FN = new Function(`
   // attribute already signals "this is meant to be identified", so the false-positive rate is low.
   const clickableCell = (el) => getComputedStyle(el).cursor === 'pointer' || el.hasAttribute('tabindex') || el.hasAttribute('data-href') || typeof el.onclick === 'function';
   const isPlainCell = (el) => el.tagName === 'TR' || el.tagName === 'TD' || (el.tagName === 'DIV' && el.hasAttribute('title'));
-  const nodes = Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr,td,div[title]'))
-    .filter((el) => visible(el) && !el.closest('#__hadrius_hud__,#__hadrius_spotlight_overlay__') && (!isPlainCell(el) || el.getAttribute('role') || clickableCell(el)));
+  // NOTE: no backticks in this block — it is a template string compiled with new Function().
+  // The cursor property INHERITS, so every <td> inside a clickable <tr> reports cursor:pointer — a 50x8 list
+  // table would add 400 cells that all mean the same click as the row already in the list. Keep a
+  // cell only when its own row isn't the click target, which is exactly the calendar-grid case
+  // (clickable day <td>s inside a non-clickable <tr>) this was added for.
+  const wanted = (el) => {
+    if (!isPlainCell(el)) return true;
+    if (el.getAttribute('role')) return true;
+    if (!clickableCell(el)) return false;
+    if (el.tagName === 'TD') { const row = el.closest('tr'); if (row && clickableCell(row)) return false; }
+    return true;
+  };
+  const found = Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr,td,div[title]'))
+    .filter((el) => visible(el) && !el.closest('#__hadrius_hud__,#__hadrius_spotlight_overlay__') && wanted(el));
+  // Real controls outrank heuristic cells when the list has to be truncated. A month grid alone is
+  // ~35 <td>s plus a chip per task, so without this the cells could push the very button the step
+  // needs past the cap — the drawer's "Mark Complete" sits late in the DOM, exactly where it gets cut.
+  const LIMIT = 320;
+  let nodes = found;
+  if (found.length > LIMIT) {
+    const room = Math.max(0, LIMIT - found.filter((el) => !isPlainCell(el)).length);
+    const keep = new Set(found.filter(isPlainCell).slice(0, room));
+    nodes = found.filter((el) => !isPlainCell(el) || keep.has(el));
+  }
   const out = [];
-  nodes.slice(0, 320).forEach((el, i) => {
+  nodes.slice(0, LIMIT).forEach((el, i) => {
     el.setAttribute('data-kb-ai-id', String(i));
     const dh = dateHint(el);
     let elName = accessibleName(el);
