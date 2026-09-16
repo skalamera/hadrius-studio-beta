@@ -867,6 +867,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     // gives up on can be retried once with better guidance from the source code.
     const runAttempt = async () => {
     steps = []; history = []; finished = false; failReason = null; lastUrl = page.url(); consults = 0;
+    // Elements proven dead this attempt: a plain click AND a keyboard activation both changed
+    // nothing. Without this the guard alternated refuse -> keyboard retry -> refuse forever — a
+    // Radix radio the model was fixated on ate 12 turns of a 45-turn run that way.
+    const blockedSigs = new Set();
     let prevSnap = null;
 
     // Capture Step 0 initial navigate slide
@@ -1014,7 +1018,22 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       // through, but activated differently (keyboard, below) since a plain click already did nothing.
       const refusedBefore = history[history.length - 1]?.error?.startsWith('refused') && history[history.length - 1]?.sig === sig;
       let activateWithKeyboard = false;
+      if ((decision.action === 'click' || decision.action === 'hover') && blockedSigs.has(sig)) {
+        history.push({ action: decision.action, name: el.name, sig, error: `refused — "${el.name}" is dead for this run: a plain click and a keyboard activation both changed nothing. It will NOT be tried again no matter how it is asked for. Choose a DIFFERENT element, or "fail" and say what is blocking you.` });
+        onLog(`  ! blocked repeat on "${el.name}"`);
+        continue;
+      }
       if ((decision.action === 'click' || decision.action === 'hover') && ((prev?.sig === sig && /no visible change/.test(prev.outcome || '')) || consecutive >= 2)) {
+        // Escalate past the refuse/retry cycle: once the keyboard path has ALSO run and the page
+        // still reports no visible change, the control is dead — block it for the rest of the run.
+        const actedSame = acted.filter((a) => a.sig === sig).length;
+        const stillDead = prev?.sig === sig && /no visible change/.test(prev.outcome || '');
+        if (actedSame >= 2 && stillDead) {
+          blockedSigs.add(sig);
+          history.push({ action: decision.action, name: el.name, sig, error: `refused — "${el.name}" is dead for this run: a plain click and a keyboard activation both changed nothing (${actedSame} attempts). It will NOT be tried again. Choose a DIFFERENT element, or "fail" and say what is blocking you.` });
+          onLog(`  ! blocked "${el.name}" — unresponsive after click + keyboard activation`);
+          continue;
+        }
         if (!refusedBefore) {
           history.push({ action: decision.action, name: el.name, sig, error: `refused — you clicked "${el.name}" ${consecutive} time(s) in a row${prev?.sig === sig && /no visible change/.test(prev.outcome || '') ? ' and nothing changed' : ''}. Something else must happen first (fill a required field, pick an option, wait for a load); choose a different element, or "fail" if the workflow cannot be completed here. If you are certain this is the right control, ask for it once more and it will be activated with the keyboard instead.` });
           onLog(`  ! refused repeat click on "${el.name}"`);
@@ -1075,10 +1094,12 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         if (decision.action === 'click') {
           let clicked = false;
           if (activateWithKeyboard) {
-            // Focus + Enter: menu items, options and buttons all activate on Enter, and it sidesteps
+            // Focus + key: menu items, options and buttons activate on Enter, and it sidesteps
             // pointer-event quirks (e.g. a menu closing on pointerdown before the item's own handler).
+            // Radios, checkboxes and switches activate on SPACE — Enter does nothing to them (or
+            // submits the surrounding form), which made every keyboard retry on a radio a no-op.
             await loc.focus({ timeout: 2500 });
-            await page.keyboard.press('Enter');
+            await page.keyboard.press(['radio', 'checkbox', 'switch', 'menuitemradio', 'menuitemcheckbox'].includes(el.role) ? 'Space' : 'Enter');
             clicked = true;
           }
           let clickErr = null;
