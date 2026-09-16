@@ -25,6 +25,7 @@ bash setup.sh
 Setup asks for the team's `STUDIO_SHARED_SECRET` (ask Stephen) so you share the same workflows and script library as everyone else. It then tells you which optional keys are missing from `.env`:
 
 - `PYLON_API_TOKEN` — needed for **Render + Article** and the Recorded tab's Pylon sync.
+- `ELEVENLABS_API_KEY` — narration voice for rendered videos (ElevenLabs "Matilda" by default; set `ELEVENLABS_VOICE_ID` to change). Without it, renders fall back to the free edge-tts voice.
 - `GEMINI_API_KEY` — optional; only used as a fallback when the Claude CLI is unavailable.
 
 Afterwards, sign in once: `claude login`, then `claude mcp login hadrius-codebase` (the Hadrius codebase MCP is what grounds plans and narration in the real source).
@@ -38,6 +39,8 @@ In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpa
 3. Perform the workflow normally in the tab.
 4. Click **Stop & draft narration**. Claude drafts narration grounded in the codebase; Gemini is used only if the Claude CLI is unavailable.
 5. Edit any action, narration, or caption, then click **Render MP4** (or **Render + Article** to also publish a draft Pylon article).
+
+Plans are shared live: every install reads and writes the step-by-step plans through the team library, so a plan someone edits, enhances, or generates shows up for everyone within about a minute (the View Plan dialog says who last changed it and when). `data/workflows.json` is just this machine's cache of that — no `git pull` is needed to stay in sync on plan content; `update.sh` is only for code changes.
 
 Anything marked **Beta** in amber — Auto-record, Enhance Plan, Generate plan, Scan codebase — is AI-driven and can be inconsistent. Review its output before recording or publishing, and be especially careful with Auto-record, which drives your browser on its own.
 

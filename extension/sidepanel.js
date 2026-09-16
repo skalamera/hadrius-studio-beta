@@ -605,6 +605,23 @@ function renderViewPlanContent(plan, isProposed = false) {
   $('#viewPlanModalTitle').textContent = plan.title || activeViewPlanModal?.originalWorkflow?.title || '';
   $('#viewPlanModalSummary').textContent = plan.summary || plan.purpose || '';
 
+  // Plans are shared live across every install; say who last changed this one and when, so a
+  // teammate's edit landing under you is visible rather than mysterious.
+  const metaEl = $('#viewPlanUpdatedMeta');
+  if (metaEl) {
+    const at = plan.planUpdatedAt || activeViewPlanModal?.originalWorkflow?.planUpdatedAt;
+    const by = plan.planUpdatedBy || activeViewPlanModal?.originalWorkflow?.planUpdatedBy;
+    if (at && !isProposed) {
+      const d = new Date(at);
+      const ago = Math.max(0, Date.now() - d.getTime());
+      const rel = ago < 60e3 ? 'just now' : ago < 3600e3 ? `${Math.round(ago / 60e3)} min ago` : ago < 86400e3 ? `${Math.round(ago / 3600e3)} h ago` : ago < 14 * 86400e3 ? `${Math.round(ago / 86400e3)} d ago` : d.toLocaleDateString();
+      metaEl.textContent = `Plan updated ${rel}${by ? ` by ${by}` : ''} · shared with the whole team`;
+      metaEl.hidden = false;
+    } else {
+      metaEl.hidden = true;
+    }
+  }
+
   const prereqSection = $('#viewPlanPrerequisitesSection');
   const prereqList = $('#viewPlanPrerequisitesList');
   const prereqBadge = $('#viewPlanPrereqBadge');
@@ -679,7 +696,9 @@ function openViewPlanModal(moduleName, workflow) {
       sources: workflow.sources || [],
       prerequisites: workflow.prerequisites || [],
       provisionable: workflow.provisionable || null,
-      blockerReason: workflow.blockerReason || ''
+      blockerReason: workflow.blockerReason || '',
+      planUpdatedAt: workflow.planUpdatedAt || null,
+      planUpdatedBy: workflow.planUpdatedBy || null
     },
     enhancedPlan: null
   };

@@ -76,6 +76,29 @@ function candSlug(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140);
 }
 
+// The plan proper — what the shared library stores on each candidate row so every install sees the
+// same steps without a git pull. Coverage state (status, linked script, dismissed) is deliberately
+// not part of it; that lives in the row's own columns.
+const PLAN_FIELDS = ['purpose', 'startRoute', 'steps', 'sources', 'prerequisites', 'provisionable', 'blockerReason', 'suggestedSetupSteps', 'fileFixtureKind', 'evidence', 'trigger', 'priority'];
+function planPayload(wf) {
+  if (!wf || !Array.isArray(wf.steps) || !wf.steps.length) return null;
+  const plan = {};
+  for (const f of PLAN_FIELDS) if (wf[f] !== undefined) plan[f] = wf[f];
+  return plan;
+}
+// Keys whose local-only plan this process has already pushed to the shared library, so a busy
+// panel polling GET /workflows doesn't re-upload the same plans every 90 seconds.
+const pushedPlanKeys = new Set();
+
+/** True when the shared row carries a plan that is newer than what this machine has locally. */
+function sharedPlanIsNewer(sharedItem, localWf) {
+  if (!sharedItem?.plan?.steps?.length) return false;
+  if (!localWf?.steps?.length) return true;
+  const sharedAt = Date.parse(sharedItem.plan_updated_at || '') || 0;
+  const localAt = Date.parse(localWf.planUpdatedAt || '') || 0;
+  return sharedAt > localAt;
+}
+
 function readManualLinks() {
   try { return fs.existsSync(MANUAL_LINKS_FILE) ? JSON.parse(fs.readFileSync(MANUAL_LINKS_FILE, 'utf8')) : []; }
   catch (_) { return []; }
@@ -1462,6 +1485,11 @@ const server = http.createServer(async (req, res) => {
                 sharedByModule.get(canon).push(it);
               }
 
+              // Plans that the shared library has newer than this machine (to refresh the local
+              // cache) and plans only this machine has (to push up), collected during the merge.
+              const refreshedFromShared = [];
+              const localOnlyToPush = [];
+
               const mergedModules = ALLOWED_MODULES.map((module) => {
                 const sharedItems = sharedByModule.get(module) || [];
                 const localMod = (localData.modules || []).find((m) => m.module.toLowerCase() === module.toLowerCase());
@@ -1475,28 +1503,35 @@ const server = http.createServer(async (req, res) => {
                   const titleKey = it.title.toLowerCase();
                   seenTitles.add(titleKey);
                   const localMatch = localWorkflowMap.get(`${module.toLowerCase()}::${titleKey}`);
-                  // The local file is the plan that was audited against the codebase; the shared row
-                  // only carries coverage state (linked script, dismissed, status). So when both exist,
-                  // the local purpose/route/steps/prerequisites win — the shared start_route is often
-                  // the pre-audit guess (e.g. "/finra" for a page that actually lives at
-                  // "/finra?tab=br_filings"), and it has no prerequisite fields at all.
+                  // The plan (steps, sources, prerequisites, …) comes from whichever copy is newer:
+                  // the shared row's plan — written by whoever last edited it on any machine — or
+                  // this machine's data/workflows.json. Coverage state (status, linked script) is
+                  // always the shared row's. A newer shared plan is also written back into the
+                  // local file below, so this install converges without anyone running git pull.
+                  let plan = localMatch || null;
+                  if (sharedPlanIsNewer(it, localMatch)) {
+                    plan = { ...(localMatch || {}), ...it.plan, title: it.title, planUpdatedAt: it.plan_updated_at, planUpdatedBy: it.plan_updated_by || null };
+                    refreshedFromShared.push({ module, workflow: plan });
+                  }
                   workflows.push({
                     title: it.title,
-                    purpose: localMatch?.purpose || it.description || '',
-                    startRoute: localMatch?.startRoute || it.start_route || `/${candSlug(module)}`,
-                    trigger: it.trigger || localMatch?.trigger || '',
-                    priority: it.priority || localMatch?.priority || 'medium',
-                    steps: localMatch?.steps?.length ? localMatch.steps : [
+                    purpose: plan?.purpose || it.description || '',
+                    startRoute: plan?.startRoute || it.start_route || `/${candSlug(module)}`,
+                    trigger: it.trigger || plan?.trigger || '',
+                    priority: it.priority || plan?.priority || 'medium',
+                    steps: plan?.steps?.length ? plan.steps : [
                       `Navigate to ${module} > ${(it.start_route || '').split('/').filter(Boolean).pop() || 'overview'}`,
                       `Follow the steps for ${it.title}`
                     ],
-                    evidence: localMatch?.evidence || [],
-                    sources: localMatch?.sources || [it.source_file].filter(Boolean),
-                    prerequisites: Array.isArray(localMatch?.prerequisites) ? localMatch.prerequisites : [],
-                    provisionable: localMatch?.provisionable || null,
-                    blockerReason: localMatch?.blockerReason || '',
-                    suggestedSetupSteps: Array.isArray(localMatch?.suggestedSetupSteps) ? localMatch.suggestedSetupSteps : [],
-                    fileFixtureKind: localMatch?.fileFixtureKind || null,
+                    evidence: plan?.evidence || [],
+                    sources: plan?.sources || [it.source_file].filter(Boolean),
+                    prerequisites: Array.isArray(plan?.prerequisites) ? plan.prerequisites : [],
+                    provisionable: plan?.provisionable || null,
+                    blockerReason: plan?.blockerReason || '',
+                    suggestedSetupSteps: Array.isArray(plan?.suggestedSetupSteps) ? plan.suggestedSetupSteps : [],
+                    fileFixtureKind: plan?.fileFixtureKind || null,
+                    planUpdatedAt: plan?.planUpdatedAt || it.plan_updated_at || null,
+                    planUpdatedBy: plan?.planUpdatedBy || it.plan_updated_by || null,
                     linkedScript: it.linked_script || null,
                     status: it.status || 'missing'
                   });
@@ -1505,11 +1540,48 @@ const server = http.createServer(async (req, res) => {
                 for (const lWf of localWfs) {
                   if (!seenTitles.has(lWf.title.toLowerCase()) && !dismissedSet.has(lWf.title)) {
                     workflows.push(lWf);
+                    if (planPayload(lWf)) localOnlyToPush.push({ module, wf: lWf });
                   }
                 }
 
                 return { module, workflows };
               });
+
+              // Converge this machine's data/workflows.json on the shared plans that were newer.
+              if (refreshedFromShared.length) {
+                try {
+                  const local = fs.existsSync(WORKFLOWS_FILE) ? JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')) : { modules: [] };
+                  if (!Array.isArray(local.modules)) local.modules = [];
+                  for (const { module, workflow } of refreshedFromShared) {
+                    let mod = local.modules.find((m) => m.module.toLowerCase() === module.toLowerCase());
+                    if (!mod) { mod = { module, workflows: [] }; local.modules.push(mod); }
+                    const idx = mod.workflows.findIndex((w) => w.title.toLowerCase() === workflow.title.toLowerCase());
+                    const merged = { ...(idx >= 0 ? mod.workflows[idx] : { status: 'missing' }), ...workflow };
+                    if (idx >= 0) mod.workflows[idx] = merged; else mod.workflows.push(merged);
+                  }
+                  fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify(local, null, 2) + '\n');
+                  localData = local;
+                  console.log(`[workflows] refreshed ${refreshedFromShared.length} plan(s) from the shared library`);
+                } catch (e) {
+                  console.warn('[workflows] Could not write refreshed plans to workflows.json:', e.message);
+                }
+              }
+
+              // And push plans only this machine has (e.g. edited before the shared plan column
+              // existed, or generated while offline) so everyone else picks them up. Fire-and-forget:
+              // the response shouldn't wait on it, and a failure just means we try again next time.
+              const toPush = localOnlyToPush.filter(({ module, wf }) => !pushedPlanKeys.has(candSlug(`${module}-${wf.title}`)));
+              if (toPush.length) {
+                const candidates = toPush.map(({ module, wf }) => ({
+                  key: candSlug(`${module}-${wf.title}`), module, title: wf.title,
+                  description: wf.purpose || '', start_route: wf.startRoute || `/${candSlug(module)}`,
+                  source_file: wf.sources?.[0] || null, priority: wf.priority || 'medium', plan: planPayload(wf),
+                }));
+                for (const c of candidates) pushedPlanKeys.add(c.key);
+                libraryFetch('POST', null, { candidates, full_scan: false, updated_by: WHOAMI }, COVERAGE_URL)
+                  .then(() => { invalidateCoverageCache(); console.log(`[workflows] pushed ${candidates.length} local-only plan(s) to the shared library`); })
+                  .catch((e) => { for (const c of candidates) pushedPlanKeys.delete(c.key); console.warn('[workflows] Could not push local-only plans:', e.message); });
+              }
 
               // Add "Other" section at the bottom of the 6 modules
               const otherWorkflows = [];
@@ -1639,7 +1711,8 @@ const server = http.createServer(async (req, res) => {
                       start_route: w.startRoute,
                       trigger: w.trigger,
                       source_file: w.sources?.[0] || null,
-                      priority: w.priority || 'medium'
+                      priority: w.priority || 'medium',
+                      plan: planPayload(w)
                     });
                   }
                 }
@@ -1754,7 +1827,11 @@ const server = http.createServer(async (req, res) => {
             prerequisites: Array.isArray(workflow.prerequisites) ? workflow.prerequisites : [],
             provisionable: workflow.provisionable || null,
             blockerReason: workflow.blockerReason || '',
-            status: 'missing'
+            suggestedSetupSteps: Array.isArray(workflow.suggestedSetupSteps) ? workflow.suggestedSetupSteps : [],
+            fileFixtureKind: workflow.fileFixtureKind || null,
+            status: 'missing',
+            planUpdatedAt: new Date().toISOString(),
+            planUpdatedBy: WHOAMI
           };
           if (existingIdx >= 0) {
             targetModObj.workflows[existingIdx] = fullWf;
@@ -1779,7 +1856,21 @@ const server = http.createServer(async (req, res) => {
                 start_route: workflow.startRoute || workflow.start_route || '/overview',
                 source_file: workflow.sources?.[0] || workflow.source_file || null,
                 priority: 'medium',
-                updated_by: WHOAMI
+                updated_by: WHOAMI,
+                plan: planPayload({
+                  purpose: workflow.summary || workflow.purpose || '',
+                  startRoute: workflow.startRoute || workflow.start_route || '/overview',
+                  trigger: workflow.trigger || '',
+                  priority: workflow.priority || 'medium',
+                  steps: Array.isArray(workflow.steps) ? workflow.steps : [],
+                  evidence: workflow.evidence || [],
+                  sources: workflow.sources || [workflow.source_file].filter(Boolean),
+                  prerequisites: Array.isArray(workflow.prerequisites) ? workflow.prerequisites : [],
+                  provisionable: workflow.provisionable || null,
+                  blockerReason: workflow.blockerReason || '',
+                  suggestedSetupSteps: Array.isArray(workflow.suggestedSetupSteps) ? workflow.suggestedSetupSteps : [],
+                  fileFixtureKind: workflow.fileFixtureKind || null,
+                })
               }],
               full_scan: false
             }, COVERAGE_URL);
