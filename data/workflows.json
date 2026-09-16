@@ -2700,8 +2700,8 @@
             "verifiedSteps": 10
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T16:04:03.622Z",
-          "planUpdatedBy": null
+          "planUpdatedAt": "2026-09-16T17:15:21.713Z",
+          "planUpdatedBy": "stephenskalamera"
         },
         {
           "title": "How to create a disclosure template for People oversight",
@@ -4180,7 +4180,7 @@
             "Enter the representative's CRD number and date of birth, then submit — this tenant's FINRA integration is mocked (company 1013 is classified INTERNAL/sandbox, so `finra_client()` always uses `call_mock=True`), so the sync succeeds immediately without any real external FINRA connectivity and creates the underlying FirmAssociation record needed for amendments.",
             "Confirm the sync completed (toast says \"Sync successful\" / \"Account connected and synced\"), then return to People oversight > U4 filings and use this employee as the representative in Section 1 of the amendment wizard."
           ],
-          "planUpdatedAt": "2026-09-16T06:15:08.979Z",
+          "planUpdatedAt": "2026-09-16T17:23:02.832Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [
