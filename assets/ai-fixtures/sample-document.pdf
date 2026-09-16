@@ -12,17 +12,46 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
 endobj
 5 0 obj
-<< /Length 220 >>
+<< /Length 932 >>
 stream
 BT
 /F1 18 Tf
-72 720 Td
-(Sample Document \(Placeholder\)) Tj
-0 -30 Td
+/F1 18 Tf
+1 0 0 1 72 740 Tm
+(Sample Compliance Policy \(Placeholder\)) Tj
 /F1 11 Tf
-(This is an obviously fake placeholder file, auto-attached during) Tj
-0 -16 Td
+1 0 0 1 72 710 Tm
+(This is an obviously fake placeholder document, auto-attached during) Tj
+/F1 11 Tf
+1 0 0 1 72 694 Tm
 (recorded walkthroughs that require a document upload.) Tj
+/F1 14 Tf
+1 0 0 1 72 668 Tm
+(1. Purpose) Tj
+/F1 11 Tf
+1 0 0 1 72 648 Tm
+(This policy establishes baseline procedures for the firm.) Tj
+/F1 11 Tf
+1 0 0 1 72 632 Tm
+(It exists only to give an uploaded document real, extractable text.) Tj
+/F1 14 Tf
+1 0 0 1 72 606 Tm
+(2. Scope) Tj
+/F1 11 Tf
+1 0 0 1 72 586 Tm
+(This section applies to every employee and every account) Tj
+/F1 11 Tf
+1 0 0 1 72 570 Tm
+(covered by the firm's compliance program.) Tj
+/F1 14 Tf
+1 0 0 1 72 544 Tm
+(3. Policy) Tj
+/F1 11 Tf
+1 0 0 1 72 524 Tm
+(Employees must follow the procedures described in this) Tj
+/F1 11 Tf
+1 0 0 1 72 508 Tm
+(document and any procedures that reference it.) Tj
 ET
 endstream
 endobj
@@ -37,5 +66,5 @@ xref
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-581
+1294
 %%EOF

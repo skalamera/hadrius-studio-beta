@@ -279,7 +279,15 @@ export async function runClaude(prompt, opts = {}) {
   } catch (claudeErr) {
     if (opts.signal?.aborted) throw claudeErr;
     console.warn(`Claude CLI failed (${claudeErr.message}), falling back to Gemini CLI...`);
-    return await runGeminiCli(prompt, opts);
+    try {
+      return await runGeminiCli(prompt, opts);
+    } catch (geminiErr) {
+      if (opts.signal?.aborted) throw geminiErr;
+      // Report BOTH, Claude first. When only Gemini's message surfaced, a whole batch of jobs
+      // failed with "Gemini CLI failed: Warning: You are running Gemini CLI in the root directory"
+      // — pure noise that hid the actual cause (the Claude account had hit its spend limit).
+      throw new Error(`both models failed — Claude: ${claudeErr.message} | Gemini: ${geminiErr.message}`);
+    }
   }
 }
 
