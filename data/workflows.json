@@ -103,98 +103,6 @@
           }
         },
         {
-          "title": "How to sync the testing calendar to an external calendar",
-          "purpose": "Generate and copy an iCal subscription link so scheduled compliance test deadlines automatically sync to an external calendar application (Google Calendar, Apple Calendar, or Outlook). The link reflects whichever entity and status filters are currently applied on the Calendar page, and excludes completed items and ad-hoc tasks regardless of filters.",
-          "startRoute": "/testing-program/calendar",
-          "trigger": "",
-          "priority": "medium",
-          "steps": [
-            "Navigate to Testing program > Calendar.",
-            "(Optional) Use the entity dropdown next to the \"Calendar\" title and the \"All statuses\" filter dropdown above the grid to narrow to the entities and statuses you want reflected in the subscription — the sync link is generated from whatever filters are currently applied on this page.",
-            "Click \"Sync calendar\" in the top right of the calendar page header. This immediately generates the subscription link and opens the \"Calendar sync link generated\" dialog showing the \"Calendar feed URL\" field.",
-            "If a \"Not included in this subscription\" notice appears in the dialog, review it — it lists anything the current view shows that the feed will not carry (for example, ad-hoc tasks, or a status filter such as \"Completed\" that has no subscription equivalent).",
-            "Click \"Copy link\" to the left of the \"Calendar feed URL\" field to copy the subscription URL to your clipboard (a \"Calendar sync link copied to clipboard\" confirmation toast appears).",
-            "Review the \"How to add to your calendar\" instructions in the dialog: open your calendar app (Google Calendar, Outlook, or Apple Calendar), find its \"From URL\" or \"By URL\" option (usually under Settings or Add Calendar), then paste and confirm the copied link.",
-            "Close the dialog using the \"X\" close button in its top-right corner — the dialog has no \"Done\" button."
-          ],
-          "evidence": [],
-          "sources": [
-            "apps/hadrius-app/pages/testing-program/calendar/index.tsx",
-            "apps/hadrius-app/pages/firm_oversight/calendar/index.tsx",
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/page_calendar.tsx",
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx",
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_filters.ts",
-            "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_view.tsx",
-            "apps/hadrius-app/src/api/firm_oversight/api_firm_oversight_v2.ts",
-            "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx"
-          ],
-          "status": "missing",
-          "prerequisites": [
-            "Firm Oversight / Testing program module enabled for the tenant (backend gate: feature_enabled(FIRM_OVERSIGHT))",
-            "Recording account has Firm Oversight basic access (Role.Action.FIRM_OVERSIGHT_BASIC_ACCESS) and an active Employee record in the company — the same baseline needed just to open the Calendar page, not anything extra for this workflow specifically"
-          ],
-          "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-16T06:05:50.558Z",
-          "planUpdatedBy": "stephenskalamera",
-          "grounding": {
-            "steps": [
-              {
-                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
-                "step": 1,
-                "quote": "title: \"Testing program\" ... { key: \"calendar\", title: \"Calendar\", path: \"/testing-program/calendar\" }",
-                "verified": true
-              },
-              {
-                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/page_calendar.tsx; calendar_view.tsx",
-                "step": 2,
-                "quote": "titleAddon={<EntityScopeFilter />} (page_calendar.tsx); placeholder=\"All statuses\" (calendar_view.tsx)",
-                "verified": true
-              },
-              {
-                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/page_calendar.tsx; calendar_sync_modal.tsx",
-                "step": 3,
-                "quote": "label: \"Sync calendar\"; <DialogTitle>Calendar sync link generated</DialogTitle>; \"Calendar feed URL\"",
-                "verified": true
-              },
-              {
-                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx; page_calendar.tsx",
-                "step": 4,
-                "quote": "title=\"Not included in this subscription\"; omissions.push(\"Ad-hoc tasks — calendar subscriptions carry test runs only.\")",
-                "verified": true
-              },
-              {
-                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx",
-                "step": 5,
-                "quote": "{copied ? \"Copied\" : \"Copy link\"}; toast({ title: \"Calendar sync link copied to clipboard\" ... })",
-                "verified": true
-              },
-              {
-                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx",
-                "step": 6,
-                "quote": "title=\"How to add to your calendar\" ... \"Open your calendar app (Google Calendar, Outlook, Apple Calendar)\" ... \"From URL\\\" or \\\"By URL\\\"\"",
-                "verified": true
-              },
-              {
-                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx",
-                "step": 7,
-                "quote": "<Dialog open={open} onOpenChange={onOpenChange}> <DialogContent className=\"max-w-md\">",
-                "verified": false
-              }
-            ],
-            "source": "codebase verification (per-step proof)",
-            "checkedAt": "2026-09-16T06:05:50.450Z",
-            "confidence": "medium",
-            "totalSteps": 7,
-            "unverified": [
-              {
-                "step": 7,
-                "reason": "DialogContent's 'X' close button comes from the shared @1quantbase/ui/v2/dialog primitive, not defined in this file, so the icon/aria-label itself isn't directly quotable here — only its conventional "
-              }
-            ],
-            "verifiedSteps": 6
-          }
-        },
-        {
           "title": "How to link a test to additional entities",
           "purpose": "Link an existing compliance test to one or more of the firm's business entities so edits and completion status stay in sync across them.",
           "startRoute": "/testing-program/tests",
@@ -1077,7 +985,7 @@
             "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
             "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "An active (non-archived) policy that already has a derived testing program — at least one test, risk, or control. A policy with no catalog yet only shows the 'Find risks and controls' first-run button, not the 'Re-analyze' menu item confirmed at apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx:222 (gated on hasCatalog === true) and page_manual.tsx's catalogState() helper.",
             "That policy must already have a document uploaded (has_content) — the '⋮' menu only offers document-changing actions once a document exists (policy_menu.tsx:213-233).",
@@ -1137,7 +1045,8 @@
             "totalSteps": 7,
             "unverified": [],
             "verifiedSteps": 7
-          }
+          },
+          "linkedScript": "How-to-re-analyze-a-policy-to-regenerate-its-risks-and-controls-catalog"
         },
         {
           "title": "How to archive a policy",
@@ -1423,7 +1332,9 @@
             "totalSteps": 6,
             "unverified": [],
             "verifiedSteps": 6
-          }
+          },
+          "linkedScript": "How-to-rename-a-policy",
+          "status": "covered"
         },
         {
           "title": "How to manage test categories",
@@ -2134,7 +2045,7 @@
             "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_view.tsx",
             "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "Admin-level access to Testing program: the ad-hoc task endpoints are admin-only, so a non-admin viewer's calendar shows zero tasks regardless of what exists (per apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/page_calendar.tsx comment: \"a non-admin cannot see them at all (the task endpoints are admin-only, so `tasks` comes back empty)\")",
             "At least one ad-hoc calendar task already scheduled on a visible day — a fresh/typical company may have none, since tasks are optional and separate from the test-run schedule that always populates the calendar",
@@ -2214,7 +2125,8 @@
             "totalSteps": 9,
             "unverified": [],
             "verifiedSteps": 9
-          }
+          },
+          "linkedScript": "How-to-edit-or-reassign-a-scheduled-calendar-task"
         },
         {
           "title": "How to cancel or delete a calendar task",
@@ -2584,7 +2496,7 @@
           }
         },
         {
-          "status": "missing",
+          "status": "covered",
           "steps": [
             "Navigate to Testing program > Findings — an entity table with columns \"Entity name\", \"Open findings\" and \"Overdue\" is shown",
             "Click \"View findings\" on the entity's row (opens /firm_oversight_v2/findings?entity=<id>)",
@@ -2625,7 +2537,8 @@
             "totalSteps": 6,
             "unverified": [],
             "verifiedSteps": 6
-          }
+          },
+          "linkedScript": "How-to-resolve-a-finding"
         },
         {
           "status": "missing",
@@ -2715,7 +2628,7 @@
           ],
           "provisionable": "self-serve-quick",
           "blockerReason": "",
-          "status": "missing",
+          "status": "covered",
           "planUpdatedAt": "2026-09-16T06:10:37.247Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
@@ -2793,7 +2706,8 @@
             "totalSteps": 11,
             "unverified": [],
             "verifiedSteps": 11
-          }
+          },
+          "linkedScript": "How-to-create-a-disclosure-template-for-People-oversight"
         },
         {
           "title": "How to send continuing education reminder emails",

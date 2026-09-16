@@ -12,5 +12,12 @@
   "How to bulk assign tests and categories to an entity",
   "How to export all of an entity's testing data",
   "How to link a control to a policy section",
-  "How to link a test to additional entities"
+  "How to link a test to additional entities",
+  "How to bulk update the review status of flagged trades",
+  "How to resolve a finding",
+  "How to resolve a finding ai",
+  "How to rename a policy",
+  "How to edit or reassign a scheduled calendar task",
+  "How to re-analyze a policy to regenerate its risks and controls catalog",
+  "How to create a disclosure template for People oversight"
 ]
