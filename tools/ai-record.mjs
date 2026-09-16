@@ -278,7 +278,11 @@ async function ensureVisualHud(page, { title = 'Walkthrough', stepNum = 1, total
       // 2. Floating HUD Widget
       const hud = document.createElement('div');
       hud.id = '__hadrius_hud__';
-      hud.style.cssText = 'position:fixed;top:16px;right:20px;z-index:2147483647;width:330px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:12px;box-shadow:0 16px 36px rgba(0,0,0,0.55);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:12px 14px;';
+      // pointer-events:none on the panel (re-enabled on its buttons below): the HUD sits over the
+      // app's top-right header, where "Create …" / "Publish" / library links live, and a solid panel
+      // there swallowed the agent's clicks on them — Playwright timed out, the coordinate fallback
+      // hit the HUD too, and only keyboard activation got through.
+      hud.style.cssText = 'position:fixed;top:16px;right:20px;z-index:2147483647;width:330px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:12px;box-shadow:0 16px 36px rgba(0,0,0,0.55);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:12px 14px;pointer-events:none;';
       hud.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <div style="display:flex;align-items:center;gap:7px;">
@@ -290,9 +294,9 @@ async function ensureVisualHud(page, { title = 'Walkthrough', stepNum = 1, total
         <div id="__hadrius_hud_title__" style="font-size:11.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;">${title}</div>
         <div id="__hadrius_hud_action__" style="font-size:13px;font-weight:600;color:#f8fafc;line-height:1.35;margin-bottom:10px;">${actionDesc || 'Analyzing page…'}</div>
         <div style="display:flex;gap:6px;">
-          <button id="__hadrius_hud_takeover_btn__" type="button" style="flex:1;background:#334155;color:#fff;border:none;border-radius:6px;padding:7px 8px;font-size:11.5px;font-weight:700;cursor:pointer;">⏸ Take Over</button>
-          <button id="__hadrius_hud_skip_btn__" type="button" style="background:transparent;color:#94a3b8;border:1px solid #475569;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:600;cursor:pointer;">⏭ Skip Step</button>
-          <button id="__hadrius_hud_cancel_btn__" type="button" style="background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:700;cursor:pointer;">✕ Cancel</button>
+          <button id="__hadrius_hud_takeover_btn__" type="button" style="flex:1;background:#334155;color:#fff;border:none;border-radius:6px;padding:7px 8px;font-size:11.5px;font-weight:700;cursor:pointer;pointer-events:auto;">⏸ Take Over</button>
+          <button id="__hadrius_hud_skip_btn__" type="button" style="background:transparent;color:#94a3b8;border:1px solid #475569;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:600;cursor:pointer;pointer-events:auto;">⏭ Skip Step</button>
+          <button id="__hadrius_hud_cancel_btn__" type="button" style="background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:700;cursor:pointer;pointer-events:auto;">✕ Cancel</button>
         </div>
       `;
       document.body.appendChild(hud);
@@ -1002,6 +1006,18 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       await ensureVisualHud(page, { title: item.title, stepNum: currentPlanStep, totalSteps: totalPlanSteps, actionDesc: label });
       await highlightTargetElement(page, elementId, el.name, decision.action);
 
+      // Belt and braces for the HUD: if the target sits under it (even its buttons, which do take
+      // pointer events), take the HUD off the page for the duration of the action.
+      const hudHidden = await page.evaluate((id) => {
+        const t = document.querySelector(`[data-kb-ai-id="${id}"]`), hud = document.getElementById('__hadrius_hud__');
+        if (!t || !hud) return false;
+        const a = t.getBoundingClientRect(), b = hud.getBoundingClientRect();
+        const overlaps = a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        if (overlaps) hud.style.display = 'none';
+        return overlaps;
+      }, elementId).catch(() => false);
+      const restoreHud = () => page.evaluate(() => { const hud = document.getElementById('__hadrius_hud__'); if (hud) hud.style.display = ''; }).catch(() => {});
+
       try {
         if (decision.action === 'click') {
           let clicked = false;
@@ -1012,9 +1028,11 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
             await page.keyboard.press('Enter');
             clicked = true;
           }
+          let clickErr = null;
           try {
             if (!clicked) { await loc.click({ timeout: 2500 }); clicked = true; }
-          } catch (_) {}
+          } catch (e) { clickErr = String(e.message || e).split('\n')[0].slice(0, 160); }
+          if (clickErr) onLog(`  (click "${el.name}" did not complete normally: ${clickErr} — falling back)`);
           // A menu item that is still in the DOM after being clicked means the menu didn't act on the
           // click; give it the keyboard path right away rather than reporting "no visible change".
           if (clicked && !activateWithKeyboard && ['menuitem', 'option', 'menuitemradio', 'menuitemcheckbox'].includes(el.role)) {
@@ -1055,6 +1073,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
           await loc.type(text, { delay: 15 });
         }
       } catch (e) {
+        if (hudHidden) await restoreHud();
         await clearSpotlight(page);
         if (signal?.aborted) throw new Error('cancelled');
         steps.pop(); // the action didn't happen — don't record it
@@ -1063,6 +1082,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         onLog(`  ! action failed: ${msg}`);
         continue;
       }
+      if (hudHidden) await restoreHud();
       await clearSpotlight(page);
       history.push({ action: decision.action, name: el.name, text, sig });
       await page.waitForTimeout(600);
