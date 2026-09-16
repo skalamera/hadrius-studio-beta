@@ -23,13 +23,16 @@ def find_clip(arg_name, candidates):
     return None
 
 ROOT = Path(__file__).resolve().parent.parent
-# No intro by default: videos open on the title card and dissolve into the recording.
-# Pass --intro <clip> explicitly to prepend one.
-INTRO = Path(args[args.index('--intro') + 1]) if '--intro' in args else None
-OUTRO = find_clip('--outro', [
-    '/Users/stephenskalamera/Videos/Hadrius Studio Outtro.mp4',
-    '/Users/stephenskalamera/Videos/Hadrius Studio Outro.mp4',
+INTRO = None if '--no-intro' in args else find_clip('--intro', [
+    ROOT / 'assets' / 'intro.mp4',
+    '/Users/stephenskalamera/Videos/hadrius_academy_intro.mp4',
+    '/Users/stephenskalamera/Videos/Hadrius Studio Intro.mp4',
+    'assets/intro.mp4',
+])
+OUTRO = None if '--no-outro' in args else find_clip('--outro', [
     ROOT / 'assets' / 'outro.mp4',
+    '/Users/stephenskalamera/Videos/hadrius_academy_outro.mp4',
+    '/Users/stephenskalamera/Videos/Hadrius Studio Outtro.mp4',
     'assets/outro.mp4',
 ])
 rep = json.load(open(out / 'report.json'))
@@ -65,6 +68,33 @@ def env_from_dotenv(name):
         pass
     return ''
 
+VOICESTUDIO_URL = env_from_dotenv('VOICESTUDIO_URL') or 'http://127.0.0.1:3900'
+VOICESTUDIO_VOICE = env_from_dotenv('VOICESTUDIO_VOICE_ID') or '4bfebca6'  # "The Upbeat"
+
+def voicestudio_alive():
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"{VOICESTUDIO_URL}/health")
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+def voicestudio_tts(text, path):
+    import urllib.request
+    body = json.dumps({
+        'input': text,
+        'voice': VOICESTUDIO_VOICE,
+        'response_format': 'mp3',
+        'speed': 1.0,
+    }).encode()
+    req = urllib.request.Request(
+        f'{VOICESTUDIO_URL}/v1/audio/speech',
+        data=body, method='POST',
+        headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        path.write_bytes(resp.read())
+
 ELEVEN_KEY = env_from_dotenv('ELEVENLABS_API_KEY')
 ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'XrExE9yKIg1WjnnlVkGX'  # "Matilda"
 ELEVEN_MODEL = env_from_dotenv('ELEVENLABS_MODEL_ID') or 'eleven_multilingual_v2'
@@ -84,26 +114,40 @@ def elevenlabs_tts(text, path):
         path.write_bytes(resp.read())
 
 async def tts():
+    vs_active = voicestudio_alive()
     used_fallback = False
     for s in slides:
         if not s['narration']: s['audio'] = None; continue
-        # Provider is part of the cache name so switching voices never reuses the other's audio.
-        f = tmp / (f"n{s['slide']:02d}-el.mp3" if ELEVEN_KEY else f"n{s['slide']:02d}.mp3")
+        # Provider tag in filename prevents reusing mismatched cached audio
+        tag = 'vs' if vs_active else ('el' if ELEVEN_KEY else 'edge')
+        f = tmp / f"n{s['slide']:02d}-{tag}.mp3"
         if not f.exists():
-            if ELEVEN_KEY:
+            if vs_active:
+                try:
+                    voicestudio_tts(s['narration'], f)
+                except Exception as e:
+                    print(f"  ⚠ VoiceStudio failed for slide {s['slide']} ({e}) — falling back", file=sys.stderr)
+                    used_fallback = True
+            if not f.exists() and ELEVEN_KEY:
                 try:
                     elevenlabs_tts(s['narration'], f)
                 except Exception as e:  # quota, network, bad voice id — keep the render going
                     detail = getattr(e, 'read', lambda: b'')()
                     print(f"  ⚠ ElevenLabs failed for slide {s['slide']} ({e}{(': ' + detail[:160].decode(errors='replace')) if detail else ''}) — falling back to edge-tts", file=sys.stderr)
                     used_fallback = True
-                    f = tmp / f"n{s['slide']:02d}.mp3"
             if not f.exists():
                 import edge_tts
-                await edge_tts.Communicate(s['narration'], VOICE, rate=RATE, pitch=PITCH).save(str(f))
+                f_edge = tmp / f"n{s['slide']:02d}-edge.mp3"
+                await edge_tts.Communicate(s['narration'], VOICE, rate=RATE, pitch=PITCH).save(str(f_edge))
+                f = f_edge
         s['audio'] = str(f)
-    provider = 'ElevenLabs' + (f' (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})' if ELEVEN_KEY else '') if ELEVEN_KEY else f'edge-tts ({VOICE})'
-    print(f"narration: {provider}{' — some slides fell back to edge-tts' if used_fallback else ''}")
+    if vs_active:
+        provider = f'VoiceStudio (The Upbeat, {VOICESTUDIO_VOICE})'
+    elif ELEVEN_KEY:
+        provider = f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})'
+    else:
+        provider = f'edge-tts ({VOICE})'
+    print(f"narration: {provider}{' — some slides fell back' if used_fallback else ''}")
 asyncio.run(tts())
 
 def dur(f):
@@ -231,61 +275,95 @@ try:
 except Exception as e:
     print(f"warning: could not generate title card: {e}")
 
-# Crossfade title card into content recording
-body_video = tmp / 'body_crossfaded.mp4'
-if title_clip.exists():
+def crossfade_pair(c1: Path, c2: Path, out_path: Path, xf_dur: float = 0.65) -> bool:
+    if not (c1 and c1.exists() and c2 and c2.exists()):
+        return False
     try:
-        t_dur = dur(str(title_clip))
-        xf_dur = 0.65
-        offset = max(0.1, t_dur - xf_dur)
+        d1 = dur(str(c1))
+        offset = max(0.05, d1 - xf_dur)
         subprocess.run([
             'ffmpeg', '-y',
-            '-i', str(title_clip),
-            '-i', str(content_video),
+            '-i', str(c1),
+            '-i', str(c2),
             '-filter_complex',
             f"[0:v][1:v]xfade=transition=fade:duration={xf_dur}:offset={offset:.3f}[v];"
             f"[0:a][1:a]acrossfade=d={xf_dur}[a]",
             '-map', '[v]', '-map', '[a]',
             '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
-            str(body_video)
+            str(out_path)
         ], check=True, capture_output=True)
+        return out_path.exists()
     except Exception as e:
-        print(f"warning: crossfade failed, falling back to straight concat: {e}")
-        body_video = None
-else:
-    body_video = None
+        print(f"warning: crossfade {c1.name} -> {c2.name} failed: {e}")
+        return False
 
-parts = []
-if INTRO and INTRO.exists():
-    parts.append(INTRO)
+# 1. Crossfade INTRO into title card
+lead_clip = None
+if INTRO and INTRO.exists() and title_clip.exists():
+    intro_title_path = tmp / 'intro_title_crossfaded.mp4'
+    if crossfade_pair(INTRO, title_clip, intro_title_path, xf_dur=0.65):
+        lead_clip = intro_title_path
+    else:
+        lead_clip = title_clip
+elif title_clip.exists():
+    lead_clip = title_clip
+elif INTRO and INTRO.exists():
+    lead_clip = INTRO
 
-if body_video and body_video.exists():
-    parts.append(body_video)
+# 2. Crossfade lead (intro + title card) into content recording
+body_video = None
+if lead_clip and lead_clip.exists():
+    body_path = tmp / 'body_crossfaded.mp4'
+    if crossfade_pair(lead_clip, content_video, body_path, xf_dur=0.65):
+        body_video = body_path
+
+# 3. Crossfade last slide of content into OUTRO
+active_body = body_video or content_video
+final_video = None
+if OUTRO and OUTRO.exists() and active_body and active_body.exists():
+    outro_path = tmp / 'full_crossfaded.mp4'
+    if crossfade_pair(active_body, OUTRO, outro_path, xf_dur=0.80):
+        final_video = outro_path
+
+final = out / f"{rep['name']}.mp4"
+if final_video and final_video.exists():
+    shutil.move(str(final_video), str(final))
+elif body_video and body_video.exists():
+    if OUTRO and OUTRO.exists():
+        subprocess.run(['ffmpeg', '-y', '-i', str(body_video), '-i', str(OUTRO),
+                        '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]',
+                        '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '19',
+                        '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+                        str(final)], check=True, capture_output=True)
+    else:
+        shutil.move(str(body_video), str(final))
 else:
+    # Full fallback straight concat
+    parts = []
+    if INTRO and INTRO.exists():
+        parts.append(INTRO)
     if title_clip.exists():
         parts.append(title_clip)
     parts.append(content_video)
+    if OUTRO and OUTRO.exists():
+        parts.append(OUTRO)
 
-if OUTRO and OUTRO.exists():
-    parts.append(OUTRO)
+    if len(parts) == 1:
+        shutil.move(str(content_video), str(final))
+    else:
+        ins = []
+        fc_parts = []
+        for idx, p in enumerate(parts):
+            ins.extend(['-i', str(p)])
+            fc_parts.append(f"[{idx}:v][{idx}:a]")
+        fc = "".join(fc_parts) + f"concat=n={len(parts)}:v=1:a=1[v][a]"
+        subprocess.run(['ffmpeg', '-y', *ins, '-filter_complex', fc, '-map', '[v]', '-map', '[a]',
+                        '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p',
+                        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart',
+                        str(final)], check=True, capture_output=True)
 
-final = out / f"{rep['name']}.mp4"
-if len(parts) == 1:
-    shutil.move(str(content_video), str(final))
-else:
-    ins = []
-    fc_parts = []
-    for idx, p in enumerate(parts):
-        ins.extend(['-i', str(p)])
-        fc_parts.append(f"[{idx}:v][{idx}:a]")
-    fc = "".join(fc_parts) + f"concat=n={len(parts)}:v=1:a=1[v][a]"
-    subprocess.run(['ffmpeg', '-y', *ins, '-filter_complex', fc, '-map', '[v]', '-map', '[a]',
-                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p',
-                    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart',
-                    str(final)], check=True, capture_output=True)
-
-full_duration = sum(dur(str(p)) for p in parts)
+full_duration = dur(str(final)) if final.exists() else 0.0
 
 # ---------- 6. interactive (Arcade-style) HTML ----------
 web = out / 'interactive'; (web / 'slides').mkdir(parents=True, exist_ok=True)
