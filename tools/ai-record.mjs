@@ -1119,23 +1119,32 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
             }
           }
 
+          // Native element.click() next — it bypasses hit-testing entirely, so it still lands on the
+          // right element when some unrelated overlay (e.g. a still-open search-results dropdown from
+          // an earlier field) visually sits on top of the target. This used to run AFTER the
+          // coordinate-based mouse click below, but that click is real hit-testing: aimed at a radio
+          // covered by a stray dropdown, it silently clicks the dropdown instead, doesn't throw, and
+          // got marked `clicked = true` — so this far more reliable fallback never ran. That exact
+          // sequence (an open representative-search dropdown overlapping the amendment-type radios
+          // below it) is what made every retry on the U4 amendment radios a no-op.
+          if (!clicked) {
+            const hit = await page.evaluate((id) => {
+              const target = document.querySelector(`[data-kb-ai-id="${id}"]`);
+              if (!target) return false;
+              target.scrollIntoView({ block: 'nearest' });
+              target.click();
+              target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+              return true;
+            }, elementId).catch(() => false);
+            if (hit) clicked = true;
+          }
+
           if (!clicked) {
             const b = await loc.boundingBox().catch(() => null);
             if (b && b.width > 0 && b.height > 0) {
               await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
               clicked = true;
             }
-          }
-
-          if (!clicked) {
-            await page.evaluate((id) => {
-              const target = document.querySelector(`[data-kb-ai-id="${id}"]`);
-              if (target) {
-                target.scrollIntoView({ block: 'nearest' });
-                target.click();
-                target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-              }
-            }, elementId).catch(() => {});
           }
         } else if (decision.action === 'upload') {
           const { how, file } = await attachFile(page, loc, text);
