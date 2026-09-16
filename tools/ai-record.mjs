@@ -199,8 +199,42 @@ export const SNAPSHOT_FN = new Function(`
     if (el.tagName !== 'TR' && ancestorIsTarget(el)) return false;
     return true;
   };
-  const found = Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr,td,div[title]'))
-    .filter((el) => visible(el) && !el.closest('#__hadrius_hud__,#__hadrius_spotlight_overlay__') && wanted(el));
+  // Labels are first-class click targets: a <label htmlFor> styled cursor-pointer is often the
+  // ONLY comfortable way to pick a radio/checkbox (the U4 amendment-type list is a 16px Radix
+  // radio circle next to a big clickable label — the label was invisible to the agent, which
+  // left it poking at the circle and failing). Only labels FOR something count; a label wrapping
+  // its own input is reachable through the input already.
+  const labelWanted = (el) => el.tagName !== 'LABEL' || (el.htmlFor && getComputedStyle(el).cursor === 'pointer');
+  // The GENERAL form of the calendar-cell / task-chip / tests-table-row gap: modern list rows are
+  // plain <div onClick> with cursor:pointer and zero semantics. The reliable signal is the CURSOR
+  // BOUNDARY — the element styled pointer whose parent is not. That is exactly the node the
+  // developer made clickable; every descendant inherits pointer and is skipped, so a 50-row table
+  // contributes 50 rows, not 400 cells. Guards: must have some text, must not be page-sized, and
+  // must not sit inside a real control (a button's inner span is the button's problem).
+  const pointerBoundary = (el) => {
+    if (getComputedStyle(el).cursor !== 'pointer') return false;
+    const p = el.parentElement;
+    if (p && getComputedStyle(p).cursor === 'pointer') return false;
+    // Only CONTROL ancestors disqualify — matching any [role] would drop rows inside dialogs.
+    if (el.closest('button,a,select,label,[role="button"],[role="link"],[role="menuitem"],[role="option"],[role="checkbox"],[role="radio"],[role="tab"],[role="switch"]')) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height > innerWidth * innerHeight * 0.5) return false;
+    const t = (el.innerText || '').trim();
+    return t.length >= 2;
+  };
+  const semantic = new Set(Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr,td,div[title],label[for]')));
+  const boundaryExtras = Array.from(document.querySelectorAll('div,li,span'))
+    .filter((el) => !semantic.has(el) && pointerBoundary(el) && visible(el));
+  // pointer-events is the truth about clickability: a Radix MODAL sets pointer-events:none on
+  // <body> and re-enables it inside the dialog, so while a modal is open every background
+  // control computes to 'none'. Listing those gave the model decoys — the U4 page has a filter
+  // chip named "Amendment" behind a dialog whose radio is also named "Amendment", and both the
+  // agent and a hand-written script clicked the dead chip for a whole run.
+  const canReceiveClicks = (el) => getComputedStyle(el).pointerEvents !== 'none';
+  const found = Array.from(semantic)
+    .filter((el) => visible(el) && wanted(el) && labelWanted(el))
+    .concat(boundaryExtras)
+    .filter((el) => canReceiveClicks(el) && !el.closest('#__hadrius_hud__,#__hadrius_spotlight_overlay__'));
   // Real controls outrank heuristic cells when the list has to be truncated. A month grid alone is
   // ~35 <td>s plus a chip per task, so without this the cells could push the very button the step
   // needs past the cap — the drawer's "Mark Complete" sits late in the DOM, exactly where it gets cut.
