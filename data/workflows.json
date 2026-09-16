@@ -35,12 +35,67 @@
             "At least one employee record if the operator wants to demonstrate assigning the task to a named person (optional — the assignee dropdown defaults to and can be left as 'Unassigned', so this is not a hard blocker)."
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-16T05:58:22.315Z",
+          "planUpdatedAt": "2026-09-16T06:05:44.076Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/calendar/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight/calendar\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_view.tsx",
+                "step": 2,
+                "quote": "onClick={() => handleDayClick(day)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 3,
+                "quote": "<Button variant=\"default\" size=\"sm\" onClick={toggleNewTaskForm} type=\"button\" disabled={isCreateTaskLoading}>\n            <Plus className=\"h-4 w-4\" />\n            New Task",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 4,
+                "quote": "<Input\n                type=\"text\"\n                value={newTaskTitle}\n                onChange={(e) => setNewTaskTitle(e.target.value)}\n                placeholder=\"Title\"\n              />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 5,
+                "quote": "<DatePicker\n                date={newTaskDate.toDate()}\n                setDate={(date) => date && setNewTaskDate(moment(date))}\n                placeholder=\"Select date\"\n              />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 6,
+                "quote": "<Textarea\n                value={newTaskDescription}\n                onChange={(e) => setNewTaskDescription(e.target.value)}\n                rows={2}\n                placeholder=\"Description\"\n              />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 7,
+                "quote": "<SelectValue placeholder=\"Select assignee\">\n                    {selectedAssigneeId !== null\n                      ? ...\n                      : \"Unassigned\"}\n                  </SelectValue>\n                </SelectTrigger>\n                <SelectContent>\n                  <SelectItem value=\"UNASSI",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 8,
+                "quote": "{ label: \"Does not repeat\", value: \"NO_REPEAT\", rrule: null },\n    { label: \"Daily\", value: \"DAILY\", ... },\n    ...\n    { label: \"Custom...\", value: \"CUSTOM\", rrule: null },",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 9,
+                "quote": "<Button size=\"sm\" variant=\"default\" onClick={handleAddTask} disabled={isCreateTaskLoading}>\n                {isCreateTaskLoading ? \"Adding...\" : \"Add Task\"}\n              </Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:05:43.740Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -79,16 +134,64 @@
             "Recording account has Firm Oversight basic access (Role.Action.FIRM_OVERSIGHT_BASIC_ACCESS) and an active Employee record in the company — the same baseline needed just to open the Calendar page, not anything extra for this workflow specifically"
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-16T05:58:22.570Z",
+          "planUpdatedAt": "2026-09-16T06:05:50.558Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "high",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "title: \"Testing program\" ... { key: \"calendar\", title: \"Calendar\", path: \"/testing-program/calendar\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/page_calendar.tsx; calendar_view.tsx",
+                "step": 2,
+                "quote": "titleAddon={<EntityScopeFilter />} (page_calendar.tsx); placeholder=\"All statuses\" (calendar_view.tsx)",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/page_calendar.tsx; calendar_sync_modal.tsx",
+                "step": 3,
+                "quote": "label: \"Sync calendar\"; <DialogTitle>Calendar sync link generated</DialogTitle>; \"Calendar feed URL\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx; page_calendar.tsx",
+                "step": 4,
+                "quote": "title=\"Not included in this subscription\"; omissions.push(\"Ad-hoc tasks — calendar subscriptions carry test runs only.\")",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx",
+                "step": 5,
+                "quote": "{copied ? \"Copied\" : \"Copy link\"}; toast({ title: \"Calendar sync link copied to clipboard\" ... })",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx",
+                "step": 6,
+                "quote": "title=\"How to add to your calendar\" ... \"Open your calendar app (Google Calendar, Outlook, Apple Calendar)\" ... \"From URL\\\" or \\\"By URL\\\"\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/calendar/calendar_sync_modal.tsx",
+                "step": 7,
+                "quote": "<Dialog open={open} onOpenChange={onOpenChange}> <DialogContent className=\"max-w-md\">",
+                "verified": false
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:05:50.450Z",
+            "confidence": "medium",
             "totalSteps": 7,
-            "unverified": [],
-            "verifiedSteps": 7
+            "unverified": [
+              {
+                "step": 7,
+                "reason": "DialogContent's 'X' close button comes from the shared @1quantbase/ui/v2/dialog primitive, not defined in this file, so the icon/aria-label itself isn't directly quotable here — only its conventional "
+              }
+            ],
+            "verifiedSteps": 6
           }
         },
         {
@@ -126,12 +229,49 @@
             "Return to Testing program > Tests and open the test you want to link, to confirm the new entity now appears as a toggle-enabled option in the \"Link test to entity\" dialog."
           ],
           "linkedScript": "How-to-link-a-test-to-additional-entities",
-          "planUpdatedAt": "2026-09-16T05:58:22.821Z",
+          "planUpdatedAt": "2026-09-16T06:05:56.683Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "path: \"/testing-program/tests\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
+                "step": 2,
+                "quote": "const detailUrl = `/firm_oversight_v2/tests/${run.test}?run=${run.id}`;\n<Link href={detailUrl} className=\"group flex min-w-0 flex-1 items-stretch\">",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/page_test_details.tsx",
+                "step": 3,
+                "quote": "<Button variant=\"outline\" size=\"icon\">\n  <EllipsisVertical className=\"size-4\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/page_test_details.tsx",
+                "step": 4,
+                "quote": "<DropdownMenuItem icon={Link} item=\"Link test to entity\" onClick={() => setShowLinkDialog(true)} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/link_test_to_entity_dialog.tsx",
+                "step": 5,
+                "quote": "<DialogTitle>Select entities to link this test.</DialogTitle> ... <Input placeholder=\"Search entities\" icon={Search} ... /> ... <Switch checked={isSelected} onCheckedChange={onToggle} disabled={!hasManual} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/link_test_to_entity_dialog.tsx",
+                "step": 6,
+                "quote": "<Button onClick={handleSave} disabled={!hasChanges || saving}>{saving ? \"Linking...\" : \"Link\"}</Button> ... toast({ title: \"Link test enabled\", description: \"This test is now linked across different entities. Edits and completion will stay in sync.\" ...})",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:05:56.568Z",
             "confidence": "high",
             "totalSteps": 6,
             "unverified": [],
@@ -177,12 +317,61 @@
             "If no policy on hand has any associated controls, navigate to Testing program > Controls, click the control-creation button (e.g. '+ Create control'), and set the new control's policy/manual field to the target policy before saving, so it becomes available to link at the section level."
           ],
           "linkedScript": "How-to-link-a-control-to-a-policy-section",
-          "planUpdatedAt": "2026-09-16T05:58:23.065Z",
+          "planUpdatedAt": "2026-09-16T06:06:24.891Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"policies\", title: \"Policies\", path: \"/testing-program/policies\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/page_policies_dashboard.tsx",
+                "step": 2,
+                "quote": "<TableRow key={row.manual.id} onRowClick={() => router.push(policyHref(row.manual.id))}>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/section_pane.tsx",
+                "step": 3,
+                "quote": "Typography variant=\"controlLabel\" as=\"h2\">\n          Sections ... onSelect={(sectionId) => { ... if (section) scrollToSection(section);",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/section_pane.tsx",
+                "step": 4,
+                "quote": "Show only this section",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/section_controls_pane.tsx",
+                "step": 5,
+                "quote": "<Text variant=\"large_bold\">Controls in this section</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/section_controls_pane.tsx",
+                "step": 6,
+                "quote": "onClick={() => setIsLinkModalOpen(true)} ... Link control",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/section_controls_pane.tsx",
+                "step": 7,
+                "quote": "<SelectValue placeholder=\"Select a control\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/section_controls_pane.tsx",
+                "step": 8,
+                "quote": "<Button onClick={handleLink} disabled={!selectedControlId || isLinking}>\n              {isLinking && <Loader2 ... />}\n              Link control\n            </Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:06:24.848Z",
             "confidence": "high",
             "totalSteps": 8,
             "unverified": [],
@@ -222,12 +411,49 @@
           ],
           "provisionable": "likely-already-present",
           "linkedScript": "How-to-export-all-of-an-entity-s-testing-data",
-          "planUpdatedAt": "2026-09-16T05:58:23.333Z",
+          "planUpdatedAt": "2026-09-16T06:06:24.218Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/tests/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight_v2/tests\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/page_entity_detail.tsx",
+                "step": 2,
+                "quote": "{ label: \"Export\", icon: Download, variant: \"outline\", onClick: () => setExportOpen(true) }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/export_all_dialog.tsx",
+                "step": 3,
+                "quote": "<DialogTitle>Export testing program</DialogTitle> ... <Input type=\"date\" label=\"Start date\" .../> <Input type=\"date\" label=\"End date\" .../> ... { key: \"YTD\", label: \"YTD\" }, { key: \"LAST_QUARTER\", label: \"Last quarter\" }, { key: \"LAST_MONTH\", label: \"Last month\" } ... Note the export endpoint is com",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/export_all_dialog.tsx",
+                "step": 4,
+                "quote": "<Button onClick={handleExport} disabled={isLoading || startDate > endDate} loading={isLoading}> ... {isLoading ? \"Requesting...\" : \"Prepare export\"}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/export_all_dialog.tsx",
+                "step": 5,
+                "quote": "toast({ title: \"Preparing your export\", description: \"We are measuring it now. Open it to see the size and start it.\", action: ( <Button variant=\"outline\" size=\"sm\" asChild><Link href={exportDetailPath(response.export_id)}>Open export</Link></Button> ) });",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/exports/page_export_detail.tsx",
+                "step": 6,
+                "quote": "<Button variant=\"outline\" size=\"sm\" disabled={isDownloading} onClick={() => onDownload(file.file_id)}><Download className=\"h-4 w-4\" />Download</Button> ... <Button variant=\"outline\" size=\"sm\" onClick={downloadAll} ...><Download className=\"h-4 w-4\" />Download all</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:06:24.119Z",
             "confidence": "high",
             "totalSteps": 6,
             "unverified": [],
@@ -266,12 +492,55 @@
           ],
           "provisionable": "likely-already-present",
           "linkedScript": "How-to-bulk-assign-tests-and-categories-to-an-entity",
-          "planUpdatedAt": "2026-09-16T05:58:23.577Z",
+          "planUpdatedAt": "2026-09-16T06:07:04.532Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/entities/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight_v2/entities\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/entities_section.tsx",
+                "step": 2,
+                "quote": "<Button variant=\"outline\" onClick={() => setIsOpen(true)}><ListPlus className=\"size-4\" />Assign tests/categories</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/assign_tests_dialog.tsx",
+                "step": 3,
+                "quote": "<Text variant=\"small_bold\">Select client environment</Text> ... placeholder=\"Select client environment\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/assign_tests_dialog.tsx",
+                "step": 4,
+                "quote": "titles={[<div key=\"cat\">Test categories ...</div>, ...]} ... <Checkbox checked={selectedCategoryIds.has(cat.id)} /><Text>{cat.display_name}</Text> ... <Text>{cat.test_count} tests</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/assign_tests_dialog.tsx",
+                "step": 5,
+                "quote": "\"Individual saved tests\" ... <Checkbox checked={allSelected} onCheckedChange={(checked) => onToggleAll(filteredIds, !!checked)} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/assign_tests_dialog.tsx",
+                "step": 6,
+                "quote": "<Button onClick={handleAssignClick} ...>{assigning ? \"Assigning...\" : \"Assign tests\"}</Button> ... <DialogTitle>Confirm and assign</DialogTitle>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/assign_tests_dialog.tsx",
+                "step": 7,
+                "quote": "<Text variant=\"small_bold\">Client environment</Text> ... {selectedCategories.map(...)} ... <Button onClick={onConfirm}>{isLoading ? \"Assigning...\" : \"Confirm\"}</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:07:04.492Z",
             "confidence": "high",
             "totalSteps": 7,
             "unverified": [],
@@ -306,12 +575,55 @@
             "At least one control already present in the Controls Register, since the Treatment Plan's \"Search controls\" checklist is populated from the company's existing controls (a company with zero controls would show an empty, unusable list)"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:23.823Z",
+          "planUpdatedAt": "2026-09-16T06:06:52.431Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/risks/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight/risks\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+                "step": 2,
+                "quote": "aria-label=\"More actions\" ... <MoreVertical className=\"size-4\" /> ... { label: \"Edit\", icon: Edit, onClick: (row) => setSelectedRiskForEdit(row) }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+                "step": 3,
+                "quote": "<Text variant=\"large_bold\">Treatment Plan</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+                "step": 4,
+                "quote": "<Button variant=\"ghost\" size=\"sm\" type=\"button\" onClick={handleStartEditingControls}>\\n  <Pencil className=\"mr-2 h-3.5 w-3.5\" />\\n  Edit\\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+                "step": 5,
+                "quote": "<Input type=\"text\" placeholder=\"Search controls\" value={controlSearchTerm} onChange={(e) => setControlSearchTerm(e.target.value)} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+                "step": 6,
+                "quote": "<Checkbox checked={selectedControls.includes(control.id)} onCheckedChange={(checked) => { ... }} /> <Text variant=\"base_medium\">{control.display_name}</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/tab_risk_register.tsx",
+                "step": 7,
+                "quote": "<Button onClick={handleSaveControls} disabled={isLoading} type=\"button\">\\n  {isLoading ? \"Saving...\" : \"Save Changes\"}\\n</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:06:52.283Z",
             "confidence": "high",
             "totalSteps": 7,
             "unverified": [],
@@ -356,12 +668,67 @@
             "Return to the policy list and click that row's actions button again to reach \"Update sections\""
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:58:24.101Z",
+          "planUpdatedAt": "2026-09-16T06:07:02.708Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/policies/index.tsx",
+                "step": 1,
+                "quote": "moduleName=\"Testing program\" ... <PagePoliciesDashboard />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 2,
+                "quote": "aria-label={`Actions for ${policyName}`}>\n            <EllipsisVertical />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 3,
+                "quote": "<DropdownMenuItem label=\"Update sections\" icon={ListTree} onClick={() => setDialog(\"sections\")} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/correct_sections_dialog.tsx",
+                "step": 4,
+                "quote": "Tick one row, then shift-click another to select everything between them — the buttons above act on the whole selection.",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/correct_sections_dialog.tsx",
+                "step": 5,
+                "quote": "Shift left\n          </PantheonButton> ... Shift right",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/correct_sections_dialog.tsx",
+                "step": 6,
+                "quote": "<PantheonButton variant=\"outline\" size=\"sm\" disabled={noSelection} onClick={() => onMerge()}>\n            Merge up",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/correct_sections_dialog.tsx",
+                "step": 7,
+                "quote": "aria-label={`Shift ${label} left`} ... aria-label={`Shift ${label} right`} ... aria-label={`Merge ${label} into the section above`}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/correct_sections_dialog.tsx",
+                "step": 8,
+                "quote": "aria-label=\"Undo\" ... <Undo2 /> ... aria-label=\"Redo\" ... <Redo2 />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/sections/correct_sections_dialog.tsx",
+                "step": 9,
+                "quote": "corrections are kept with the policy and re-applied to every version you upload. ... Save corrections",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:07:02.597Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -453,12 +820,49 @@
             "More than one entity configured for the company, so the checklist has something to add or remove (a company with only one entity can only ever uncheck it, which the dialog blocks with 'A policy has to cover at least one entity' and a disabled Save)"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:24.370Z",
+          "planUpdatedAt": "2026-09-16T06:07:39.264Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"policies\", title: \"Policies\", path: \"/testing-program/policies\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/page_policies_dashboard.tsx",
+                "step": 2,
+                "quote": "<PolicyMenu manual={row.manual} hasCatalog={row.manual.test_count + row.manual.risk_count + row.manual.control_count > 0} showOpen onArchived={() => undefined} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 3,
+                "quote": "<DropdownMenuItem label=\"Edit entities\" icon={Building2} onClick={() => setDialog(\"entities\")} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/entity_checklist.tsx",
+                "step": 4,
+                "quote": "<Checkbox checked={selectedIds.includes(entity.id)} onCheckedChange={(checked) => toggle(entity.id, checked === true)} ... aria-label={entityLabel(entity)} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 5,
+                "quote": "<PantheonButton onClick={save} disabled={isLoading || unchanged || entityIds.length === 0} loading={isLoading}>Save</PantheonButton>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 6,
+                "quote": "toast({ title: \"Entities updated\", description: `${manual.display_name ?? \"This policy\"} now covers ${entityIds.length} ${entityIds.length === 1 ? \"entity\" : \"entities\"}.` })",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:07:39.113Z",
             "confidence": "high",
             "totalSteps": 6,
             "unverified": [],
@@ -582,12 +986,67 @@
             "Proceed with the plan's own steps, selecting the just-uploaded fixture file in the \"Select this policy's document\" picker."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:58:24.626Z",
+          "planUpdatedAt": "2026-09-16T06:07:45.987Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"policies\", title: \"Policies\", path: \"/testing-program/policies\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 2,
+                "quote": "<PantheonButton variant=\"outline\" size=\"icon\" aria-label={`Actions for ${policyName}`}>\n            <EllipsisVertical />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 3,
+                "quote": "<DropdownMenuItem label=\"Upload document\" icon={Upload} onClick={() => setDialog(\"upload\")} /> ... <DropdownMenuItem label=\"Upload new version\" icon={Upload} onClick={() => setDialog(\"upload\")} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx",
+                "step": 4,
+                "quote": "const uploadDialogTitle = (policyName: string, hasDocument: boolean): string => {\n  if (hasDocument) return `Upload a new version of ${policyName}`;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx",
+                "step": 5,
+                "quote": "aria-label=\"Archive and regenerate this policy's tests, risks, and controls\" ... <Text variant=\"small_medium\">Archive and regenerate this policy's tests, risks, and controls</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx",
+                "step": 6,
+                "quote": "positiveText=\"Choose document\" ... onPositive={() => setIsPickerOpen(true)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/component_library_integration_modal.tsx",
+                "step": 7,
+                "quote": "<DialogTitle>{title}</DialogTitle> ... title=\"Select this policy's document\" (from page_manual.tsx) ... <FileRow ... onToggle={() => setSelectedFile(...)} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/component_library_integration_modal.tsx",
+                "step": 8,
+                "quote": "<Button onClick={() => onSelect(selectedFile!)} disabled={!selectedFile} loading={isLoading}>\n            Submit\n          </Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx",
+                "step": 9,
+                "quote": "toast({ title: \"Upload successful\", description: uploadedDescription(hasDocument) });",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:07:45.885Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -625,12 +1084,55 @@
             "Recording account needs Firm Oversight admin permission: the derive_catalog endpoint is decorated with @feature_enabled(FIRM_OVERSIGHT) and @required_role_actions([Role.Action.FIRM_OVERSIGHT_ADMIN_ACCESS]) (hadrius_backend/hadrius/firm_oversight/views_compliance_manual.py:591-592)."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:24.875Z",
+          "planUpdatedAt": "2026-09-16T06:07:34.920Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/policies/index.tsx",
+                "step": 1,
+                "quote": "export default function PoliciesPage() { ... <PagePoliciesDashboard />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/page_policies_dashboard.tsx",
+                "step": 2,
+                "quote": "<TableRow key={row.manual.id} onRowClick={() => router.push(policyHref(row.manual.id))}> ... hasCatalog={row.manual.test_count + row.manual.risk_count + row.manual.control_count > 0}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 3,
+                "quote": "trigger={<PantheonButton variant=\"outline\" size=\"icon\" aria-label={`Actions for ${policyName}`}><EllipsisVertical /></PantheonButton>}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 4,
+                "quote": "hasCatalog === true && (<DropdownMenuItem label=\"Re-analyze\" icon={Sparkles} onClick={() => setDialog(\"reanalyze\")} />)",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx",
+                "step": 5,
+                "quote": "title={hasCatalog ? \"Re-analyze this policy\" : \"Find risks and controls\"} body=\"Hadrius reads this policy section by section and builds a testing program from it...\" ... items={impactItems(impact)} ... pluralizeCount(impact?.tests ?? 0, \"test\"), pluralizeCount(impact?.test_runs ?? 0, \"scheduled or i",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx",
+                "step": 6,
+                "quote": "positiveText={hasCatalog ? \"Re-analyze\" : \"Start analysis\"} onPositive={handleConfirm}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/page_manual.tsx",
+                "step": 7,
+                "quote": "toast({ title: \"Analysis started\", description: \"We're reading your policy for risks and controls. This page will update when complete.\" }) ... {!!activeDeriveState && (<AlertBox title=\"Analyzing this policy\" ...",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:07:34.812Z",
             "confidence": "high",
             "totalSteps": 7,
             "unverified": [],
@@ -737,12 +1239,55 @@
             "Click \"Add policy\" to save — this creates a second ACTIVE policy covering that entity, so the original policy is no longer the sole active manual there and can be archived without the backend's cascading-archival safeguard blocking it."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:58:25.137Z",
+          "planUpdatedAt": "2026-09-16T06:07:59.661Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"policies\", title: \"Policies\", path: \"/testing-program/policies\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 2,
+                "quote": "<PantheonButton variant=\"outline\" size=\"icon\" aria-label={`Actions for ${policyName}`}>\n  <EllipsisVertical />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 3,
+                "quote": "<DropdownMenuItem label=\"Archive\" icon={Archive} variant=\"destructive\" onClick={() => setDialog(\"archive\")} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/components/component_archive_button.tsx",
+                "step": 4,
+                "quote": "<DialogTitle>Archive policy</DialogTitle>\n<DialogDescription>\n  Are you sure you want to archive this policy? Risks, controls and tests that no other policy holds are\n  archived with it.\n</DialogDescription>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/components/component_archive_button.tsx",
+                "step": 5,
+                "quote": "<Button variant=\"destructive\" onClick={handleArchive} loading={isArchiveLoading}>\n  <Archive className=\"h-4 w-4\" />\n  Archive\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/components/component_archive_button.tsx",
+                "step": 6,
+                "quote": "toast({\n  title: \"Policy archived\",\n  description: \"The policy and the risks, controls and tests only it held have been archived.\",\n});",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/page_policies_dashboard.tsx",
+                "step": 7,
+                "quote": "{archivedCount > 0\n  ? `Show archived policies only (${archivedCount})`\n  : \"Show archived policies only\"}",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:07:59.547Z",
             "confidence": "high",
             "totalSteps": 7,
             "unverified": [],
@@ -831,12 +1376,49 @@
             "If the table is empty or every policy is archived, click \"Add policy\"",
             "Enter a name (e.g. \"Demo Policy\") and confirm creation to add a new active policy that can then be renamed"
           ],
-          "planUpdatedAt": "2026-09-16T05:58:25.415Z",
+          "planUpdatedAt": "2026-09-16T06:08:02.739Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"policies\", title: \"Policies\", path: \"/testing-program/policies\" },",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 2,
+                "quote": "<PantheonButton variant=\"outline\" size=\"icon\" aria-label={`Actions for ${policyName}`}>\n            <EllipsisVertical />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 3,
+                "quote": "<DropdownMenuItem label=\"Rename policy\" icon={PencilLine} onClick={() => setDialog(\"rename\")} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 4,
+                "quote": "<DialogTitle>Rename policy</DialogTitle> ... <Input value={value} onChange={(event) => setValue(event.target.value)} placeholder=\"Policy name\" disabled={isLoading} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 5,
+                "quote": "<PantheonButton onClick={save} disabled={isLoading || value.trim() === \"\" || value.trim() === (manual.display_name ?? \"\")} loading={isLoading}>\n            Save",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/policy_menu.tsx",
+                "step": 6,
+                "quote": ".then(() => {\n        setIsOpen(false);\n        toast({ title: \"Policy renamed\" });\n      })",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:08:02.698Z",
             "confidence": "high",
             "totalSteps": 6,
             "unverified": [],
@@ -971,12 +1553,73 @@
             "Click into the 'Stephen Investments' entity row to land on its Tests page, then click 'Manage categories' to open the sheet and verify at least one non-archived category is listed.",
             "If no categories are listed, click 'New category', type a name (e.g. 'Demo Category') in 'Category name', and click 'Create category' so there is something to rename, expand, and delete on camera."
           ],
-          "planUpdatedAt": "2026-09-16T05:58:25.746Z",
+          "planUpdatedAt": "2026-09-16T06:08:42.287Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "const ENTITIES_SUBTAB: Tab = { key: \"entities\", title: \"Entities\", path: \"/testing-program/entities\" };",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/overview/components/entities_section.tsx",
+                "step": 2,
+                "quote": "onRowClick={(entity) => switchAndNavigate(entity.company, entityTestsHref(entity.id))}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
+                "step": 3,
+                "quote": "<PantheonButton variant=\"outline\" onClick={() => setIsOpen(true)}>\n        <Tags className=\"size-4\" />\n        Manage categories",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/manage_categories_sheet.tsx",
+                "step": 4,
+                "quote": "<Button variant=\"ghost\" className=\"size-7 shrink-0\" aria-label=\"Rename category\" onClick={startRename}>\n              <Pencil className=\"size-4\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/manage_categories_sheet.tsx",
+                "step": 5,
+                "quote": "onKeyDown={(e) => {\n                  if (e.key === \"Enter\") saveRename();\n...\n            <Button variant=\"ghost\" className=\"size-7 shrink-0\" aria-label=\"Save name\" onClick={saveRename}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/manage_categories_sheet.tsx",
+                "step": 6,
+                "quote": "aria-label={isExpanded ? \"Hide tests\" : \"Show tests\"}\n              onClick={onToggleExpand}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/manage_categories_sheet.tsx",
+                "step": 7,
+                "quote": "<Input\n        icon={Search}\n        placeholder=\"Search tests\"\n...\n<Checkbox\n                checked={memberIds.has(test.id)}\n...\n                onCheckedChange={() => handleToggle(test)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/manage_categories_sheet.tsx",
+                "step": 8,
+                "quote": "aria-label={`Delete ${category.display_name}`}\n            >\n              <Trash2 className=\"size-4 text-destructive\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/manage_categories_sheet.tsx",
+                "step": 9,
+                "quote": "<DialogTitle>Delete this category?</DialogTitle>\n...\n<Button variant=\"destructive\" onClick={handleDelete} loading={isLoading}>\n            Delete category",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/components/create_category_dialog.tsx",
+                "step": 10,
+                "quote": "<Input\n            placeholder=\"Category name\"\n...\n<Button onClick={handleCreate} loading={isLoading} disabled={!name.trim()}>\n            Create category",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:08:42.193Z",
             "confidence": "high",
             "totalSteps": 10,
             "unverified": [],
@@ -1024,12 +1667,73 @@
             "Reload the test run detail page — now that the run is Pending review and the recording account is the assigned reviewer, the per-question \"Requires attention\" action becomes available for the recorded plan to proceed"
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:58:26.011Z",
+          "planUpdatedAt": "2026-09-16T06:09:36.095Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/tests/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight_v2/tests\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
+                "step": 2,
+                "quote": "const detailUrl = `/firm_oversight_v2/tests/${run.test}?run=${run.id}`;\n  ...\n  <Link href={detailUrl} className=\"group flex min-w-0 flex-1 items-stretch\">\n    ... <Text ...>{testName}</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/utils.ts;apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 3,
+                "quote": "tests: \"Tests\", ...  <Button variant=\"link\" onClick={openDialog}><AlertTriangle .../><Text variant=\"button_text\">Requires attention</Text></Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 4,
+                "quote": "<AttentionOption id={`${idPrefix}-ca`} value=\"corrective_action\" label=\"Corrective action\" description=\"Ask the owner to fix something. This creates a corrective action, notifies the owner, and blocks approval until you clear it.\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 5,
+                "quote": "<Text variant=\"small_bold\">Severity level</Text>\n<SelectWrapper items={SEVERITY_LEVELS} ... placeholder=\"Select level of severity\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 6,
+                "quote": "<Text variant=\"small_bold\">Corrective action owner</Text>\n<Combobox options={owner.options} ... placeholder=\"Select owner\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 7,
+                "quote": "<Text variant=\"small_bold\">Corrective action due date</Text>\n<DatePicker date={dueDate} setDate={setDueDate} placeholder=\"Pick a date\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 8,
+                "quote": "<Text variant=\"small_bold\">Corrective action{\" \"}<Text ... className=\"text-destructive\">*</Text></Text>\n<Textarea ... placeholder=\"Describe the corrective action required\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 9,
+                "quote": "<Text variant=\"small_bold\">Add note</Text>\n<Textarea ... placeholder=\"Optional note for the owner\" .../>\n...\n<Button variant=\"link\" size=\"sm\" className=\"w-fit pl-0\" onClick={() => setUploadOpen(true)}><Upload .../><Text variant=\"button_text\">Upload</Text></Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 10,
+                "quote": "<Button onClick={handleSubmit} disabled={!canSubmit || isLoading}><Send .../>{isLoading ? \"Sending...\" : \"Send for corrective action\"}</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:09:35.961Z",
             "confidence": "high",
             "totalSteps": 10,
             "unverified": [],
@@ -1146,12 +1850,61 @@
             "Reload the run's \"Tests\" tab as the reviewer so the per-question \"No objection\" / \"Requires attention\" actions appear beneath each answer"
           ],
           "linkedScript": "How-to-acknowledge-a-business-risk-during-test-review",
-          "planUpdatedAt": "2026-09-16T05:58:26.263Z",
+          "planUpdatedAt": "2026-09-16T06:08:56.699Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"testing_program\", title: \"Tests\", path: \"/testing-program/tests\", ... } ... title: \"Testing program\", path: \"/testing-program/tests\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/entity_detail/tests_table.tsx",
+                "step": 2,
+                "quote": "const detailUrl = `/firm_oversight_v2/tests/${run.test}?run=${run.id}`;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 3,
+                "quote": "<Button variant=\"link\" onClick={openDialog}>\n <AlertTriangle className=\"size-4\" />\n <Text variant=\"button_text\">Requires attention</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 4,
+                "quote": "<DialogTitle>Requires attention</DialogTitle> ... <AttentionOption ... value=\"business_risk\" label=\"Business risk acknowledged\" description=\"Accept this as a known risk...\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 5,
+                "quote": "<Text variant=\"small_bold\">Severity level</Text>\n<SelectWrapper items={SEVERITY_LEVELS} ... placeholder=\"Select level of severity\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 6,
+                "quote": "<Text variant=\"small_bold\">Add note</Text>\n<Textarea value={note} ... placeholder=\"Optional note for the owner\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx",
+                "step": 7,
+                "quote": "<Button disabled={isLoading} onClick={handleSubmit}>\n <Save className=\"size-4\" />\n {isLoading ? \"Saving...\" : \"Save & complete\"}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/utils.ts",
+                "step": 8,
+                "quote": "case \"BUSINESS_RISK\":\n return { text: \"Business risk acknowledged\", color: \"warning\", severity: review.severity, reviewerId };",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:08:56.592Z",
             "confidence": "high",
             "totalSteps": 8,
             "unverified": [],
@@ -1206,12 +1959,49 @@
             "Click the X to close the panel — a resolved finding now exists and the \"Resolved\" chip will appear for the recorded plan to use"
           ],
           "linkedScript": "How-to-reopen-a-resolved-finding",
-          "planUpdatedAt": "2026-09-16T05:58:26.510Z",
+          "planUpdatedAt": "2026-09-16T06:09:10.627Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/findings/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight_v2/findings\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/findings_table.tsx",
+                "step": 2,
+                "quote": "if (resolvedCount > 0) prefilters.push({ id: RESOLVED_FILTER_ID, label: \"Resolved\", count: resolvedCount });",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/findings_table.tsx",
+                "step": 3,
+                "quote": "onRowClick={(finding) => setSelectedFindingId(finding.id)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/finding_detail_sheet.tsx",
+                "step": 4,
+                "quote": "<div className=\"flex items-center justify-between gap-2 border-t pt-4\">\n            <Button variant=\"outline\" ... onClick={handleToggleResolved}>\n              {isResolved ? <RotateCcw ... /> : ...}\n              {isResolved ? \"Reopen finding\" : \"Mark as resolved\"}\n            </Button>\n            ",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/findings/finding_detail_sheet.tsx",
+                "step": 5,
+                "quote": "isResolved ? \"Finding reopened\" ... {!isResolved && !overdue && <Badge ... text=\"Open\" />} {overdue && <Badge ... text=\"Overdue\" />}",
+                "verified": true
+              },
+              {
+                "file": "packages/ui/src/v3/sheet.tsx",
+                "step": 6,
+                "quote": "<SheetPrimitive.Close className=\"absolute top-4 right-4 ...\">\n            <X className=\"h-4 w-4\" />\n            <span className=\"sr-only\">Close</span>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:09:10.519Z",
             "confidence": "high",
             "totalSteps": 6,
             "unverified": [],
@@ -1248,12 +2038,73 @@
             "Access to Testing Program (firm_oversight.all.basic_access permission on the recording account, standard for any active employee/admin role)"
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-16T05:58:26.759Z",
+          "planUpdatedAt": "2026-09-16T06:09:50.374Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/calendar/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight/calendar\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_view.tsx",
+                "step": 2,
+                "quote": "onClick={() => handleDayClick(day)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 3,
+                "quote": "<Button variant=\"default\" size=\"sm\" onClick={toggleNewTaskForm} type=\"button\" disabled={isCreateTaskLoading}>\n            <Plus className=\"h-4 w-4\" />\n            New Task",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 4,
+                "quote": "<Input type=\"text\" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder=\"Title\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 5,
+                "quote": "<DatePicker date={newTaskDate.toDate()} setDate={(date) => date && setNewTaskDate(moment(date))} placeholder=\"Select date\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 6,
+                "quote": "<Textarea value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)} rows={2} placeholder=\"Description\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 7,
+                "quote": "<SelectItem value=\"UNASSIGNED\">Unassigned</SelectItem>\n                  {potentialUsers?.map((user) => (\n                    <SelectItem key={user.id} value={user.id.toString()}>\n                      {user.first_name} {user.last_name}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 8,
+                "quote": "{ label: \"Does not repeat\", value: \"NO_REPEAT\", rrule: null },\n    { label: \"Daily\", ... }, ... { label: \"Custom...\", value: \"CUSTOM\", rrule: null },",
+                "verified": true
+              },
+              {
+                "file": "packages/ui/src/v3/page_elements/schedule_modal.tsx",
+                "step": 9,
+                "quote": "<DialogTitle>Custom recurrence</DialogTitle>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 10,
+                "quote": "<Button size=\"sm\" variant=\"default\" onClick={handleAddTask} disabled={isCreateTaskLoading}>\n                {isCreateTaskLoading ? \"Adding...\" : \"Add Task\"}",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:09:50.274Z",
             "confidence": "high",
             "totalSteps": 10,
             "unverified": [],
@@ -1298,12 +2149,67 @@
             "Optionally select an assignee and a due date",
             "Click \"Add Task\" to save the new task so a scheduled task exists to edit"
           ],
-          "planUpdatedAt": "2026-09-16T05:58:27.000Z",
+          "planUpdatedAt": "2026-09-16T06:09:41.301Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"calendar\", title: \"Calendar\", path: \"/testing-program/calendar\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_view.tsx",
+                "step": 2,
+                "quote": "onClick={() => handleDayClick(day)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 3,
+                "quote": "onClick={() => onToggleExpansion(uniqueExpansionKey)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 4,
+                "quote": "<Edit3 className=\"mr-1 h-3 w-3\" /> Edit Task",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 5,
+                "quote": "<DialogTitle>Edit Task</DialogTitle> ... <Label htmlFor=\"title\" ...>Title</Label> <Input id=\"title\" value={editTitle} onChange={(e) => setEditTitle(e.target.value)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 6,
+                "quote": "<Label htmlFor=\"description\" ...>Description</Label> <Textarea id=\"description\" value={editDescription}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 7,
+                "quote": "<Label htmlFor=\"occurrenceDate\" ...>Date</Label> <DatePicker date={editOccurrenceDate.toDate()} setDate={(date) => date && setEditOccurrenceDate(moment(date))}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 8,
+                "quote": "<Label htmlFor=\"assignee\" ...>Assignee</Label> <Select value={...} onValueChange={(value) => setEditAssigneeId(...)}> <SelectTrigger ...><SelectValue placeholder=\"Select assignee\">",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 9,
+                "quote": "<Button onClick={handleSaveChanges} disabled={...}> Save Changes </Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:09:41.208Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -1353,12 +2259,67 @@
             "Open the recurrence dropdown and select an option such as \"Weekly on <day>\"",
             "Click \"Add Task\" to create the recurring task"
           ],
-          "planUpdatedAt": "2026-09-16T05:58:27.258Z",
+          "planUpdatedAt": "2026-09-16T06:10:29.551Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+                "step": 1,
+                "quote": "{ key: \"calendar\", title: \"Calendar\", path: \"/testing-program/calendar\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_view.tsx",
+                "step": 2,
+                "quote": "onClick={() => handleDayClick(day)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 3,
+                "quote": "onClick={() => onToggleExpansion(uniqueExpansionKey)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 4,
+                "quote": "<Trash2 className=\"mr-1 h-3 w-3\" /> Delete",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 5,
+                "quote": "const onCancelButtonClick = () => {\n    if (!task.cadence) {\n      handleDeleteTaskSeries();\n    } else {\n      setIsCancelModalOpen(true);\n    }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 6,
+                "quote": "<AlertDialogTitle>Confirm Cancellation</AlertDialogTitle>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 7,
+                "quote": "onClick={handleCancelSingleInstance} ... This Instance Only",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 8,
+                "quote": "onClick={handleDeleteTaskSeries} disabled={isDeleteTaskLoading}>\n              Entire Series",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 9,
+                "quote": "<AlertDialogCancel>Nevermind</AlertDialogCancel>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:10:29.459Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -1403,12 +2364,43 @@
             "Click \"Add Task\"",
             "Confirm the new task now appears as an item in the day drawer for that date, ready to be expanded and marked complete"
           ],
-          "planUpdatedAt": "2026-09-16T05:58:27.512Z",
+          "planUpdatedAt": "2026-09-16T06:10:05.147Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/testing-program/calendar/index.tsx",
+                "step": 1,
+                "quote": "export { default } from \"pages/firm_oversight/calendar\";",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_view.tsx",
+                "step": 2,
+                "quote": "onClick={() => handleDayClick(day)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 3,
+                "quote": "onClick={() => onToggleExpansion(uniqueExpansionKey)}\n      >\n        {iconElement}\n        <Text variant=\"base_medium\" className=\"min-w-0 flex-1 truncate\">\n          {task.title}\n        </Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 4,
+                "quote": "{occurrence?.status !== \"COMPLETE\" && (\n                <>\n                  <CheckSquare className=\"mr-1 h-3 w-3\" /> Mark Complete\n                </>\n              )}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
+                "step": 5,
+                "quote": "{occurrence?.status === \"COMPLETE\" && (\n                <>\n                  <Square className=\"mr-1 h-3 w-3\" /> Mark Incomplete\n                </>\n              )}",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:10:04.932Z",
             "confidence": "high",
             "totalSteps": 5,
             "unverified": [],
@@ -1724,12 +2716,79 @@
           "provisionable": "self-serve-quick",
           "blockerReason": "",
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T05:58:29.240Z",
+          "planUpdatedAt": "2026-09-16T06:10:37.247Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+                "step": 1,
+                "quote": "tab.children.push({\n        key: \"disclosures\",\n        title: \"Disclosures\",\n        path: \"/people-oversight/disclosures\",\n      });",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/tab_disclosures_v2.tsx",
+                "step": 2,
+                "quote": "<Link href=\"/account/settings/templates?module=DISCLOSURE\">\n                    <SquareLibrary className=\"size-4\" />\n                    Template library",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+                "step": 3,
+                "quote": "title={\n          <>\n            {aiPhase === \"generating\" && <GeneratingDialogTitle />}\n            {aiPhase !== \"generating\" && \"Create a new template\"}\n          </>\n        }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+                "step": 4,
+                "quote": "<Text variant=\"button_text\">\n            Template name <span className=\"text-destructive\">*</span>\n          </Text>\n          <Input\n            placeholder=\"e.g. 2026 tri-annual branch exam\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+                "step": 5,
+                "quote": "<Input\n          label=\"Description (optional)\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+                "step": 6,
+                "quote": "[TemplateTypeEnum.DISCLOSURE]: { subtext: \"Employee-facing questionnaire\" },",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+                "step": 7,
+                "quote": "Disclosure type <span className=\"text-destructive\">*</span>\n            </Text>\n            <DisclosureTypePicker ... This can't be changed after the template is created.",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+                "step": 8,
+                "quote": "<Button variant=\"default\" disabled={isCreateDisabled} onClick={handleCreate}>\n          Create template\n          <ArrowRight className=\"h-4 w-4\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/detail_view/components/disclosure_template_editor.tsx",
+                "step": 9,
+                "quote": "const TAB_TITLES = [\"Questions\", \"Reviewer workflow\", \"Settings\"] as const;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/detail_view/components/disclosure_template_editor.tsx",
+                "step": 10,
+                "quote": "if (steps.length === 0) {\n    return { stepErrors: [], topError: \"Add at least one reviewer step before publishing.\" };\n  }\n... reviewerGroup: groupCount === 0 ? \"Add at least one reviewer group or individual.\" : null",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/detail_view/components/disclosure_template_editor.tsx",
+                "step": 11,
+                "quote": "return (\n        <DisclosureSettingsTab\n          ...\n          onPublishClick={api.triggerPublish}",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:10:37.153Z",
             "confidence": "high",
             "totalSteps": 11,
             "unverified": [],
@@ -1766,16 +2825,65 @@
             "The 'Continuing education' / WebCE module enabled for the company (confirmed active for this tenant)"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:29.491Z",
+          "planUpdatedAt": "2026-09-16T06:11:46.435Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "high",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/continuing-education/index.tsx",
+                "step": 1,
+                "quote": "import EmployeeCompliancePage from \"src/pages/coreloop/crm/employees/page_people_oversight_upsell\";\n\nexport default function PeopleOversightContinuingEducationPage() {\n  return <EmployeeCompliancePage tabOverride=\"continuing education\" />;\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/tab_continuing_education.tsx",
+                "step": 2,
+                "quote": "const TABS = [\"Employees\", \"Courses\"] as const; ... const isEmployeesTab = selectedTab === 0; const isCoursesTab = selectedTab === 1;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/tab_continuing_education.tsx",
+                "step": 3,
+                "quote": "{ label: \"Send reminder\", icon: Send, ... disabled: (row) => { ... return enrolledCount === 0 || !hasIncompleteEmployees; } } ... <Button onClick={onSendReminders} disabled={bulkSelectedCourses.length === 0}>Send reminders</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/component_bulk_employee_email_modal.tsx",
+                "step": 4,
+                "quote": "<DialogTitle>Choose an Email Template</DialogTitle> ... Sending to {employees.length} {employees.length !== 1 && \"employees\"}{employees.length === 1 && \"employee\"}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/email_templates/component_upload_template_modal.tsx",
+                "step": 5,
+                "quote": "<DialogTitle>{templateToEdit ? \"Edit Existing Template\" : \"Create New Template\"}</DialogTitle> ... <Input {...register(\"name\", ...)} label=\"Template name\" .../> ... <EmailEditor editor={editor} subjectPlaceholder={defaultContent.subject} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/account/email_templates/component_upload_template_modal.tsx",
+                "step": 6,
+                "quote": "const getButtonText = () => { if (isPreview) { return templateToEdit ? \"Select\" : \"Save\"; } return \"Send\"; }",
+                "verified": false
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/continuing_education/component_bulk_employee_email_modal.tsx",
+                "step": 7,
+                "quote": "toast({ title: \"Success\", description: `Reminders sent for ${courses.length} ${courseText}`, variant: \"default\" });",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:11:46.322Z",
+            "confidence": "medium",
             "totalSteps": 7,
-            "unverified": [],
-            "verifiedSteps": 7
+            "unverified": [
+              {
+                "step": 6,
+                "reason": "BulkEmployeeEmailModal always mounts UploadTemplateModal with isPreview={true}, so the button never reads \"Send\" in this flow. Clicking \"Create New Template\" and finishing the editor shows a button la"
+              }
+            ],
+            "corrections": 1,
+            "verifiedSteps": 6
           }
         },
         {
@@ -1807,12 +2915,49 @@
           ],
           "provisionable": "structurally-blocked",
           "blockerReason": "A connection's 'Connection expired' badge (frontend: getConnectionAttentionType() mapping external_connection_status === 'BROKEN' -> NEEDS_REPAIR, in apps/hadrius-app/src/pages/employees/connections/brokerage_account_utilities.ts) is driven entirely by EmployeeBrokerConnection.external_connection_status = BROKEN on the backend. Searching hadrius_backend shows BROKEN is only ever set by (1) external sync/reconciliation jobs — snaptrade/service_snaptrade.py (remote_connection_status from the SnapTrade API), meld/sync_meld_connection_status.py (hadrius_connection.external_connection_status = BROKEN based on Meld's reported state), and Plaid webhook/reconciliation paths — or (2) derive_connection_status_from_accounts() in connections/service_update_account_status.py, which itself only turns BROKEN when an underlying EmployeeAccount.status is BROKEN, again a value only written by those same external sync services. There is no admin/user-facing API view or UI control anywhere in hadrius_frontend or hadrius_backend that lets an operator directly set a connection or account to BROKEN — the only backend endpoints touching broken connections (views_employees.py, views_trade_monitoring_employees.py, views_trade_monitoring_connections.py) all just read/count/filter on the existing status. Producing a 'Connection expired' row therefore requires an actual real-world disconnection/revocation on the linked broker's side (Plaid, SnapTrade, or Meld sandbox), which is external-system-dependent and outside the Hadrius app UI. A live query against the staging DB (company_id=1013) confirms zero BROKEN connections currently exist there (statuses present: GOOD=5, MISSING_LETTER=10, MISSING_STATEMENTS=35), so there is nothing to click on for this step today.",
-          "planUpdatedAt": "2026-09-16T05:58:29.879Z",
+          "planUpdatedAt": "2026-09-16T06:11:00.140Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+                "step": 1,
+                "quote": "title=\"People directory\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/component_employee_table.tsx",
+                "step": 2,
+                "quote": "onRowClick={(row) => router.push(`/employees/${row.employee.id}`)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/constants_admin_tabs.ts",
+                "step": 3,
+                "quote": "Accounts = \"Accounts\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/connections/page_employee_connections.tsx",
+                "step": 4,
+                "quote": "header: \"Connection status\" ... return { color: \"destructive\", icon: TriangleAlert, label: \"Connection expired\" };",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/connections/components/component_fix_connections_email_button.tsx",
+                "step": 5,
+                "quote": "<Button variant=\"outline\" rightIcon={<ChevronDown />}>Actions</Button> ... <DropdownMenuItem label={reminderLabel} ... /> // reminderLabel = \"Send email reminder\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/connections/components/component_fix_connections_email_button.tsx",
+                "step": 6,
+                "quote": "title=\"Send reminder email?\" description=\"Send an email reminding this employee to connect or reconnect their investment accounts.\" ... <Button onClick={sendEmail}>Send</Button> ... toast({ title: \"Email sent\", ... })",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:11:00.033Z",
             "confidence": "high",
             "totalSteps": 6,
             "unverified": [],
@@ -1861,12 +3006,61 @@
             "Open that task and click through its questions once before recording to confirm it contains a yes/no question, a follow-up text or document-upload question, and the Final disclaimer section with two attestation checkboxes — if the first task picked lacks variety, pick a different employee/task from the Waiting list that does."
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:58:30.126Z",
+          "planUpdatedAt": "2026-09-16T06:11:30.451Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx",
+                "step": 1,
+                "quote": "{complianceEnabled && certificationsEnabled && (\n  <TabIndex\n    title={\"Certifications\"}\n    path={\"/employee/certifications\"}\n    Icon={FileBadge}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_certs_v2_dashboard.tsx",
+                "step": 2,
+                "quote": "{ key: \"waiting\", label: \"Waiting\" } ... { key: \"not_started\", label: employeeStatusConfig.not_started.label } ... { key: \"draft\", label: employeeStatusConfig.draft.label } ... getHref: (row) => generateCertificationPath(row.id, selectedEmployeeId)",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/template_library/submission/question_types/question_inputs.tsx",
+                "step": 3,
+                "quote": "<RadioGroupItem value=\"Yes\" .../><Text>Yes</Text> ... <RadioGroupItem value=\"No\" .../><Text>No</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/template_library/submission/question_types/question_inputs.tsx",
+                "step": 4,
+                "quote": "const ATTACHMENT_UPLOAD_OPTIONS: UploadOptions = { maxFiles: 10, maxSizePerFileBytes: toBytes(50, \"MB\"), ... } ... description=\"Upload up to 10 files, each less than 50 MB\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/template_library/submission/components/questionnaire_footer_nav.tsx",
+                "step": 5,
+                "quote": "<Button disabled={currentQuestionIndex >= totalQuestions - 1} onClick={onNext}>\n  Next <ArrowDown ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/template_library/submission/components/signature_section.tsx",
+                "step": 6,
+                "quote": "<Text variant=\"base_bold\" ...>Final disclaimer</Text> ... <Checkbox checked={attestAccurate} .../> ... <Checkbox checked={attestSignature} .../>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/template_library/submission/components/signature_section.tsx",
+                "step": 7,
+                "quote": "<Text variant=\"small_bold\">Legal first name</Text>\n<Input value={legalFirstName ?? \"\"} disabled readOnly /> ... <Text variant=\"small_bold\">Email</Text> ... <Text variant=\"small_bold\">Date</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/employee_task_detail/employee_task_header.tsx",
+                "step": 8,
+                "quote": "{!isSubmitting && status === \"action_required\" && \"Resubmit\"}\n{!isSubmitting && status !== \"action_required\" && \"Submit\"}",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:11:30.351Z",
             "confidence": "high",
             "totalSteps": 8,
             "unverified": [],
@@ -1925,12 +3119,55 @@
             "In the fill-on-behalf modal that opens, answer the questionnaire — choosing an answer likely to trigger a flag on at least one question if you want to demo the flagged-response path — then click Submit to submit it as the employee's response.",
             "Confirm the new disclosure now appears in People oversight > Disclosures > Approvals with status 'Pending review' and is assigned to you, so 'Start review' / the arrow 'View disclosure' button are enabled."
           ],
-          "planUpdatedAt": "2026-09-16T05:58:30.371Z",
+          "planUpdatedAt": "2026-09-16T06:11:38.162Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/disclosures/index.tsx",
+                "step": 1,
+                "quote": "export default function PeopleOversightDisclosuresPage() {\n  return <EmployeeCompliancePage tabOverride=\"disclosures\" />;\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/approvals/index.tsx",
+                "step": 2,
+                "quote": "<Button onClick={handleBeginReview} disabled={myReviewIds.length === 0}>\n  Start review",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/shared/approval_actions/approval_actions_dropdown.tsx",
+                "step": 3,
+                "quote": "aria-label=\"View disclosure\"\n...\n<ArrowRight className=\"size-4\" />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/shared/comment_panel/comment_thread.tsx",
+                "step": 4,
+                "quote": "placeholder=\"Add a comment...\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/detail/detail_header.tsx",
+                "step": 5,
+                "quote": "<DialogTitle>Approve with unreviewed flags</DialogTitle> ... <Button onClick={executeApprove} loading={isApproving}>\n              Approve anyway",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/detail/detail_header.tsx",
+                "step": 6,
+                "quote": "<DialogTitle>Reject disclosure</DialogTitle> ... <Text variant=\"small_bold\">Reason (optional)</Text> ... <Button variant=\"destructive\" onClick={handleReject} ...>\n              Reject disclosure",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/detail/detail_header.tsx",
+                "step": 7,
+                "quote": "<Button variant=\"secondary\" size=\"sm\" disabled={!canSendBack} onClick={() => setShowSendBackModal(true)}>\n                <Undo2 ... /> Send back ... <DialogTitle>Send back for update</DialogTitle> ... Reason for sending back ... (visible to employee, min 10 characters) ... disabled={sendBackReason.",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:11:38.046Z",
             "confidence": "high",
             "totalSteps": 7,
             "unverified": [],
@@ -1977,12 +3214,61 @@
             "Click into an in-progress certification task for that employee and answer all questions, then click the submit/finish action to move the task to submitted status.",
             "Return to People oversight > Certifications > Submissions and confirm the row now appears under the 'Needs review' filter (re-navigate with an explicit statuses=needs_review-equivalent URL rather than clicking the filter pill twice, since the pill is a toggle and the post-action list can be stale)."
           ],
-          "planUpdatedAt": "2026-09-16T05:58:30.616Z",
+          "planUpdatedAt": "2026-09-16T06:12:20.115Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_certs_v2.tsx",
+                "step": 1,
+                "quote": "PageHeader title=\"Certifications\" ... /people-oversight/certifications",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_certs_v2.tsx",
+                "step": 2,
+                "quote": "{ title: \"Submissions\", value: \"submissions\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/submissions/types.ts",
+                "step": 3,
+                "quote": "{ value: \"needs_review\", label: \"Needs review\", countKey: \"needsReview\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/shared/admin_questionnaire/admin_question_card.tsx",
+                "step": 4,
+                "quote": "const flagReasonBadge = flagReasonText ? (<Badge color={BadgeColor.destructive} ... icon={<Flag ... />} text={flagReasonText} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/task_detail/task_detail_body.tsx",
+                "step": 5,
+                "quote": "case \"ATTACHMENT\": ... return <AdminAttachmentBody .../>; case \"DOC_ATTESTATION\": return <AdminDocAttestationBody .../>; case \"DOC_LIBRARY\": return <AdminDocLibraryBody .../>;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/shared/admin_questionnaire/admin_questionnaire_body.tsx",
+                "step": 6,
+                "quote": "{determinationDialog?.status === \"COMPLIANT\" ? `Mark ${determinationDialog.questionLabel} as compliant` : `Mark ${determinationDialog?.questionLabel ?? \"\"} as non-compliant`} ... <Text variant=\"small_bold\">{determinationDialog?.status === \"NON_COMPLIANT\" ? \"Leave note\" : \"Leave note (optional)\"}</Te",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/task_detail/task_detail_header.tsx",
+                "step": 7,
+                "quote": "<Button variant=\"outline\" size=\"sm\" disabled={!canReview || isSubmitting} onClick={handleApprove} loading={isSubmitting}>Approve<ArrowRight className=\"size-4\" /></Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/task_detail/index.tsx",
+                "step": 8,
+                "quote": "toast({ title: \"Task approved\", description: `${taskDetail.employee_name ?? \"Employee\"}'s submission has been approved.` });",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:12:20.025Z",
             "confidence": "high",
             "totalSteps": 8,
             "unverified": [],
@@ -2015,16 +3301,57 @@
           ],
           "provisionable": "structurally-blocked",
           "blockerReason": "Confirmed fresh against current code: apps/hadrius-app/pages/employees/unclaimed-accounts/index.tsx drives entirely off GET accounts/unclaimed/ and POST accounts/unclaimed/<id>/claim/ (plus bulk-claim/dismiss/restore/mapping-preview siblings, all in hadrius_backend/hadrius/employees/src/trade_monitoring/views_unclaimed_accounts.py and gated @has_role_access(User.Role.SUPERADMIN)). None of these views create a new UnclaimedExternalAccount row — claim/bulk-claim/dismiss/restore only act on rows that already exist, and preview_mapping_file_view explicitly 'writes nothing.' The only code paths that call UnclaimedExternalAccount.objects.bulk_create/create outside of tests are the direct-feed sync jobs in hadrius/employees/src/trade_monitoring/direct_feed/base.py (lines ~639, 859, 1076), which run against real custodian feeds (Schwab, Pershing, Raymond James, Merrill Lynch, Goldman Sachs, Morgan Stanley, RBC, BridgeFT). There is no Django admin route and no create/seed HTTP endpoint for this model. So whether the recording tenant has any open unclaimed account on a given night depends entirely on what the production snapshot happened to carry over, and no UI action can manufacture one if it's empty.",
-          "planUpdatedAt": "2026-09-16T05:58:30.856Z",
+          "planUpdatedAt": "2026-09-16T06:12:26.946Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "high",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+                "step": 1,
+                "quote": "if (!!user?.is_hadrius_employee) {\n      tab.children.push({\n        key: \"unclaimed_accounts\",\n        title: \"Unclaimed accounts\",\n        path: \"/people-oversight/unclaimed-accounts\",\n        internalOnly: true,\n      });\n    }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/pages/employees/unclaimed-accounts/index.tsx",
+                "step": 2,
+                "quote": "<UnclaimedAccountsTable ... enableSelection selectedRows={selectedRows} onSelectedRowsChange={setSelectedRows} ... />",
+                "verified": false
+              },
+              {
+                "file": "apps/hadrius-app/pages/employees/unclaimed-accounts/index.tsx",
+                "step": 3,
+                "quote": "<Input value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder=\"Pick an employee…\" icon={Search} className=\"h-8\" />",
+                "verified": false
+              },
+              {
+                "file": "apps/hadrius-app/pages/employees/unclaimed-accounts/index.tsx",
+                "step": 4,
+                "quote": "<Button variant={matchVariant} disabled={!canMatch} onClick={() => setShowConfirmDialog(true)} title={matchTitle}>{matchLabel}</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/pages/employees/unclaimed-accounts/index.tsx",
+                "step": 5,
+                "quote": "<DialogTitle>Confirm match</DialogTitle> ... <Button onClick={onConfirm}>Confirm match</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:12:26.857Z",
+            "confidence": "medium",
             "totalSteps": 5,
-            "unverified": [],
-            "verifiedSteps": 5
+            "unverified": [
+              {
+                "step": 2,
+                "reason": "The left-hand accounts list is a paginated data table (PantheonDataTablePaginated with enableSelection), not clickable 'cards' — clicking a row (onRowClick) only focuses a claimed row to show its owne"
+              },
+              {
+                "step": 3,
+                "reason": "The employee search field's placeholder is 'Pick an employee…', not 'Search employees...' as the plan states. The rest of step 3 (clicking an EmployeeCard div, which contains a Checkbox that becomes c"
+              }
+            ],
+            "corrections": 2,
+            "verifiedSteps": 3
           }
         },
         {
@@ -2061,12 +3388,61 @@
             "Operator should pick a low-importance/test employee row, since the confirmation dialog explicitly warns 'Deletes are not reversible' — deactivating permanently deletes that employee's incomplete certification/disclosure tasks and trade restrictions"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:31.097Z",
+          "planUpdatedAt": "2026-09-16T06:13:09.165Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/people-directory/index.tsx",
+                "step": 1,
+                "quote": "import EmployeeCompliancePage from \"src/pages/coreloop/crm/employees/page_people_oversight_upsell\";\n\nexport default function PeopleDirectoryPage() {\n  return <EmployeeCompliancePage tabOverride=\"employees\" />;\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/component_employee_table.tsx",
+                "step": 2,
+                "quote": "onRowClick={(row) => router.push(`/employees/${row.employee.id}`)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+                "step": 3,
+                "quote": "<Button variant=\"dropdown\" rightIcon={<ChevronDown />}>\n  Take action\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+                "step": 4,
+                "quote": "{employee.status === \"ACTIVE\" && (\n  <DropdownMenuItem\n    label=\"Deactivate employee\"\n    icon={UserRoundX}\n    variant=\"destructive\"\n    ...\n    onClick={() => setDeactivateModalOpen(true)}\n  />\n)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+                "step": 5,
+                "quote": "<Dialog title=\"Deactivate employee?\" description=\"Updating this employee to inactive will make the following changes.\" ... <Alert variant=\"destructive\" title=\"Deletes are not reversible.\" /> ... <Button variant=\"destructive\" ... onClick={onDeactivateConfirmed}>Deactivate employee</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+                "step": 6,
+                "quote": "const prefilters = [\n  { id: \"status:all\", label: \"All\" },\n  { id: \"status:active\", label: \"Active\" },\n  { id: \"status:inactive\", label: \"Inactive\" },\n  ...\n];",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/component_employee_table.tsx",
+                "step": 7,
+                "quote": "onRowClick={(row) => router.push(`/employees/${row.employee.id}`)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+                "step": 8,
+                "quote": "{employee.status === \"INACTIVE\" && (\n  <DropdownMenuItem label=\"Reactivate employee\" icon={UserRoundCheck} ... onClick={() => setReactivateModalOpen(true)} />\n)} ... <Dialog title=\"Reactivate employee?\" ... <Button ... onClick={onReactivateConfirmed}>Reactivate employee</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:13:09.064Z",
             "confidence": "high",
             "totalSteps": 8,
             "unverified": [],
@@ -2083,10 +3459,10 @@
             "Navigate to People oversight > Trade monitoring.",
             "Click the \"Flagging rules\" button in the page header to open the trade monitoring rules list (this loads the /employees/trade-monitoring/settings page).",
             "Click \"Add\" to open the \"Add trade monitoring rule\" page.",
-            "Under \"Choose a rule type\", select the desired condition from the \"Rule type\" dropdown (e.g., \"Cost basis\", \"Security list\", \"Trade count\", or \"Symbol pattern\").",
+            "Under \"Choose a rule type\", select the desired condition from the \"Rule type\" dropdown. Available options are: \"Symbol pattern\", \"Security list\", \"Cost basis\", \"Trade count\", \"Industry (for equities)\", \"Asset class\", \"Market cap (equities, USD)\", \"% change\", and \"Round-trip (day trading)\" — the plan's four examples (Cost basis, Security list, Trade count, Symbol pattern) are correct but non-exhaustive; five more types exist.",
             "In the \"Rule conditions\" section, fill in the fields specific to the selected type (e.g., a \"Symbol\" pattern, a \"Cost basis\" amount, a \"Trade count\" and \"Window\", or a \"Market cap (USD)\" amount), and set the \"Start\" date, leaving \"Indefinite\" on or turning it off to set an \"End\" date.",
             "In the \"Scope and behavior\" section, leave \"Apply to everyone\" on to cover all employees, or turn it off and use the employee dropdown to select specific employees; optionally enable \"Whitelist\" so matching trades are allowed instead of flagged.",
-            "Click \"Add rule\" to create the new flagging rule."
+            "Click \"Add rule\" to create the new flagging rule. Exception: if \"Security list\" was chosen as the Rule type in step 4, the footer instead shows an upload/cancel control (no \"Add rule\" button) since that rule type requires uploading a securities list file."
           ],
           "evidence": [],
           "sources": [
@@ -2107,15 +3483,59 @@
           ],
           "provisionable": "likely-already-present",
           "fileFixtureKind": "csv",
-          "planUpdatedAt": "2026-09-16T05:58:31.343Z",
+          "planUpdatedAt": "2026-09-16T06:13:51.098Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/trade-monitoring/index.tsx",
+                "step": 1,
+                "quote": "export default function PeopleOversightTradeMonitoringPage() { return <EmployeeCompliancePage tabOverride=\"trade monitoring\" />; }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 2,
+                "quote": "onClick={() => router.push(\"/employees/trade-monitoring/settings\")} ... Flagging rules",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/pages/employees/trade-monitoring/settings.tsx",
+                "step": 3,
+                "quote": "actionItems={[{ label: \"Add\", href: \"/employees/trade-monitoring/add\" }]}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/settings/page_add_trade_monitoring_setting.tsx",
+                "step": 4,
+                "quote": "<Text variant=\"small_medium\">Rule type</Text> ... <SelectItem value=\"GLOBAL\">Symbol pattern</SelectItem> <SelectItem value=\"SECURITY_LIST\">Security list</SelectItem> <SelectItem value=\"COST_BASIS\">Cost basis</SelectItem> <SelectItem value=\"TRADE_COUNT\">Trade count</SelectItem>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/settings/page_add_trade_monitoring_setting.tsx",
+                "step": 5,
+                "quote": "title=\"Rule conditions\" ... <Input label=\"Symbol\" .../> ... <Input label=\"Start\" .../> <Input label=\"End\" .../> <Switch checked={indefinite} .../><Text>Indefinite</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/settings/page_add_trade_monitoring_setting.tsx",
+                "step": 6,
+                "quote": "title=\"Scope and behavior\" ... <Switch checked={restrictEveryone} .../><Text>Apply to everyone</Text> {!restrictEveryone && (<SelectEmployeeDropdown .../>)} ... <Switch checked={whitelist} .../><Text>Whitelist</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/settings/page_add_trade_monitoring_setting.tsx",
+                "step": 7,
+                "quote": "<Button onClick={addRestrictedStock} loading={loading} loadingText=\"Adding...\">Add rule</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:13:50.998Z",
             "confidence": "high",
             "totalSteps": 7,
             "unverified": [],
+            "corrections": 2,
             "verifiedSteps": 7
           }
         },
@@ -2165,12 +3585,67 @@
             "Click \"Log check\" to submit — this now triggers the duplicate warning shown in step 9, so record from this point to capture the full flow including \"Log check anyways\" / \"Cancel\"."
           ],
           "blockerReason": "Live-verified in the browser: navigating to People oversight > Check blotter shows \"You don't have this module activated. Book a demo to learn more about activating this feature.\" The Check Blotter module itself is not activated for company 1013 (Stephen Investments) at the account/feature-flag level — no amount of in-app action can create a check record until Hadrius ops activates the module for this tenant. The original fresh classification (\"self-serve-quick\") was wrong; the 3-day-old prior research note that flagged this as structurally blocked was correct.",
-          "planUpdatedAt": "2026-09-16T05:58:31.621Z",
+          "planUpdatedAt": "2026-09-16T06:13:00.887Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/check-blotter/index.tsx",
+                "step": 1,
+                "quote": "return <EmployeeCompliancePage tabOverride=\"check_blotter\" />;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/page_check_blotter.tsx",
+                "step": 2,
+                "quote": "<PantheonButton leftIcon={<BookCheck />} onClick={handleOpenLogCheckDialog}>\n  Log check\n</PantheonButton>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/entry_method_tabs.tsx",
+                "step": 3,
+                "quote": "Manual entry",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/log_check_dialog/manual_check_form.tsx",
+                "step": 4,
+                "quote": "Label htmlFor=\"log-check-representative\" ... Representative ... {canLogOnBehalf && employees && (<EmployeeSelector ... placeholder=\"Search user\" ...)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/log_check_dialog/manual_check_form.tsx",
+                "step": 5,
+                "quote": "Label ... Amount ... Label ... Issuer ... Label ... Payee",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/log_check_dialog/manual_check_form.tsx",
+                "step": 6,
+                "quote": "Label htmlFor=\"log-check-date-received\" ... Date received ... Label htmlFor=\"log-check-date-forwarded\" ... Date forwarded",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/log_check_dialog/manual_check_form.tsx",
+                "step": 7,
+                "quote": "Label htmlFor=\"log-check-forwarded-to\" ... Forwarded to ... Label htmlFor=\"log-check-check-number\" ... Check # ... (Optional)",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/log_check_dialog/index.tsx",
+                "step": 8,
+                "quote": "<Button type=\"submit\" form=\"manual-check-form\" ...>\n  Log check\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/log_check_dialog/index.tsx",
+                "step": 9,
+                "quote": "<AlertBox color=\"destructive\" title=\"Duplicate entry\" ... /> ... <Button variant=\"outline\" onClick={handleLogCheckAnyways} ...>Log check anyways</Button>\n<Button onClick={() => handleDialogClose(false)}>Cancel</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:13:00.769Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -2221,12 +3696,73 @@
             "Click the \"Log check\" button to open the Log Check dialog and fill in the manual check form (amount, received date, forwarding date, payee, issuer, etc.) to create at least one check record in a resolvable (non-archived, non-escalated) state.",
             "Click \"Save\" to log the check, confirming it appears in the check list with an open/unresolved status."
           ],
-          "planUpdatedAt": "2026-09-16T05:58:31.887Z",
+          "planUpdatedAt": "2026-09-16T06:14:59.735Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/check-blotter/index.tsx",
+                "step": 1,
+                "quote": "export default function PeopleOversightCheckBlotterPage() {\n  return <EmployeeCompliancePage tabOverride=\"check_blotter\" />;\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/components/table_columns_admin.tsx",
+                "step": 2,
+                "quote": "const handleViewCheckClick = () => { router.push(`/employees/check-blotter/details?id=${check.id}`); }; ... <Button variant=\"outline\" size=\"icon\" onClick={handleViewCheckClick}><ArrowRight className=\"size-4\" /></Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
+                "step": 3,
+                "quote": "const canResolve = !isArchived && !lockedByEscalation; ... const lockTooltip = isArchived ? \"This check is archived. Unarchive it to resume actions.\" : isEscalated && !isCurrentUserTarget ? `Escalated to ${...} - only they can resolve this check.` : undefined;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
+                "step": 4,
+                "quote": "ShieldCheck icon + \"Compliant\" — <Button variant=\"default\" disabled={isMarkingCompliant || !check || !canResolve} onClick={() => setIsCompliantDialogOpen(true)}>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/dialog_close_compliant.tsx",
+                "step": 5,
+                "quote": "Dialog title: \"Close as compliant\"; Label: \"Resolution note\" with inline \"(Optional)\"; Placeholder: \"e.g., Approved by compliance review.\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
+                "step": 6,
+                "quote": "const getSaveButtonLabel = (): string => { if (selectedIndex === totalCount - 1) return \"Save & Close\"; return \"Save & next\"; };",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
+                "step": 7,
+                "quote": "ShieldBan icon + \"Non-compliant\" — <Button variant=\"default\" disabled={isMarkingNonCompliant || !check || !canResolve} onClick={() => setIsNonCompliantDialogOpen(true)}>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/dialog_close_non_compliant.tsx",
+                "step": 8,
+                "quote": "Dialog title: \"Close as non-compliant\"; Label: \"Resolution note\" with inline \"(Required)\"; Placeholder: \"e.g., Violation of 24h rule confirmed.\"; const submitDisabled = isSubmitting || !notes.trim();",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
+                "step": 9,
+                "quote": "if (navigateToNext) { if (selectedIndex === totalCount - 1) { if (totalCount > 1) { setSelectedIndex(0); } } else { setSelectedIndex(selectedIndex + 1); } }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/employees/check_blotter/details/view_check_details.tsx",
+                "step": 10,
+                "quote": "title: \"Success\", description: \"Check resolved.\" ... const statusBadge = getStatusBadge(getEffectiveStatus(check), check.is_late ?? false, check.archived); ... dialog description: \"This will record the resolution in the audit trail and close the alert.\"",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:14:59.640Z",
             "confidence": "high",
             "totalSteps": 10,
             "unverified": [],
@@ -2265,12 +3801,73 @@
             "At least one trade with review status 'Flagged' (UNREVIEWED) to select and update — Stephen Investments (company 1013) is a Hadrius sandbox company whose nightly-reseeded demo data includes a curated overlay of pre-flagged trades, so this is expected to already be present"
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:32.167Z",
+          "planUpdatedAt": "2026-09-16T06:13:59.078Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/trade-monitoring/index.tsx",
+                "step": 1,
+                "quote": "return <EmployeeCompliancePage tabOverride=\"trade monitoring\" />;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 2,
+                "quote": "const statusFilterOptions = [\n    { label: \"All statuses\", value: \"all\" },\n    { label: \"Flagged\", value: \"UNREVIEWED\" },",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "step": 3,
+                "quote": "<DataTableSelectHead\n  key={header.id}\n  checked={allRowsSelected}\n  indeterminate={someRowsSelected}\n  onCheckedChange={handleSelectAllRows}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 4,
+                "quote": "<PantheonChip\n  text={`${selectedTrades.length} trades selected`}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 5,
+                "quote": "<SelectTrigger>\n  <SelectValue placeholder=\"Select status\" />\n</SelectTrigger>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 6,
+                "quote": "<SelectItem value=\"N/A\">Not flagged</SelectItem>\n<SelectItem value=\"UNREVIEWED\">Flagged</SelectItem>\n<SelectItem value=\"COMPLIANT\">Compliant</SelectItem>\n<SelectItem value=\"NON_COMPLIANT\">Non-compliant</SelectItem>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 7,
+                "quote": "<Button onClick={() => setShowBulkDialog(true)} disabled={bulkEditStatus === \"\"}>\n  Update Status\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 8,
+                "quote": "<DialogTitle>Update {selectedTrades.length} Trades</DialogTitle>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 9,
+                "quote": "<Button onClick={updateReviewStatus} disabled={loading}>\n  {loading ? \"Updating...\" : \"Confirm\"}\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 10,
+                "quote": "toast({\n  title: \"Trades updated\",\n  description: `${selectedTrades.length} trades have been updated successfully`,\n});",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:13:58.978Z",
             "confidence": "high",
             "totalSteps": 10,
             "unverified": [],
@@ -2321,12 +3918,67 @@
             "Confirm the newly created connection/account now appears in People oversight > Accounts — since it was just created it has zero holdings, so it is the account to select in step 4 of the main walkthrough ('choose an account that has no holdings yet')"
           ],
           "fileFixtureKind": "csv",
-          "planUpdatedAt": "2026-09-16T05:58:32.406Z",
+          "planUpdatedAt": "2026-09-16T06:14:21.899Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/accounts/index.tsx",
+                "step": 1,
+                "quote": "export default function PeopleOversightAccountsPage() {\n  return <EmployeeCompliancePage tabOverride=\"accounts\" />;\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_accounts_dashboard.tsx",
+                "step": 2,
+                "quote": "viewColumn={{\n  getHref: (row) => {\n    const employee = employeesMap.get(row.employee);\n    return `/employee/${employee?.id}/connection/${row.connection}`;\n  },\n  onView: (row) => {\n    ...\n    router.push(`/employee/${employee.id}/connection/${row.connection}`);\n  },\n  ariaLabel: \"View account\",\n",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/connections/details/page_connection_details_page.tsx",
+                "step": 3,
+                "quote": "const titles = [\"Overview\", \"Transactions\", \"Holdings\"];",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/component_upload_holdings_buttons.tsx",
+                "step": 4,
+                "quote": "<Button onClick={openHoldingsModalHelper} type=\"button\" className={className} loading={employeeLoading}>\n  <Upload className=\"size-4\" />\n  Upload holdings\n</Button>\n<Dialog\n  title=\"Select an account\"\n  description=\"Choose the account you want to upload holdings for.\"\n  ...\nconst buttonLabel = accou",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/page_employee_manual_account_holdings_upload.tsx",
+                "step": 5,
+                "quote": "<Text variant=\"2xl_bold\">Upload initial holdings</Text>\n...\n<UploadFileButton account={account} setExtractedHoldings={append} />\n...\n<Button onClick={() => setIsOpen(true)}>\n  <Text variant=\"base_medium\">Upload holdings</Text>\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/page_employee_manual_account_holdings_upload.tsx",
+                "step": 6,
+                "quote": "<ModalDialog title={\"Upload holdings csv or excel sheet\"} isOpen={isOpen} setIsOpen={setIsOpen}>\n  ...\n  <FileUploadInput label={\"Upload holdings file\"} ... />\n  ...\n  <Select ... label={\"Symbol (or name)\"}>\n  <Select ... label={\"Quantity\"}>\n  <Select ... label={\"Current total value\"}>\n  ...\n  <Butt",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/page_employee_manual_account_holdings_upload.tsx",
+                "step": 7,
+                "quote": "<Input label={\"Symbol (or name)\"} .../>\n<Input label={\"Quantity\"} .../>\n<Input label={\"Current total value\"} .../>\n...\n<Button variant=\"link\" className=\"w-fit\" type={\"button\"} onClick={() => append(DEFAULT_HOLDING)}>\n  ...\n  <Text variant=\"base_medium\">Add new holding</Text>\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/page_employee_manual_account_holdings_upload.tsx",
+                "step": 8,
+                "quote": "<Button onClick={() => handleSubmitClicked()} type={\"button\"}>\n  <Text variant=\"base_medium\">Submit</Text>\n</Button>\n...\nfunction handleSubmitClicked() {\n  trigger().then((result: boolean) => {\n    if (result) setIsOpen(true);\n  });\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/page_employee_manual_account_holdings_upload.tsx",
+                "step": 9,
+                "quote": "<SimpleConfirmationDialog\n  title={\"Submit initial holdings\"}\n  body={\"This action is final and non-reversible. Future edits to holdings will require disclosing trades individually.\"}\n  positiveText={\"Submit\"}\n  negativeText={\"Cancel\"}\n  onPositive={onSubmit}\n  ...",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:14:21.790Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -2344,7 +3996,7 @@
             "Click \"File New U5\" to start a new Form U5 filing; this opens the multi-step filing wizard at /finra/u5/new.",
             "On the \"Preliminary information\" step, use \"Select employee\" to choose the representative being terminated, confirm the filing firm in \"Select firm\", and click \"Next: General information\".",
             "On the \"General information\" step, review personal details, verify or update fields in \"Section 3: Current residential address\", and click \"Next: Termination information\".",
-            "On the \"Termination information\" step, under \"Section 1: Termination details\" select Yes or No for \"Is this a full termination?\", choose a \"Reason for termination\", pick the \"Date terminated (MM/DD/YYYY)\", and click \"Next: Disclosures\".",
+            "On the \"Termination information\" step, under \"Section 1: Termination details\" select Yes or No for \"Is this a full termination?\". If Yes, then under the resulting \"Section 2: Date of termination\" fields, choose a \"Reason for termination:\" and pick the \"Date terminated (MM/DD/YYYY):\". If No, a partial-termination section is shown instead and the Reason/Date fields do not appear. Then click \"Next: Disclosures\".",
             "On the \"Disclosures\" step, answer the questions under each disclosure category or click \"Answer \\\"No\\\" to all\" for a section, then click \"Next: Disclosure reporting pages\".",
             "On the \"Disclosure reporting pages\" step, review the disclosure reporting pages message and click \"Next: Review\".",
             "On the \"Review\" step, review all filing information and click \"Save and proceed to signatures\" to create the filing record.",
@@ -2381,15 +4033,83 @@
             "Before recording, confirm with Hadrius engineering/ops whether the filing firm on company 1013 already has a working FINRA API credential (Firm profile > FINRA API credentials) and, if so, whether it points at a real vs. throwaway FINRA relationship",
             "If credentials are missing or unverified, plan to stop the recording after \"Validate filing\" fails (or before clicking it) rather than attempting \"File U5 to FINRA\" / \"Submit filing\", to avoid either a stuck recording or a real regulatory submission"
           ],
-          "planUpdatedAt": "2026-09-16T05:58:32.651Z",
+          "planUpdatedAt": "2026-09-16T06:15:03.080Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/u5-filings/index.tsx",
+                "step": 1,
+                "quote": "import { U5DirectoryTab } from \"src/pages/finra/u5_filings/tab_u5_directory\";\n\nexport default function PeopleOversightU5FilingsPage() {\n  return <U5DirectoryTab />;\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/tab_u5_directory.tsx",
+                "step": 2,
+                "quote": "<PantheonButton leftIcon={<Plus />} onClick={() => router.push(\"/finra/u5/new\")}>\n              File New U5\n            </PantheonButton>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_preliminary_info.tsx",
+                "step": 3,
+                "quote": "<RequiredLabel required>Select employee</RequiredLabel> ... <RequiredLabel required>Select firm</RequiredLabel>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_general_info.tsx",
+                "step": 4,
+                "quote": "<Text variant=\"extra_large_leading_medium\">Section 3: Current residential address</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_termination_details.tsx",
+                "step": 5,
+                "quote": "<Text variant=\"extra_large_leading_medium\">Section 1: Termination details</Text>\n      <RequiredLabel required>Is this a full termination?</RequiredLabel> ... <RequiredLabel required>Reason for termination:</RequiredLabel> ... <RequiredLabel required>Date terminated (MM/DD/YYYY):</RequiredLabel>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_disclosures.tsx",
+                "step": 6,
+                "quote": "<Label ...>Answer \"No\" to all</Label>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_drps.tsx",
+                "step": 7,
+                "quote": "<Text variant=\"small_leading_medium\">No disclosure reporting pages required</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_new_u5_filing.tsx",
+                "step": 8,
+                "quote": "Save and proceed to signatures",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/component_u5_signatures.tsx",
+                "step": 9,
+                "quote": "<Text variant=\"extra_large_leading_medium\">Firm acknowledgment</Text> ... {!isSigning && !hasSigned && \"Sign firm acknowledgment\"} ... <Text variant=\"extra_large_leading_medium\">Individual acknowledgment and consent</Text> ... {!isSigning && !hasSigned && \"Sign individual acknowledgment\"}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_edit_u5_filing.tsx",
+                "step": 10,
+                "quote": "<PantheonButton asChild variant=\"outline\">\n                  <Link href={`/finra/u5/${filingId}`}>Back to filing</Link>\n                </PantheonButton>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u5_filings/page_specific_u5.tsx",
+                "step": 11,
+                "quote": "{isValidating ? \"Validating...\" : \"Validate filing\"} ... <PantheonButton variant=\"default\" leftIcon={<SendIcon />} onClick={() => setIsSubmitDialogOpen(true)}>\n                    File U5 to FINRA\n                  </PantheonButton> ... <AlertDialogTitle>Submit U5 filing</AlertDialogTitle> ... Submi",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:15:03.044Z",
             "confidence": "high",
             "totalSteps": 11,
             "unverified": [],
+            "corrections": 1,
             "verifiedSteps": 11
           }
         },
@@ -2433,12 +4153,61 @@
             "Enter the representative's CRD number and date of birth, then submit — this tenant's FINRA integration is mocked (company 1013 is classified INTERNAL/sandbox, so `finra_client()` always uses `call_mock=True`), so the sync succeeds immediately without any real external FINRA connectivity and creates the underlying FirmAssociation record needed for amendments.",
             "Confirm the sync completed (toast says \"Sync successful\" / \"Account connected and synced\"), then return to People oversight > U4 filings and use this employee as the representative in Section 1 of the amendment wizard."
           ],
-          "planUpdatedAt": "2026-09-16T05:58:32.907Z",
+          "planUpdatedAt": "2026-09-16T06:15:08.979Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/u4-filings/index.tsx",
+                "step": 1,
+                "quote": "export default function PeopleOversightU4FilingsPage() { return <U4DirectoryTab />; }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "step": 2,
+                "quote": "<PantheonButton leftIcon={<Plus />}>File New U4</PantheonButton> ... <DialogTitle>Create new Form U4 filing</DialogTitle>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/tab_u4_directory.tsx",
+                "step": 3,
+                "quote": "<RadioGroupItem value=\"amendment\" id=\"amendment\" /><Text variant=\"small_medium\">Amendment</Text> ... <Link href={`/finra/u4/new/${filingType}`}>Continue</Link>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_prelim_info.tsx",
+                "step": 4,
+                "quote": "<Text variant=\"extra_large_leading_medium\">Section 1: Select representative</Text> ... placeholder=\"Search for a representative's name or email\" ... onClick={() => handleEmployeeSelect(employee)}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/component_u4_amendment_prelim_info.tsx",
+                "step": 5,
+                "quote": "<Text variant=\"extra_large_leading_medium\">Section 2: Select amendment type</Text> ... { value: \"STATE_REGISTRATION\", label: \"State registration\", id: \"amendment-state-registration\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "step": 6,
+                "quote": "\"1\": { label: \"Next: Enter amendment details\", ... } ... { key: \"2\", label: \"Enter details\", ... }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "step": 7,
+                "quote": "\"2\": { label: \"Next: Review & submit\", onClick: () => { setShowValidationError(false); setCurrentStepKey(3); } }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/finra/u4_filings/page_new_u4_amendment.tsx",
+                "step": 8,
+                "quote": "Continue to signatures ... saveU4Amendment(formData).then((response) => { ... router.push(`/finra/u4/new/amendment?filingId=${newFilingId}`); })",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:15:08.874Z",
             "confidence": "high",
             "totalSteps": 8,
             "unverified": [],
@@ -2453,7 +4222,7 @@
           "priority": "medium",
           "steps": [
             "Navigate to People oversight > Certifications",
-            "Click \"New campaign\" to open the campaign builder wizard",
+            "Clicking \"New campaign\" navigates to a new page (route /employees/certifications_v2/configs/new) rather than opening an in-page modal/wizard overlay — it is still a wizard, but it's a full route change, not a dialog.",
             "On the \"Campaign details\" step, enter a name in the \"Campaign name\" field (e.g., \"Q4 2025 Annual Certification\")",
             "Use the \"Select one or more templates...\" dropdown under \"Included templates\" to add one or more certification templates to the packet",
             "Confirm the selected templates appear under \"Selected certificate templates\", then click \"Next: Campaign audience\" to advance to the \"Campaign audience\" step",
@@ -2491,15 +4260,101 @@
             "Caution, not a blocker: launching with a real employee/group audience dispatches real notification emails and tasks immediately — step_audience.tsx's alert copy states \"New employees will be notified and assigned tasks immediately\" for a non-empty audience (the only way to avoid this is the separate \"Future new hires\" / autoAssignNewHires toggle, which the plan's steps do not use). Pick a minimal/throwaway audience for the recording rather than a broad group of real staff."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:33.435Z",
+          "planUpdatedAt": "2026-09-16T06:15:46.260Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/certifications/index.tsx",
+                "step": 1,
+                "quote": "export default function PeopleOversightCertificationsPage() { ... return <EmployeeCompliancePage tabOverride=\"certifications\" />; }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_certs_v2.tsx",
+                "step": 2,
+                "quote": "<Link href=\"/employees/certifications_v2/configs/new\"><FileBadge className=\"size-4\" />New campaign</Link>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_define.tsx",
+                "step": 3,
+                "quote": "<Text variant=\"large_medium\">Campaign name</Text> ... <Input {...register(\"displayName\", ...)} placeholder=\"e.g., Q4 2025 Annual Certification\" ... />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_define.tsx",
+                "step": 4,
+                "quote": "<Text variant=\"large_medium\">Included templates</Text> ... <Combobox ... placeholder=\"Select one or more templates...\" ... />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/constants.ts",
+                "step": 5,
+                "quote": "Selected certificate templates ... nextLabel: \"Next: Campaign audience\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_audience.tsx",
+                "step": 6,
+                "quote": "<Text variant=\"large_medium\">Select audience</Text> ... <Text variant=\"small_bold\">Include</Text> <AudienceDropdown mode=\"include\" placeholder=\"Search for groups or employees...\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_audience.tsx",
+                "step": 7,
+                "quote": "<Text variant=\"small_bold\">Exclude</Text> <AudienceDropdown mode=\"exclude\" placeholder=\"Search for groups or individuals to remove...\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/constants.ts",
+                "step": 8,
+                "quote": "{ key: \"2\", label: \"Campaign audience\", ... nextLabel: \"Next: Schedule campaign\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_schedule.tsx",
+                "step": 9,
+                "quote": "<Text variant=\"small_leading_medium\">One-time</Text> ... <Text variant=\"small_leading_medium\">Recurring</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/steps/step_schedule.tsx",
+                "step": 10,
+                "quote": "<Text variant=\"small_bold\">Start date</Text> ... <Text variant=\"small_bold\">Due by</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/constants.ts",
+                "step": 11,
+                "quote": "{ key: \"4\", label: isEdit ? \"Review changes\" : \"Review campaign\", ..., nextLabel: isEdit ? \"Update campaign\" : \"Launch campaign\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/components/wizard_header.tsx",
+                "step": 12,
+                "quote": "<Button onClick={onLaunch} disabled={!canProceed || isLaunching}>{launchLabel} ... </Button>  // launchLabel = \"Launch campaign\" when !isEdit && !isLaunching",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/index.tsx",
+                "step": 13,
+                "quote": "<SimpleConfirmationDialog title=\"Launch campaign\" body={getLaunchConfirmBody()} positiveText=\"Launch\" negativeText=\"Cancel\" onPositive={handleLaunch} ... />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/certs_v2/config_builder/index.tsx",
+                "step": 14,
+                "quote": "createRoundConfig(payload).then(() => { toast({ title: \"Campaign created\", description: \"Your certification campaign has been created successfully.\", toastStyle: \"success\" }); router.push(returnPath); })",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:15:46.154Z",
             "confidence": "high",
             "totalSteps": 14,
             "unverified": [],
+            "corrections": 1,
             "verifiedSteps": 14
           }
         },
@@ -2541,12 +4396,73 @@
             "At least one employee with disclosure-review/approver capability in the org (backend approver-capability check) so the Summary step doesn't flag 'no eligible reviewer' for the chosen templates — if a chosen template has no configured default reviewer, the operator must manually pick a valid non-recipient reviewer on the Initial or Final reviewer step (already part of the plan's own steps, no extra setup screen needed)."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:33.691Z",
+          "planUpdatedAt": "2026-09-16T06:16:01.120Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/disclosures/index.tsx",
+                "step": 1,
+                "quote": "import EmployeeCompliancePage from \"src/pages/coreloop/crm/employees/page_people_oversight_upsell\"; ... return <EmployeeCompliancePage tabOverride=\"disclosures\" />;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/tab_disclosures_v2.tsx",
+                "step": 2,
+                "quote": "const [tab, setTab] = useQueryState(\"tab\", parseAsStringLiteral(TAB_KEYS).withDefault(\"approvals\")); ... { key: \"approvals\", label: \"Approvals\", ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/approvals/index.tsx",
+                "step": 3,
+                "quote": "<Button variant=\"secondary\" onClick={() => setAssignOpen(true)}>\n <Plus className=\"size-4\" />\n Assign disclosures\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/assign_wizard/steps/step_recipients.tsx",
+                "step": 4,
+                "quote": "title=\"Assign recipients\" ... <EmployeeGroupPicker ... readOnly={false} ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/shared/employee_group_picker.tsx",
+                "step": 5,
+                "quote": "<SegmentedControllerItem isActive={tab === \"employees\"} ...>Employees</SegmentedControllerItem>\n<SegmentedControllerItem isActive={tab === \"groups\"} ...>Groups</SegmentedControllerItem>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/assign_wizard/assign_disclosures_dialog.tsx",
+                "step": 6,
+                "quote": "onNext={() => setActivePanel((index) => index + 1)}\n previousLabel=\"Previous\"\n nextLabel=\"Next\"\n ... nextDisabled={!canProceed}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/assign_wizard/steps/step_templates.tsx",
+                "step": 7,
+                "quote": "title=\"Select templates\" ... <Checkbox status={selectedTemplateIds.has(row.original.templateId) ? \"active\" : \"inactive\"} onChange={(checked) => toggle(row.original.templateId, checked)} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/assign_wizard/assign_disclosures_dialog.tsx",
+                "step": 8,
+                "quote": "substep(PANEL.initial, \"Initial reviewer\", reviewersReachable), substep(PANEL.final, \"Final reviewer\", reviewersReachable)",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/assign_wizard/steps/step_reviewers.tsx",
+                "step": 9,
+                "quote": "const stepLabel = stepKind === \"initial\" ? \"Initial reviewer\" : \"Final reviewer\"; ... <span className=\"hidden lg:inline\">Add to template defaults</span> ... <span className=\"hidden lg:inline\">Replace template defaults</span>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/disclosures_v2/assign_wizard/assign_disclosures_dialog.tsx",
+                "step": 10,
+                "quote": "onNext={() => setActivePanel((index) => index + 1)} ... hideNext={isLastPanel}",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:16:01.023Z",
             "confidence": "high",
             "totalSteps": 10,
             "unverified": [],
@@ -2604,12 +4520,73 @@
             "Wait for the statement's status pill to leave \"Pending\"/processing (it reaches Complete, or Failed if the placeholder isn't a parseable real statement — either state unlocks the Holdings tab for manual editing) before starting the recorded walkthrough"
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-16T05:58:33.934Z",
+          "planUpdatedAt": "2026-09-16T06:16:08.245Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/accounts/index.tsx",
+                "step": 1,
+                "quote": "import EmployeeCompliancePage from \"src/pages/coreloop/crm/employees/page_people_oversight_upsell\";\nexport default function PeopleOversightAccountsPage() {\n  return <EmployeeCompliancePage tabOverride=\"accounts\" />;\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_accounts_dashboard.tsx",
+                "step": 2,
+                "quote": "viewColumn={{\n  getHref: (row) => { ... return `/employee/${employee?.id}/connection/${row.connection}`; },\n  onView: ... ariaLabel: \"View account\",\n}}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/connections/details/component_account_statements_drawer.tsx",
+                "step": 3,
+                "quote": "<Text variant=\"base_bold\">Account statements</Text>\n...\n<Button variant=\"outline\" className=\"w-fit\" onClick={() => setIsOpen(true)}>\n  View & upload statements",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/connections/details/component_account_statements_drawer.tsx",
+                "step": 4,
+                "quote": "text={\n  <>\n    {`${startDateStr} to ${endDateStr}`}\n    <ArrowUpRight className=\"ml-2 h-4 w-4\" />\n  </>\n}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/statements/component_extractions.tsx",
+                "step": 5,
+                "quote": "<span key=\"holdings\" className=\"inline-flex items-center gap-x-1\">\n  Holdings\n  <Badge text={String(holdings.length)} ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/statements/component_holdings.tsx",
+                "step": 6,
+                "quote": "<Button variant=\"link\" onClick={handleAdd}>\n  <div className=\"flex flex-row\">\n    <Plus className=\"h-4 w-4\" />\n  </div>\n  <Text variant=\"base_medium\">Add new holding</Text>\n</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/statements/component_holding_card.tsx",
+                "step": 7,
+                "quote": "<Input\n  value={displayHolding.name ?? \"\"}\n  onChange={(e) => setDraft({ ...draft, name: e.target.value })}\n  placeholder=\"Security name\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/statements/component_holding_card.tsx",
+                "step": 8,
+                "quote": "<Text variant=\"base_bold\" className=\"text-secondary-text\">\n  Symbol\n</Text>\n{!!isEditing && (\n  <Input\n    value={displayHolding.symbol ?? \"\"}\n    ...\n    placeholder=\"AAPL\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/statements/component_holding_card.tsx",
+                "step": 9,
+                "quote": "<Text variant=\"base_bold\" className=\"text-secondary-text\">\n  Quantity\n</Text>\n{!!isEditing && (\n  <Input\n    type=\"number\"\n    value={displayHolding.quantity ?? \"\"}\n ...\n<Text variant=\"base_bold\" className=\"text-secondary-text\">\n  Total\n</Text>\n{!!isEditing && (\n  <Input\n    type=\"number\"\n    value=",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/employees/accounts/statements/component_holding_card.tsx",
+                "step": 10,
+                "quote": "<Button variant=\"link\" onClick={handleSave} disabled={saving} loading={saving}>\n  <div className=\"flex flex-row\">\n    <Check className=\"h-4 w-4\" />\n  </div>\n</Button>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:16:08.143Z",
             "confidence": "high",
             "totalSteps": 10,
             "unverified": [],
@@ -2633,7 +4610,7 @@
             "Select the departure date in \"End date at current branch\"",
             "Select the effective date in \"Start date at new branch\"",
             "Click \"Transfer to branch\" to confirm and submit the bulk transfer",
-            "Review the \"Filings created\" confirmation screen showing the generated Form U4 (and Form BR, if applicable) amendments",
+            "Note the confirmation dialog title is exactly \"Filings created\", and the subtext (successMessage) reports counts of Form BR and/or Form U4 amendments (e.g. \"Successfully created 1 Form BR amendment and 2 Form U4 amendments\") — Form BR amendments only appear if the branch is FINRA-registered and a location-type/profile change triggers one; for a plain personnel transfer only Form U4 amendments per transferred employee are typically listed, matching the plan's \"(and Form BR, if applicable)\" caveat.",
             "Click \"Continue to filings\" to review the newly created U4 amendment filings, or \"Close\" to dismiss the dialog"
           ],
           "evidence": [
@@ -2754,15 +4731,89 @@
           ],
           "provisionable": "structurally-blocked",
           "blockerReason": "hadrius_backend/hadrius/finra/br/service_views_br.py, bulk_transfer_branch_employees() (~line 471): `if not (firm_profile := FirmProfile.objects.filter(company=company).first()): raise ResourceNotFoundException(\"Firm profile not found\")`. This FINRA path (the only one that creates Form U4/BR amendments) is selected whenever company.finra_enabled() and both source and target branches have a crd_number (hadrius_backend/hadrius/branches/views_branches.py post_transfer_branch_personnel, ~line 329) — true for company 1013 (finra_api_enabled=ACTIVE; 6 of its 8 branches are ACTV with crd_number). Live DB query confirms company 1013 has zero finra_firmprofile rows and zero finra_finraapicredentials rows. Creating a FirmProfile via the app's own UI requires the 'Onboard FINRA firm' flow (hadrius_backend/hadrius/finra/firm/views_firm.py post_onboard_finra_firm_profile), which calls the real external FINRA API (finra_client(...).get_access_token / get_firm_profile) using client_id/client_secret credentials that don't exist for this tenant — not something an operator can set up from within a recording session. Without it, any transfer between two CRD-numbered branches throws a server error at step 10, and the 'Filings created' screen (steps 11-12) is unreachable; the only workaround (transferring between the two non-FINRA branches, Scottsdale/Denver) avoids the error but produces zero U4/BR filings, defeating the plan's stated purpose.",
-          "planUpdatedAt": "2026-09-16T05:58:34.197Z",
+          "planUpdatedAt": "2026-09-16T06:16:39.235Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+                "step": 1,
+                "quote": "tabs.push({ key: \"people_directory\", title: \"People directory\", path: \"/people-oversight/people-directory\", icon: ContactRound, children: [] });",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_branch_tabs.tsx",
+                "step": 2,
+                "quote": "return { key: \"branch_oversight\", title: \"Branches\", path: \"/branches\", icon: Building2, children };",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/pages/branch_dashboard_page.tsx",
+                "step": 3,
+                "quote": "<SegmentedControllerItem isActive={viewMode === \"branch\"} onClick={() => setViewMode(\"branch\")}>Branch</SegmentedControllerItem> ... onBranchClick={(branch) => router.push(buildBranchDetailHref(branch))}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/pages/branch_details_page.tsx",
+                "step": 4,
+                "quote": "personnel: \"Personnel\",",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/pantheon_data_table_paginated.tsx",
+                "step": 5,
+                "quote": "if (enableSelection) { tableColumns.unshift({ id: \"pantheon-selection\", ... cell: ... <DataTableSelectCell ... onCheckedChange={(checked) => { ... handleSelectRow(rowData, checked); } } ... /> ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/tabs/personnel.tsx",
+                "step": 6,
+                "quote": "<Button variant=\"outline\" type=\"button\" onClick={handleBulkTransfer}><Icon icon={ArrowRightLeft} size={16} /><Typography variant=\"controlText\">Transfer {selectedBranchIndividuals.length}</Typography></Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 7,
+                "quote": "<Text variant=\"base_leading_bold\">Transfer to branch</Text> <Combobox options={branchOptions} value={targetBranchId} onValueChange={(value) => setTargetBranchId(value)} placeholder=\"Select target branch\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 8,
+                "quote": "<Text variant=\"base_leading_bold\">End date at current branch</Text> <DatePicker date={endDate} setDate={setEndDate} placeholder=\"Select end date\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 9,
+                "quote": "<Text variant=\"base_leading_bold\">Start date at new branch</Text> <DatePicker date={startDate} setDate={setStartDate} placeholder=\"Select start date\" ...",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 10,
+                "quote": "{!bulkTransferBranchEmployeesLoading && <ArrowRightLeft className=\"h-4 w-4\" />} Transfer to branch",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 11,
+                "quote": "{showResults ? \"Filings created\" : `Transfer [${employees.length}] employee${employees.length > 1 ? \"s\" : \"\"} to another branch`}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/branches/detail_view/components/bulk_transfer_employees_modal.tsx",
+                "step": 12,
+                "quote": "<Button variant=\"ghost\" onClick={onCancel}>Close</Button> {createdFilings.length > 0 && (<Button variant=\"default\" asChild><Link href={`/people-oversight/u4-filings?highlight=...`}>Continue to filings</Link></Button>)}",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:16:39.128Z",
             "confidence": "high",
             "totalSteps": 12,
             "unverified": [],
+            "corrections": 1,
             "verifiedSteps": 12
           }
         },
@@ -2872,12 +4923,67 @@
             "The 'Default monitoring start date' field only shows for accounts that are both a company admin AND flagged is_hadrius_employee (apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx:163) — the plan already treats this as optional/conditional ('If visible'), which is correct."
           ],
           "provisionable": "likely-already-present",
-          "planUpdatedAt": "2026-09-16T05:58:34.447Z",
+          "planUpdatedAt": "2026-09-16T06:16:32.788Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/pages/people-oversight/trade-monitoring/index.tsx",
+                "step": 1,
+                "quote": "return <EmployeeCompliancePage tabOverride=\"trade monitoring\" />;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+                "step": 2,
+                "quote": "onClick={() => router.push(\"/employees/trade-monitoring/configuration\")}\n                    leftIcon={<Settings aria-hidden=\"true\" />}\n                  >\n                    Manage",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx",
+                "step": 3,
+                "quote": "<Text variant=\"small_leading_medium\">Cost basis buffer (+/- %)</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx",
+                "step": 4,
+                "quote": "<Text variant=\"small_leading_medium\">Automatically expire days after approval</Text>\n... Leave blank to never auto expire.",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx",
+                "step": 5,
+                "quote": "<Text variant=\"small_leading_medium\">Auto-Approve</Text> ... <SelectItem value=\"INACTIVE\">Disabled</SelectItem> <SelectItem value=\"NONRESTRICTED\">Non-Restricted</SelectItem> <SelectItem value=\"UNCONDITIONALLY\">Unconditionally</SelectItem>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx",
+                "step": 6,
+                "quote": "<Text variant=\"small_leading_medium\">Auto-reject restricted pre-trade disclosures</Text> ... <SelectItem value=\"ACTIVE\">Enabled</SelectItem> <SelectItem value=\"INACTIVE\">Disabled</SelectItem>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx",
+                "step": 7,
+                "quote": "<Text variant=\"small_leading_medium\">Upload account statement(s) reminder cadence</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx",
+                "step": 8,
+                "quote": "{!!isHadriusAdmin && ( ... <Text variant=\"small_leading_medium\">Default monitoring start date</Text>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/config/page_edit_trade_monitoring_configuration.tsx",
+                "step": 9,
+                "quote": "<PantheonButton onClick={onSubmit} loading={isSubmitting}> Submit </PantheonButton>",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:16:32.689Z",
             "confidence": "high",
             "totalSteps": 9,
             "unverified": [],
@@ -6733,16 +8839,77 @@
           "provisionable": "likely-already-present",
           "blockerReason": "",
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T05:58:48.102Z",
+          "planUpdatedAt": "2026-09-16T06:16:40.445Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
-            "steps": [],
-            "source": "codebase audit (step-by-step audit, pre-verdict)",
-            "checkedAt": "2026-09-16T05:58:22.051122Z",
-            "confidence": "high",
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_trade_surveillance_tab.tsx",
+                "step": 1,
+                "quote": "{ title: \"Trades\", path: \"/account-surveillance/trades\" }",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_trades_table_container.tsx",
+                "step": 2,
+                "quote": "searchPlaceholder=\"Search symbol, CUSIP, ISIN, order ID, or external ID...\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_transaction_type_filter.tsx",
+                "step": 3,
+                "quote": "export const TRANSACTION_TYPE_OPTIONS: TransactionTypeOption[] = [\n  { label: \"Buys & Sells\", sides: DEFAULT_TRANSACTION_TYPE_SIDES },\n  { label: \"Dividends & Interest\", ... }\n]; export const ALL_TRANSACTION_TYPES_LABEL = \"All\";",
+                "verified": false
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_trades_table_container.tsx",
+                "step": 4,
+                "quote": "filterTitle=\"Trade filters\" ... onClick={() => onFiltersOpenChange(!isFiltersOpen)} ... total_value_min ... is_discretionary",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_trades_table_container.tsx",
+                "step": 5,
+                "quote": "options={[{ label: \"Saved searches\", value: \"\" }, ...savedTradeSearches.map((search) => ({ label: search.name, value: String(search.id) }))]}",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/trade_surveillance/components/component_trades_table_container.tsx",
+                "step": 6,
+                "quote": "{!!selectedTrades.length && (<Button onClick={handleCreateManualException} ...>Create manual exception</Button>)}\n<Button variant=\"outline\" onClick={onExport} disabled={isExporting} ... leftIcon={<Download />}>Export</Button>",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/api/trade_surveillance/api_trade_surveillance.ts",
+                "step": 7,
+                "quote": "setIsLoading(true); fetchFile(path, \"trade_blotter_export.csv\", {})... .finally(() => { setIsLoading(false); });",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/api/trade_surveillance/api_trade_surveillance.ts",
+                "step": 8,
+                "quote": "fetchFile(path, \"trade_blotter_export.csv\", {})",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/api/trade_surveillance/api_trade_surveillance.ts",
+                "step": 9,
+                "quote": "setError({ message: err?.message ?? \"Failed to export trades. Please try again.\" }); // Forward the backend's error message when there is one (e.g. the \"matches N trades, exceeds limit\" too-many-rows response)",
+                "verified": true
+              }
+            ],
+            "source": "codebase verification (per-step proof)",
+            "checkedAt": "2026-09-16T06:16:40.408Z",
+            "confidence": "medium",
             "totalSteps": 9,
-            "unverified": [],
-            "verifiedSteps": 9
+            "unverified": [
+              {
+                "step": 3,
+                "reason": "The prefilter chips are not 'Buy'/'Sell' — they are grouped transaction-type pills: 'All', 'Buys & Sells', 'Dividends & Interest', 'Deposits & Withdrawals', 'Transfers', 'Fees', 'Corporate actions', '"
+              }
+            ],
+            "corrections": 1,
+            "verifiedSteps": 8
           }
         },
         {
