@@ -66,8 +66,10 @@ for (const step of script.steps) {
   // PNG and scale by the real ratio, so the drawn highlight and the interactive hotspot always land
   // in the image's own coordinate space no matter the zoom, display scaling, or whether dpr was saved.
   const png = readPngSize(src);
-  const bbox = step.target?.hint?.bbox;
-  const viewport = step.target?.hint?.viewport;
+  // Panel-saved scripts wrap geometry in target.hint; AI-recorded ones keep it on the target itself.
+  const geom = step.target?.hint?.bbox ? step.target.hint : (step.target || {});
+  const bbox = geom.bbox;
+  const viewport = geom.viewport;
   const sx = png && viewport?.w ? png.width / viewport.w : (step.dpr || 1);
   const sy = png && viewport?.h ? png.height / viewport.h : (step.dpr || 1);
   const target = bbox ? { x: Math.round(bbox.x * sx), y: Math.round(bbox.y * sy), width: Math.round(bbox.w * sx), height: Math.round(bbox.h * sy) } : null;
