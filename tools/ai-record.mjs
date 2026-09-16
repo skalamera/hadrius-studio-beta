@@ -950,10 +950,20 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       const acted = history.filter((h) => !h.error && h.action !== 'wait');
       const prev = acted[acted.length - 1];
       let consecutive = 0; for (let i = acted.length - 1; i >= 0 && acted[i].sig === sig; i--) consecutive++;
+      // Refuse a repeat at most ONCE per element: refusals never enter `acted`, so without this the
+      // first "no visible change" made every later request for that element refused forever — a
+      // dead loop that burned a whole run on one menu item. The second identical request goes
+      // through, but activated differently (keyboard, below) since a plain click already did nothing.
+      const refusedBefore = history[history.length - 1]?.error?.startsWith('refused') && history[history.length - 1]?.sig === sig;
+      let activateWithKeyboard = false;
       if ((decision.action === 'click' || decision.action === 'hover') && ((prev?.sig === sig && /no visible change/.test(prev.outcome || '')) || consecutive >= 2)) {
-        history.push({ action: decision.action, name: el.name, sig, error: `refused — you clicked "${el.name}" ${consecutive} time(s) in a row${prev?.sig === sig && /no visible change/.test(prev.outcome || '') ? ' and nothing changed' : ''}. Something else must happen first (fill a required field, pick an option, wait for a load); choose a different element, or "fail" if the workflow cannot be completed here.` });
-        onLog(`  ! refused repeat click on "${el.name}"`);
-        continue;
+        if (!refusedBefore) {
+          history.push({ action: decision.action, name: el.name, sig, error: `refused — you clicked "${el.name}" ${consecutive} time(s) in a row${prev?.sig === sig && /no visible change/.test(prev.outcome || '') ? ' and nothing changed' : ''}. Something else must happen first (fill a required field, pick an option, wait for a load); choose a different element, or "fail" if the workflow cannot be completed here. If you are certain this is the right control, ask for it once more and it will be activated with the keyboard instead.` });
+          onLog(`  ! refused repeat click on "${el.name}"`);
+          continue;
+        }
+        activateWithKeyboard = true;
+        onLog(`  retrying "${el.name}" via keyboard activation`);
       }
 
       // Bring the target into the viewport BEFORE measuring and capturing: the box is recorded in
@@ -994,10 +1004,25 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       try {
         if (decision.action === 'click') {
           let clicked = false;
-          try {
-            await loc.click({ timeout: 2500 });
+          if (activateWithKeyboard) {
+            // Focus + Enter: menu items, options and buttons all activate on Enter, and it sidesteps
+            // pointer-event quirks (e.g. a menu closing on pointerdown before the item's own handler).
+            await loc.focus({ timeout: 2500 });
+            await page.keyboard.press('Enter');
             clicked = true;
+          }
+          try {
+            if (!clicked) { await loc.click({ timeout: 2500 }); clicked = true; }
           } catch (_) {}
+          // A menu item that is still in the DOM after being clicked means the menu didn't act on the
+          // click; give it the keyboard path right away rather than reporting "no visible change".
+          if (clicked && !activateWithKeyboard && ['menuitem', 'option', 'menuitemradio', 'menuitemcheckbox'].includes(el.role)) {
+            await page.waitForTimeout(300);
+            const stillThere = await loc.count().catch(() => 0);
+            if (stillThere) {
+              try { await loc.focus({ timeout: 1000 }); await page.keyboard.press('Enter'); onLog(`  menu item "${el.name}" ignored the click — activated with Enter`); } catch (_) {}
+            }
+          }
 
           if (!clicked) {
             const b = await loc.boundingBox().catch(() => null);

@@ -375,8 +375,10 @@ function evictAiJobs() {
   const cutoff = Date.now() - AI_JOB_TTL_MS;
   for (const [key, j] of aiJobs) if (!aiBusy(j) && j.finishedAt && Date.parse(j.finishedAt) < cutoff) aiJobs.delete(key);
 }
-function aiJobView(j) {
-  return { state: j.state, running: j.state === 'running', queued: j.state === 'queued', startedAt: j.startedAt, finishedAt: j.finishedAt, log: j.log.slice(-40), error: j.error, result: j.result };
+function aiJobView(j, { full = false } = {}) {
+  // The list view stays light; a single job's view returns the whole retained log so a failed run
+  // can be diagnosed from its first turns, not just its last 40 lines.
+  return { state: j.state, running: j.state === 'running', queued: j.state === 'queued', startedAt: j.startedAt, finishedAt: j.finishedAt, log: full ? j.log.slice() : j.log.slice(-40), error: j.error, result: j.result };
 }
 
 // Each concurrent job runs in its own persistent browser profile (.browser-profile-ai-<slot>) with
@@ -2110,7 +2112,7 @@ const server = http.createServer(async (req, res) => {
       }
       const job = aiJobs.get(key);
       if (!job) return sendJson(res, 404, { ok: false, error: 'Job not found' });
-      return sendJson(res, 200, { ok: true, job: aiJobView(job) });
+      return sendJson(res, 200, { ok: true, job: aiJobView(job, { full: true }) });
     }
   }
 
