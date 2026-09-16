@@ -156,7 +156,9 @@ function checkClaudeAuth({ maxAgeMs = 60000 } = {}) {
     child.stdin?.end();
   });
 }
-const isClaudeAuthError = (msg) => /authenticate|OAuth|not logged in|log ?in|session expired/i.test(String(msg));
+// \b guards keep prose like "two dialog instances" from matching "log in" and spuriously
+// flagging the CLI as signed out on an ordinary workflow failure.
+const isClaudeAuthError = (msg) => /authenticate|OAuth|not logged in|\blog ?in\b|session expired/i.test(String(msg));
 /** Append the fix to an auth failure message and flip the cached state so the panel's banner appears. */
 function withAuthHint(msg) {
   const s = String(msg);
