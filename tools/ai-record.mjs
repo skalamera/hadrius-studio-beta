@@ -956,6 +956,19 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         continue;
       }
 
+      // Bring the target into the viewport BEFORE measuring and capturing: the box is recorded in
+      // viewport coordinates and the slide is a viewport screenshot, so a control below the fold
+      // would otherwise get a box past the image's bottom edge and a slide that doesn't show it.
+      // (The spotlight scrolls later too, but that's after the capture.) Instant, not smooth — the
+      // measurement follows immediately.
+      await page.evaluate((id) => {
+        const t = document.querySelector('[data-kb-ai-id="' + id + '"]');
+        if (!t) return;
+        const r = t.getBoundingClientRect();
+        if (r.top < 40 || r.bottom > innerHeight - 40 || r.left < 0 || r.right > innerWidth) t.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
+      }, elementId).catch(() => {});
+      await page.waitForTimeout(150);
+
       // Fingerprint BEFORE acting: a click that navigates or closes a dialog unmounts the element.
       const fp = await page.evaluate(FINGERPRINT_FN, elementId).catch(() => null);
       if (!fp) { history.push({ action: decision.action, name: el.name, error: 'element disappeared before it could be recorded' }); continue; }
