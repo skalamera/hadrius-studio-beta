@@ -1,7 +1,8 @@
 """KB Studio assembler: slides + narration -> narrated MP4 (with captions, zoom, music) + interactive HTML.
 Usage: .venv/bin/python renderer/assemble.py out/<name> [--music assets/music_bed.wav] [--voice en-US-AndrewNeural]
 """
-import asyncio, json, os, subprocess, sys, textwrap, shutil, html
+from __future__ import annotations
+import asyncio, json, os, subprocess, sys, textwrap, shutil, html, re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from PIL import Image, ImageDraw, ImageFont
@@ -12,6 +13,69 @@ MUSIC = Path(args[args.index('--music') + 1]) if '--music' in args else Path('as
 VOICE = args[args.index('--voice') + 1] if '--voice' in args else 'en-US-EmmaNeural'
 RATE = args[args.index('--rate') + 1] if '--rate' in args else '+0%'
 PITCH = args[args.index('--pitch') + 1] if '--pitch' in args else '+3Hz'
+MODULE_ARG = args[args.index('--module') + 1] if '--module' in args else None
+SHOW_ACADEMY = '--show-academy' in args
+
+def resolve_module(rep: dict, root: Path, out_path: Path | None = None) -> str | None:
+    if rep.get('module'):
+        return rep['module']
+    name = rep.get('name') or (out_path.name if out_path else '')
+    candidates = [
+        root / 'scripts' / f'{name}.script.json',
+        root / 'scripts' / f'{name}-ai.script.json',
+    ]
+    if name.endswith('-ai'):
+        candidates.append(root / 'scripts' / f'{name[:-3]}.script.json')
+    for c in candidates:
+        if c.exists():
+            try:
+                data = json.load(open(c))
+                if data.get('module'):
+                    return data['module']
+            except Exception:
+                pass
+    cov_path = root / '.coverage-plans.json'
+    if cov_path.exists():
+        try:
+            plans = json.load(open(cov_path))
+            norm_name = re.sub(r'[^a-z0-9]+', '', name.lower())
+            for k, v in plans.items():
+                norm_k = re.sub(r'[^a-z0-9]+', '', k.lower())
+                if norm_name and (norm_name in norm_k or norm_k in norm_name):
+                    m = v.get('plan', {}).get('module')
+                    if m:
+                        return m
+        except Exception:
+            pass
+    slides = rep.get('slides') or rep.get('steps') or []
+    for s in slides:
+        route = (s.get('route') or s.get('url') or '').lower()
+        if '/testing-program' in route:
+            return 'Testing program'
+        if '/people-oversight' in route or '/employees' in route:
+            return 'People oversight'
+        if '/branches' in route or '/branch-exams' in route or '/finra' in route:
+            return 'Branches'
+        if '/communications' in route or '/cases' in route or '/archive' in route:
+            return 'Communications'
+        if '/marketing' in route:
+            return 'Marketing'
+        if '/account-surveillance' in route or '/trade_surveillance' in route:
+            return 'Account surveillance'
+    text = f'{name} {rep.get("title", "")}'.lower()
+    if any(w in text for w in ['branch']):
+        return 'Branches'
+    if any(w in text for w in ['trade', 'surveillance', 'brokerage']):
+        return 'Account surveillance'
+    if any(w in text for w in ['employee', 'certification', 'disclosure', 'u4', 'u5', 'attestation']):
+        return 'People oversight'
+    if any(w in text for w in ['marketing', 'campaign']):
+        return 'Marketing'
+    if any(w in text for w in ['email', 'instant message', 'social media', 'lexicon', 'communication']):
+        return 'Communications'
+    if any(w in text for w in ['policy', 'test', 'finding', 'control', 'risk', 'calendar', 'entity']):
+        return 'Testing program'
+    return None
 
 def find_clip(arg_name, candidates):
     if arg_name in args:
@@ -271,7 +335,14 @@ subprocess.run(['ffmpeg', '-y', *inputs, '-filter_complex', ';'.join(filt), '-ma
 # ---------- 5. stitch intro + title card + content + outro clips ----------
 title_clip = tmp / 'title_card.mp4'
 try:
-    generate_title_video(rep.get('title') or rep['name'], title_clip, music_path=MUSIC if MUSIC.exists() else None)
+    mod_name = MODULE_ARG or resolve_module(rep, ROOT, out)
+    generate_title_video(
+        rep.get('title') or rep['name'],
+        title_clip,
+        module=mod_name,
+        music_path=MUSIC if MUSIC.exists() else None,
+        show_academy=SHOW_ACADEMY
+    )
 except Exception as e:
     print(f"warning: could not generate title card: {e}")
 

@@ -6,7 +6,6 @@
   "How to create and launch a certification campaign",
   "How to change a branch's operational status (and close a FINRA branch)",
   "How to schedule a calendar task",
-  "How to correct how a policy's sections were parsed",
   "How to reopen a resolved finding",
   "How to acknowledge a business risk during test review",
   "How to bulk assign tests and categories to an entity",
@@ -40,5 +39,6 @@
   "How to create a disclosure rule to auto-attach disclosures",
   "How to configure document expiration and renewal rules",
   "How to configure project submission questions",
-  "How to bulk sign, validate, and submit U4 filings"
+  "How to bulk sign, validate, and submit U4 filings",
+  "How to add an affiliated firm"
 ]

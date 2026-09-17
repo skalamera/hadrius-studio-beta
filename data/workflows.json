@@ -2700,7 +2700,7 @@
             "verifiedSteps": 10
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-16T22:12:59.835Z",
+          "planUpdatedAt": "2026-09-17T00:37:00.511Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -4180,7 +4180,7 @@
             "Enter the representative's CRD number and date of birth, then submit — this tenant's FINRA integration is mocked (company 1013 is classified INTERNAL/sandbox, so `finra_client()` always uses `call_mock=True`), so the sync succeeds immediately without any real external FINRA connectivity and creates the underlying FirmAssociation record needed for amendments.",
             "Confirm the sync completed (toast says \"Sync successful\" / \"Account connected and synced\"), then return to People oversight > U4 filings and use this employee as the representative in Section 1 of the amendment wizard."
           ],
-          "planUpdatedAt": "2026-09-16T22:12:48.420Z",
+          "planUpdatedAt": "2026-09-17T00:36:12.873Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [
@@ -6447,7 +6447,7 @@
             "apps/hadrius-app/src/pages/finra/firm_profile/component_affiliated_firms_section.tsx",
             "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/footer.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "User is a company admin (non-admins are redirected to /settings/account)",
             "Settings tab \"Firms & FINRA\" is available: people-oversight access, or employee_c8e together with branches_enabled",
@@ -6469,7 +6469,8 @@
             "totalSteps": 7,
             "unverified": [],
             "verifiedSteps": 7
-          }
+          },
+          "linkedScript": "How-to-add-an-affiliated-firm"
         },
         {
           "status": "missing",

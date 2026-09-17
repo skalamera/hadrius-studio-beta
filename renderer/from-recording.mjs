@@ -37,6 +37,7 @@ function readPngSize(file) {
 const report = {
   name: script.name,
   title: script.title || script.name,
+  module: script.module || null,
   startedAt: script.recording.recordedAt || script.createdAt || new Date().toISOString(),
   slides: [],
   healed: [],
