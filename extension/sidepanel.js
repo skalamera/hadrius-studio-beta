@@ -702,7 +702,7 @@ function renderViewPlanContent(plan, isProposed = false) {
       : '<li class="plan-step-item muted">No steps defined yet.</li>';
   } else {
     if (addStepRow) addStepRow.hidden = false;
-    renderEditableSteps(steps);
+    if (activeViewPlanModal?.editor) renderEditableSteps(activeViewPlanModal.editor);
   }
 
   const sources = plan.sources || activeViewPlanModal?.originalWorkflow?.sources || [];
@@ -728,27 +728,43 @@ function openViewPlanModal(moduleName, workflow) {
     return g ? { verified: g.verified === true, file: g.file || null, quote: g.quote || null, reason: g.reason || null } : { verified: false, file: null, quote: null, reason: null };
   });
 
+  const currentPlan = {
+    title: workflow.title,
+    module: moduleName,
+    startRoute: workflow.startRoute || workflow.start_route,
+    summary: workflow.purpose || workflow.summary || '',
+    steps,
+    sources: workflow.sources || [],
+    prerequisites: workflow.prerequisites || [],
+    provisionable: workflow.provisionable || null,
+    blockerReason: workflow.blockerReason || '',
+    grounding: workflow.grounding || null,
+    autoRecordBlocker: workflow.autoRecordBlocker,
+    planUpdatedAt: workflow.planUpdatedAt || null,
+    planUpdatedBy: workflow.planUpdatedBy || null
+  };
+
   activeViewPlanModal = {
     module: moduleName,
     originalWorkflow: workflow,
-    currentPlan: {
-      title: workflow.title,
-      module: moduleName,
-      startRoute: workflow.startRoute || workflow.start_route,
-      summary: workflow.purpose || workflow.summary || '',
-      steps,
-      sources: workflow.sources || [],
-      prerequisites: workflow.prerequisites || [],
-      provisionable: workflow.provisionable || null,
-      blockerReason: workflow.blockerReason || '',
-      grounding: workflow.grounding || null,
-      autoRecordBlocker: workflow.autoRecordBlocker,
-      planUpdatedAt: workflow.planUpdatedAt || null,
-      planUpdatedBy: workflow.planUpdatedBy || null
-    },
+    currentPlan,
     stepMeta,
     enhancedPlan: null,
-    saveTimer: null
+    editor: makePlanEditor({
+      plan: currentPlan,
+      stepMeta,
+      listEl: $('#viewPlanModalStepsList'),
+      countEl: $('#viewPlanStepsCount'),
+      addFormEl: $('#viewPlanAddStepForm'),
+      addInputEl: $('#viewPlanAddStepInput'),
+      addGroundBtnEl: $('#viewPlanAddStepGroundBtn'),
+      statusEl: $('#viewPlanSaveStatus'),
+      persist: 'immediate',
+      onSaved: (plan) => {
+        activeViewPlanModal.originalWorkflow = { ...activeViewPlanModal.originalWorkflow, ...plan, autoRecordBlocker: autoRecordBlocker(plan) };
+        renderViewPlanContent(plan, false);
+      }
+    })
   };
 
   renderViewPlanContent(activeViewPlanModal.currentPlan, false);
@@ -765,17 +781,25 @@ function openViewPlanModal(moduleName, workflow) {
 }
 
 function closeViewPlanModal() {
-  if (activeViewPlanModal?.saveTimer) clearTimeout(activeViewPlanModal.saveTimer);
+  if (activeViewPlanModal?.editor?.saveTimer) clearTimeout(activeViewPlanModal.editor.saveTimer);
   $('#viewPlanModal').hidden = true;
   activeViewPlanModal = null;
 }
 
-// ---- Plan editing: add/reorder/edit/delete steps, ground new ones, refine existing ones with AI ----
+// ---- Plan editing: add/reorder/edit/delete steps, ground new ones, refine existing ones with AI.
+// One shared editor drives both the View Plan modal (an already-shared plan — edits auto-save via
+// /workflows/opportunity, persist:'immediate') and the AI Plan & Record review step (a proposal
+// nobody has accepted yet — persist:null, edits just mutate the in-memory plan object in place;
+// whichever of Accept & Record / Save for Later the user eventually clicks reads that same object).
+function makePlanEditor({ plan, stepMeta, listEl, countEl = null, addFormEl = null, addInputEl = null, addGroundBtnEl = null, statusEl = null, persist = null, onSaved = null }) {
+  return { plan, stepMeta, listEl, countEl, addFormEl, addInputEl, addGroundBtnEl, statusEl, persist, onSaved, saveTimer: null };
+}
 
-function renderEditableSteps(steps) {
-  const stepsList = $('#viewPlanModalStepsList');
+function renderEditableSteps(editor) {
+  const steps = editor.plan.steps;
+  const stepsList = editor.listEl;
   stepsList.classList.add('editable');
-  const meta = activeViewPlanModal?.stepMeta || [];
+  const meta = editor.stepMeta;
 
   if (!steps.length) {
     stepsList.innerHTML = '<li class="plan-step-item muted">No steps yet — use "+ Add step" below.</li>';
@@ -806,21 +830,26 @@ function renderEditableSteps(steps) {
 
   stepsList.querySelectorAll('.plan-step-item').forEach((li) => {
     const idx = Number(li.dataset.idx);
-    li.querySelector('.plan-step-up')?.addEventListener('click', () => moveStep(idx, -1));
-    li.querySelector('.plan-step-down')?.addEventListener('click', () => moveStep(idx, 1));
-    li.querySelector('.plan-step-del')?.addEventListener('click', () => deleteStepAt(idx));
-    li.querySelector('.plan-step-ai')?.addEventListener('click', () => refineStepAI(idx));
+    li.querySelector('.plan-step-up')?.addEventListener('click', () => moveStep(editor, idx, -1));
+    li.querySelector('.plan-step-down')?.addEventListener('click', () => moveStep(editor, idx, 1));
+    li.querySelector('.plan-step-del')?.addEventListener('click', () => deleteStepAt(editor, idx));
+    li.querySelector('.plan-step-ai')?.addEventListener('click', () => refineStepAI(editor, idx));
     const desc = li.querySelector('.plan-step-desc');
-    if (desc) desc.addEventListener('click', () => beginEditStep(idx));
+    if (desc) desc.addEventListener('click', () => beginEditStep(editor, idx));
   });
 }
 
-function beginEditStep(idx) {
-  const li = $(`.plan-step-item[data-idx="${idx}"]`);
+function afterEdit(editor) {
+  renderEditableSteps(editor);
+  if (editor.countEl) editor.countEl.textContent = `${editor.plan.steps.length} step${editor.plan.steps.length === 1 ? '' : 's'}`;
+  if (editor.persist === 'immediate') scheduleSavePlanEdits(editor);
+}
+
+function beginEditStep(editor, idx) {
+  const li = editor.listEl.querySelector(`.plan-step-item[data-idx="${idx}"]`);
   const desc = li?.querySelector('.plan-step-desc');
   if (!desc || desc.querySelector('textarea')) return;
-  const plan = activeViewPlanModal.currentPlan;
-  const original = String(plan.steps[idx] || '');
+  const original = String(editor.plan.steps[idx] || '');
   desc.innerHTML = '';
   const ta = document.createElement('textarea');
   ta.value = original;
@@ -831,45 +860,43 @@ function beginEditStep(idx) {
   const commit = () => {
     const next = ta.value.trim();
     if (next && next !== original) {
-      plan.steps[idx] = next;
-      activeViewPlanModal.stepMeta[idx] = { verified: false, file: null, quote: null, reason: 'Edited by hand — not re-verified. Use ✨ to check it against the codebase.' };
-      scheduleSavePlanEdits();
+      editor.plan.steps[idx] = next;
+      editor.stepMeta[idx] = { verified: false, file: null, quote: null, reason: 'Edited by hand — not re-verified. Use ✨ to check it against the codebase.' };
+      afterEdit(editor);
+    } else {
+      renderEditableSteps(editor);
     }
-    renderEditableSteps(plan.steps);
   };
   ta.addEventListener('blur', commit);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); }
-    if (e.key === 'Escape') { e.preventDefault(); renderEditableSteps(plan.steps); }
+    if (e.key === 'Escape') { e.preventDefault(); renderEditableSteps(editor); }
   });
 }
 
-function moveStep(idx, dir) {
-  const plan = activeViewPlanModal.currentPlan;
+function moveStep(editor, idx, dir) {
+  const { steps } = editor.plan;
   const j = idx + dir;
-  if (j < 0 || j >= plan.steps.length) return;
-  [plan.steps[idx], plan.steps[j]] = [plan.steps[j], plan.steps[idx]];
-  [activeViewPlanModal.stepMeta[idx], activeViewPlanModal.stepMeta[j]] = [activeViewPlanModal.stepMeta[j], activeViewPlanModal.stepMeta[idx]];
-  renderEditableSteps(plan.steps);
-  scheduleSavePlanEdits();
+  if (j < 0 || j >= steps.length) return;
+  [steps[idx], steps[j]] = [steps[j], steps[idx]];
+  [editor.stepMeta[idx], editor.stepMeta[j]] = [editor.stepMeta[j], editor.stepMeta[idx]];
+  afterEdit(editor);
 }
 
-function deleteStepAt(idx) {
-  const plan = activeViewPlanModal.currentPlan;
-  if (!confirm(`Delete step ${idx + 1}?\n\n"${plan.steps[idx]}"`)) return;
-  plan.steps.splice(idx, 1);
-  activeViewPlanModal.stepMeta.splice(idx, 1);
-  renderEditableSteps(plan.steps);
-  $('#viewPlanStepsCount').textContent = `${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'}`;
-  scheduleSavePlanEdits();
+function deleteStepAt(editor, idx) {
+  const { steps } = editor.plan;
+  if (!confirm(`Delete step ${idx + 1}?\n\n"${steps[idx]}"`)) return;
+  steps.splice(idx, 1);
+  editor.stepMeta.splice(idx, 1);
+  afterEdit(editor);
 }
 
-async function refineStepAI(idx) {
-  const plan = activeViewPlanModal.currentPlan;
+async function refineStepAI(editor, idx) {
+  const plan = editor.plan;
   const instruction = prompt(`How should step ${idx + 1} change?\n\nLeave blank to just re-verify it against the codebase as-is.`, '');
   if (instruction === null) return; // cancelled
 
-  const li = $(`.plan-step-item[data-idx="${idx}"]`);
+  const li = editor.listEl.querySelector(`.plan-step-item[data-idx="${idx}"]`);
   const aiBtn = li?.querySelector('.plan-step-ai');
   if (aiBtn) { aiBtn.disabled = true; aiBtn.textContent = '⏳'; }
   try {
@@ -879,18 +906,17 @@ async function refineStepAI(idx) {
     });
     if (!res?.ok) throw new Error(res?.error || 'Refine failed');
     plan.steps[idx] = res.instruction;
-    activeViewPlanModal.stepMeta[idx] = { verified: res.verified, file: res.file, quote: res.quote, reason: res.reason };
-    renderEditableSteps(plan.steps);
-    scheduleSavePlanEdits();
+    editor.stepMeta[idx] = { verified: res.verified, file: res.file, quote: res.quote, reason: res.reason };
+    afterEdit(editor);
   } catch (err) {
     alert(`Could not refine step ${idx + 1}: ${err.message}`);
-    renderEditableSteps(plan.steps);
+    renderEditableSteps(editor);
   }
 }
 
-async function addStepGrounded(rawIdea) {
-  const plan = activeViewPlanModal.currentPlan;
-  const btn = $('#viewPlanAddStepGroundBtn');
+async function addStepGrounded(editor, rawIdea) {
+  const plan = editor.plan;
+  const btn = editor.addGroundBtnEl;
   btn.disabled = true;
   const original = btn.textContent;
   btn.textContent = '⏳ Grounding…';
@@ -901,8 +927,8 @@ async function addStepGrounded(rawIdea) {
     });
     if (!res?.ok) throw new Error(res?.error || 'Grounding failed');
     plan.steps.push(res.instruction);
-    activeViewPlanModal.stepMeta.push({ verified: res.verified, file: res.file, quote: res.quote, reason: res.reason });
-    finishAddStep();
+    editor.stepMeta.push({ verified: res.verified, file: res.file, quote: res.quote, reason: res.reason });
+    finishAddStep(editor);
   } catch (err) {
     alert(`Could not ground that step: ${err.message}`);
   } finally {
@@ -911,45 +937,36 @@ async function addStepGrounded(rawIdea) {
   }
 }
 
-function addStepPlain(text) {
-  const plan = activeViewPlanModal.currentPlan;
-  plan.steps.push(text);
-  activeViewPlanModal.stepMeta.push({ verified: false, file: null, quote: null, reason: 'Added manually — not verified against the codebase.' });
-  finishAddStep();
+function addStepPlain(editor, text) {
+  editor.plan.steps.push(text);
+  editor.stepMeta.push({ verified: false, file: null, quote: null, reason: 'Added manually — not verified against the codebase.' });
+  finishAddStep(editor);
 }
 
-function finishAddStep() {
-  const plan = activeViewPlanModal.currentPlan;
-  renderEditableSteps(plan.steps);
-  $('#viewPlanStepsCount').textContent = `${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'}`;
-  $('#viewPlanAddStepForm').hidden = true;
-  $('#viewPlanAddStepInput').value = '';
-  scheduleSavePlanEdits();
+function finishAddStep(editor) {
+  afterEdit(editor);
+  if (editor.addFormEl) editor.addFormEl.hidden = true;
+  if (editor.addInputEl) editor.addInputEl.value = '';
 }
 
-function scheduleSavePlanEdits() {
-  if (!activeViewPlanModal) return;
-  if (activeViewPlanModal.saveTimer) clearTimeout(activeViewPlanModal.saveTimer);
-  const statusEl = $('#viewPlanSaveStatus');
-  statusEl.hidden = false;
-  statusEl.className = 'plan-save-status saving';
-  statusEl.textContent = 'Saving…';
-  activeViewPlanModal.saveTimer = setTimeout(persistPlanEdits, 600);
+function scheduleSavePlanEdits(editor) {
+  if (editor.saveTimer) clearTimeout(editor.saveTimer);
+  if (editor.statusEl) {
+    editor.statusEl.hidden = false;
+    editor.statusEl.className = 'plan-save-status saving';
+    editor.statusEl.textContent = 'Saving…';
+  }
+  editor.saveTimer = setTimeout(() => persistPlanEdits(editor), 600);
 }
 
-async function persistPlanEdits() {
-  if (!activeViewPlanModal) return;
-  const plan = activeViewPlanModal.currentPlan;
-  const meta = activeViewPlanModal.stepMeta;
-  const statusEl = $('#viewPlanSaveStatus');
-
-  // Same shape assessGrounding() produces server-side, built from what each step's own metadata
-  // already knows — a plan that's been fully hand-verified (every step individually grounded or
-  // re-checked) can light up Auto-record again without a full Enhance re-run.
-  const groundingSteps = plan.steps.map((_, i) => ({ step: i + 1, file: meta[i]?.file || '', quote: meta[i]?.quote || '', verified: !!meta[i]?.verified, ...(meta[i]?.reason && !meta[i]?.verified ? { reason: meta[i].reason } : {}) }));
+// Same shape assessGrounding() produces server-side, built from what each step's own metadata
+// already knows — a plan that's been fully hand-verified (every step individually grounded or
+// re-checked) can light up Auto-record again without a full Enhance re-run.
+function buildGroundingFromStepMeta(steps, meta) {
+  const groundingSteps = steps.map((_, i) => ({ step: i + 1, file: meta[i]?.file || '', quote: meta[i]?.quote || '', verified: !!meta[i]?.verified, ...(meta[i]?.reason && !meta[i]?.verified ? { reason: meta[i].reason } : {}) }));
   const verifiedCount = groundingSteps.filter((s) => s.verified).length;
   const unverified = groundingSteps.filter((s) => !s.verified);
-  const grounding = groundingSteps.length ? {
+  return groundingSteps.length ? {
     confidence: unverified.length === 0 ? 'high' : (unverified.length <= 2 ? 'medium' : 'low'),
     steps: groundingSteps,
     unverified,
@@ -957,7 +974,12 @@ async function persistPlanEdits() {
     totalSteps: groundingSteps.length,
     checkedAt: new Date().toISOString()
   } : null;
-  plan.grounding = grounding;
+}
+
+async function persistPlanEdits(editor) {
+  const plan = editor.plan;
+  const statusEl = editor.statusEl;
+  plan.grounding = buildGroundingFromStepMeta(plan.steps, editor.stepMeta);
 
   try {
     const res = await api('/workflows/opportunity', {
@@ -965,16 +987,11 @@ async function persistPlanEdits() {
       body: JSON.stringify({ module: plan.module, workflow: plan })
     });
     if (!res?.ok) throw new Error(res?.error || 'Save failed');
-    statusEl.className = 'plan-save-status saved';
-    statusEl.textContent = '✓ Saved — shared with everyone';
-    if (activeViewPlanModal) {
-      activeViewPlanModal.originalWorkflow = { ...activeViewPlanModal.originalWorkflow, ...plan, autoRecordBlocker: autoRecordBlocker(plan) };
-      renderViewPlanContent(plan, false);
-    }
+    if (statusEl) { statusEl.className = 'plan-save-status saved'; statusEl.textContent = '✓ Saved — shared with everyone'; }
+    editor.onSaved?.(plan);
     refreshAll().catch(() => {});
   } catch (err) {
-    statusEl.className = 'plan-save-status error';
-    statusEl.textContent = `⚠ Could not save: ${err.message}`;
+    if (statusEl) { statusEl.className = 'plan-save-status error'; statusEl.textContent = `⚠ Could not save: ${err.message}`; }
   }
 }
 
@@ -1071,8 +1088,20 @@ async function acceptEnhancedPlanInModal() {
       });
     }
 
+    // Whole-plan replace, not an incremental edit — rebuild stepMeta from the freshly-saved plan's
+    // own grounding record (Enhance already re-verified every step) and repoint the editor at it.
+    const groundingByStep = new Map((enhancedPlan.grounding?.steps || []).map((g) => [g.step - 1, g]));
+    const newStepMeta = (enhancedPlan.steps || []).map((_, i) => {
+      const g = groundingByStep.get(i);
+      return g ? { verified: g.verified === true, file: g.file || null, quote: g.quote || null, reason: g.reason || null } : { verified: false, file: null, quote: null, reason: null };
+    });
     activeViewPlanModal.currentPlan = enhancedPlan;
+    activeViewPlanModal.stepMeta = newStepMeta;
     activeViewPlanModal.enhancedPlan = null;
+    if (activeViewPlanModal.editor) {
+      activeViewPlanModal.editor.plan = enhancedPlan;
+      activeViewPlanModal.editor.stepMeta = newStepMeta;
+    }
 
     renderViewPlanContent(enhancedPlan, false);
     $('#viewPlanAiPromptInput').value = '';
@@ -1243,113 +1272,6 @@ function pollAiRecordJob(key, title, planSteps = []) {
 
 let activeRecordAiPlan = null; // { userPrompt, plan, previousPlan }
 
-function getModuleUnlinkedWorkflows(modName) {
-  if (!catalog?.modules) return [];
-  const modGroup = catalog.modules.find((m) => m.module.toLowerCase() === modName.toLowerCase());
-  if (!modGroup) return [];
-  const articles = getModuleArticles(modName);
-  return (modGroup.workflows || []).filter((w) => {
-    const isAutoLinked = !w.noAutoMatch && articles.some((article) => articleMatches(w, article));
-    const isManuallyLinked = manualLinks.has(w.title);
-    const isDismissed = dismissedWorkflows.has(w.title);
-    return !isAutoLinked && !isManuallyLinked && !isDismissed;
-  });
-}
-
-function populateRecordModalModules() {
-  const select = $('#recordModuleSelect');
-  if (!select) return;
-
-  const currentVal = select.value;
-  select.innerHTML = '<option value="">Select a module…</option>';
-
-  const moduleMap = new Map();
-  for (const group of catalog.modules || []) {
-    moduleMap.set(group.module.toLowerCase(), group);
-  }
-
-  const orderedModules = [];
-  for (const modName of WORKFLOW_MODULE_ORDER) {
-    if (moduleMap.has(modName.toLowerCase())) {
-      orderedModules.push(modName);
-      moduleMap.delete(modName.toLowerCase());
-    }
-  }
-  for (const remaining of moduleMap.values()) {
-    orderedModules.push(remaining.module);
-  }
-
-  for (const modName of orderedModules) {
-    const unlinked = getModuleUnlinkedWorkflows(modName);
-    const opt = document.createElement('option');
-    opt.value = modName;
-    opt.textContent = `${modName} (${unlinked.length} opportunities)`;
-    select.appendChild(opt);
-  }
-
-  if (currentVal) {
-    select.value = currentVal;
-    renderRecordModalOpportunities(currentVal);
-  } else {
-    $('#recordModalOppsList').hidden = true;
-    $('#recordModalOppsList').innerHTML = '';
-  }
-}
-
-function renderRecordModalOpportunities(moduleName) {
-  const list = $('#recordModalOppsList');
-  if (!list) return;
-
-  if (!moduleName) {
-    list.hidden = true;
-    list.innerHTML = '';
-    return;
-  }
-
-  const unlinked = getModuleUnlinkedWorkflows(moduleName);
-  list.hidden = false;
-
-  if (!unlinked.length) {
-    list.innerHTML = '<div class="muted small" style="padding: 10px; text-align: center;">All workflows in this module have linked articles ✓</div>';
-    return;
-  }
-
-  list.innerHTML = unlinked.map((w) => {
-    const stepCount = (w.steps?.length || 0);
-    const route = w.startRoute || w.start_route || '';
-    return `
-      <div class="record-opp-item">
-        <div class="record-opp-info">
-          <div class="record-opp-title">${esc(w.title)}</div>
-          <div class="record-opp-purpose">${esc(w.purpose || '')}</div>
-          <div class="record-opp-meta">
-            <span class="badge">${stepCount} step${stepCount === 1 ? '' : 's'}</span>
-            ${route ? `<span class="plan-route-pill">${esc(route)}</span>` : ''}
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;">
-          <button class="primary record-opp-action-btn" type="button" title="Load this plan and start recording">● Record</button>
-          ${autoRecordBlocker(w)
-            ? `<span class="auto-record-off small" title="${esc(`Auto-record unavailable: ${autoRecordBlocker(w)}`)}">⚡ n/a</span>`
-            : `<button class="ai-beta record-opp-ai-btn" type="button" title="Beta — drives your browser autonomously to perform and record this workflow. Results can be inconsistent; use with caution.">⚡ Auto <span class="beta-chip">Beta</span></button>`}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  list.querySelectorAll('.record-opp-item').forEach((itemEl, i) => {
-    const w = unlinked[i];
-    const aiBtn = itemEl.querySelector('.record-opp-ai-btn');
-    if (aiBtn) aiBtn.onclick = () => {
-      startAiBrowserRecording(moduleName, w);
-    };
-    itemEl.querySelector('.record-opp-action-btn').onclick = async () => {
-      closeRecordStartModal();
-      await chooseWorkflow(moduleName, w, true);
-    };
-  });
-}
-
 function openRecordStartModal() {
   activeRecordAiPlan = null;
   const currentTitle = $('#scriptName').value.trim();
@@ -1366,9 +1288,8 @@ function openRecordStartModal() {
   }
 
   showRecordModalView('choice');
-  populateRecordModalModules();
   $('#recordStartModal').hidden = false;
-  setTimeout(() => $('#recordModuleSelect').focus(), 50);
+  setTimeout(() => $('#recordAiPromptInput').focus(), 50);
 }
 
 function closeRecordStartModal() {
@@ -1412,23 +1333,40 @@ async function generateRecordAiPlan(clarification = null) {
   }
 
   const plan = res.plan;
+  // AI-generated plans already carry a grounding.steps record (generatePlanFromIdea runs
+  // assessGrounding() before returning) — hydrate stepMeta from it exactly like the View Plan
+  // modal does, so a step the model already verified doesn't show as "unverified" just because
+  // it arrived via this modal instead of that one.
+  const groundingByStep = new Map((plan.grounding?.steps || []).map((g) => [g.step - 1, g]));
+  const stepMeta = (plan.steps || []).map((_, i) => {
+    const g = groundingByStep.get(i);
+    return g ? { verified: g.verified === true, file: g.file || null, quote: g.quote || null, reason: g.reason || null } : { verified: false, file: null, quote: null, reason: null };
+  });
+
   activeRecordAiPlan = {
     userPrompt,
     plan,
-    previousPlan: activeRecordAiPlan?.plan || null
+    previousPlan: activeRecordAiPlan?.plan || null,
+    editor: makePlanEditor({
+      plan,
+      stepMeta,
+      listEl: $('#recordPlanProposedStepsList'),
+      countEl: null,
+      addFormEl: $('#recordPlanAddStepForm'),
+      addInputEl: $('#recordPlanAddStepInput'),
+      addGroundBtnEl: $('#recordPlanAddStepGroundBtn'),
+      statusEl: null,
+      persist: null // not accepted yet — Accept & Record / Save for Later persist it, not every edit
+    })
   };
 
   $('#recordPlanModuleTag').textContent = plan.module || 'Workflow';
   $('#recordPlanProposedTitle').textContent = plan.title || 'Proposed Walkthrough';
   $('#recordPlanProposedSummary').textContent = plan.summary || '';
 
-  const stepsList = $('#recordPlanProposedStepsList');
-  stepsList.innerHTML = (plan.steps || []).map((s, i) => `
-    <li class="plan-step-item">
-      <span class="plan-step-num">${i + 1}.</span>
-      <span class="plan-step-desc">${formatPlanStep(s)}</span>
-    </li>
-  `).join('');
+  renderEditableSteps(activeRecordAiPlan.editor);
+  $('#recordPlanAddStepForm').hidden = true;
+  $('#recordPlanAddStepInput').value = '';
 
   $('#recordPlanClarifyInput').value = '';
   showRecordModalView('review');
@@ -1448,6 +1386,7 @@ async function acceptAndRecordPlan() {
   const plan = activeRecordAiPlan.plan;
   const mod = plan.module || 'Workflow';
   const steps = plan.steps || [];
+  if (activeRecordAiPlan.editor) plan.grounding = buildGroundingFromStepMeta(steps, activeRecordAiPlan.editor.stepMeta);
 
   selected = { module: mod, ...plan, steps };
   renderPlanCard(mod, plan, steps);
@@ -1472,6 +1411,7 @@ async function saveRecordPlanLater() {
   const plan = activeRecordAiPlan.plan;
   const mod = plan.module || 'Testing program';
   const title = plan.title;
+  if (activeRecordAiPlan.editor) plan.grounding = buildGroundingFromStepMeta(plan.steps, activeRecordAiPlan.editor.stepMeta);
 
   try {
     const res = await api('/workflows/opportunity', {
@@ -2023,173 +1963,12 @@ function formatHumanTitle(str) {
   return t.replace(/\s+/g, ' ').trim();
 }
 
-let savedScripts = [];
-let savedOpenModules = new Set(); // Collapsed by default
-
-const SAVED_MODULE_ORDER = [
-  'Testing program',
-  'People oversight',
-  'Branches',
-  'Communications',
-  'Marketing',
-  'Account surveillance'
-];
-
-function resolveScriptModule(script) {
-  if (script.module) {
-    const m = SAVED_MODULE_ORDER.find((a) => a.toLowerCase() === script.module.toLowerCase());
-    if (m) return m;
-    return script.module;
-  }
-  const title = (script.title || script.name || '').toLowerCase();
-  for (const group of catalog.modules || []) {
-    for (const wf of group.workflows || []) {
-      if (wf.title.toLowerCase() === title || slug(wf.title) === slug(script.name)) {
-        return group.module;
-      }
-    }
-  }
-  if (title.includes('branch')) return 'Branches';
-  if (title.includes('employee') || title.includes('people')) return 'People oversight';
-  if (title.includes('test') || title.includes('policy') || title.includes('risk') || title.includes('control')) return 'Testing program';
-  if (title.includes('communication') || title.includes('email') || title.includes('message')) return 'Communications';
-  if (title.includes('marketing') || title.includes('campaign')) return 'Marketing';
-  if (title.includes('surveillance') || title.includes('alert') || title.includes('trade')) return 'Account surveillance';
-  return 'Other';
-}
-
-async function openSavedScriptsModal() {
-  $('#savedScriptsModal').hidden = false;
-  await loadSavedScripts();
-}
-
-function closeSavedScriptsModal() {
-  $('#savedScriptsModal').hidden = true;
-}
-
-async function loadSavedScripts() {
-  const listEl = $('#savedScriptsList');
-  listEl.innerHTML = '<p class="muted small" style="padding: 16px; text-align: center;">Loading saved walkthroughs…</p>';
-  const r = await send({ type: 'PANEL_LIBRARY_LIST' });
-  if (!r?.ok) {
-    listEl.innerHTML = `<p class="muted small" style="padding: 16px; color: var(--red); text-align: center;">${esc(r?.error || 'Failed to load saved walkthroughs.')}</p>`;
-    return;
-  }
-  savedScripts = r.items || [];
-  $('#savedScriptsCount').textContent = savedScripts.length;
-  renderSavedScripts();
-}
-
-function renderSavedScripts() {
-  const listEl = $('#savedScriptsList');
-  listEl.innerHTML = '';
-  const q = $('#savedScriptsSearch').value.trim().toLowerCase();
-  const filtered = savedScripts.filter((s) => {
-    if (!q) return true;
-    const title = (s.title || s.name || '').toLowerCase();
-    const mod = (s.module || '').toLowerCase();
-    return title.includes(q) || mod.includes(q);
-  });
-
-  if (!filtered.length) {
-    listEl.innerHTML = `<p class="muted small" style="padding: 20px; text-align: center;">${q ? 'No walkthroughs matching "' + esc(q) + '"' : 'No saved walkthroughs yet.'}</p>`;
-    return;
-  }
-
-  // Group by module
-  const byModule = new Map();
-  for (const it of filtered) {
-    const mod = resolveScriptModule(it);
-    if (!byModule.has(mod)) byModule.set(mod, []);
-    byModule.get(mod).push(it);
-  }
-
-  // Sort modules by canonical order
-  const sortedModules = [...byModule.keys()].sort((a, b) => {
-    const ia = SAVED_MODULE_ORDER.indexOf(a);
-    const ib = SAVED_MODULE_ORDER.indexOf(b);
-    if (ia !== -1 && ib !== -1) return ia - ib;
-    if (ia !== -1) return -1;
-    if (ib !== -1) return 1;
-    return a.localeCompare(b);
-  });
-
-  for (const mod of sortedModules) {
-    const items = byModule.get(mod);
-    const isOpen = q ? true : savedOpenModules.has(mod);
-
-    const section = document.createElement('section');
-    section.className = 'saved-module-section';
-
-    const isKnownModule = SAVED_MODULE_ORDER.includes(mod);
-    const iconHtml = isKnownModule ? `<img class="module-icon" src="${moduleIconPath(mod)}" alt="" />` : '';
-
-    const header = document.createElement('div');
-    header.className = 'saved-module-header' + (isOpen ? '' : ' collapsed');
-    header.innerHTML = `
-      <span class="saved-caret">${isOpen ? '▾' : '▸'}</span>
-      ${iconHtml}
-      <span class="saved-module-title">${esc(mod)}</span>
-      <span class="saved-module-count">${items.length}</span>
-    `;
-
-    header.onclick = () => {
-      if (savedOpenModules.has(mod)) savedOpenModules.delete(mod);
-      else savedOpenModules.add(mod);
-      renderSavedScripts();
-    };
-    section.appendChild(header);
-
-    const itemsContainer = document.createElement('div');
-    itemsContainer.className = 'saved-module-items';
-    if (!isOpen) itemsContainer.hidden = true;
-
-    for (const it of items) {
-      const card = document.createElement('div');
-      card.className = 'saved-script-card';
-      const humanTitle = it.title || formatHumanTitle(it.name);
-      const when = it.updated_at ? new Date(it.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-      const mp4Badge = it.mp4_ready ? '<span class="mp4-badge">🎬 MP4 ready</span>' : '';
-
-      card.innerHTML = `
-        <div class="saved-script-top">
-          <div class="saved-script-title">${esc(humanTitle)}</div>
-          ${mp4Badge}
-        </div>
-        <div class="saved-script-meta">
-          <span>${it.step_count} step${it.step_count === 1 ? '' : 's'}</span> ·
-          <span>${when}</span>
-          ${it.updated_by && it.updated_by !== 'local' ? `<span>· by ${esc(it.updated_by)}</span>` : ''}
-        </div>
-        <div class="saved-script-actions">
-          <button class="btn-del-script" type="button" title="Delete this script">🗑</button>
-          <button class="btn-open-script" type="button">Open & Edit</button>
-        </div>
-      `;
-
-      card.querySelector('.btn-open-script').onclick = () => openScript(it.name);
-      card.querySelector('.btn-del-script').onclick = async (e) => {
-        e.stopPropagation();
-        if (!confirm(`Delete "${humanTitle}" from saved scripts?`)) return;
-        await send({ type: 'PANEL_LIBRARY_DELETE', name: it.name });
-        await loadSavedScripts();
-      };
-
-      itemsContainer.appendChild(card);
-    }
-
-    section.appendChild(itemsContainer);
-    listEl.appendChild(section);
-  }
-}
-
 async function openScript(name) {
   if (state.steps.length && !confirm(`Replace the current steps in the editor with "${name}"?`)) return;
   const r = await send({ type: 'PANEL_LIBRARY_GET', name });
   if (!r?.ok || !r.item?.script) return alert(r?.error || 'Could not load script.');
   const script = r.item.script;
   await send({ type: 'PANEL_LOAD_SCRIPT', script });
-  closeSavedScriptsModal();
   await loadState();
   const humanTitle = script.title || formatHumanTitle(script.name) || '';
   $('#scriptName').value = humanTitle;
@@ -2223,12 +2002,6 @@ $('#scanBtn').onclick = async () => {
   }
 };
 $('#recordBtn').onclick = startRecording;
-$('#openSavedBtn').onclick = openSavedScriptsModal;
-$('#closeSavedModalBtn').onclick = closeSavedScriptsModal;
-$('#savedScriptsSearch').oninput = renderSavedScripts;
-$('#savedScriptsModal').onclick = (e) => {
-  if (e.target.id === 'savedScriptsModal') closeSavedScriptsModal();
-};
 
 // Record Start Prompt Modal
 $('#closeRecordModalBtn').onclick = closeRecordStartModal;
@@ -2238,9 +2011,6 @@ $('#recordStartModal').onclick = (e) => {
 $('#recordModalCurrentPlanBtn').onclick = () => {
   closeRecordStartModal();
   startRecordingDirectly();
-};
-$('#recordModuleSelect').onchange = (e) => {
-  renderRecordModalOpportunities(e.target.value);
 };
 $('#recordNowBtn').onclick = recordNow;
 $('#recordAiGenerateBtn').onclick = () => generateRecordAiPlan();
@@ -2282,14 +2052,36 @@ $('#viewPlanAddStepCancelBtn').onclick = () => {
   $('#viewPlanAddStepInput').value = '';
 };
 $('#viewPlanAddStepGroundBtn').onclick = () => {
+  if (!activeViewPlanModal?.editor) return;
   const text = $('#viewPlanAddStepInput').value.trim();
   if (!text) return $('#viewPlanAddStepInput').focus();
-  addStepGrounded(text);
+  addStepGrounded(activeViewPlanModal.editor, text);
 };
 $('#viewPlanAddStepPlainBtn').onclick = () => {
+  if (!activeViewPlanModal?.editor) return;
   const text = $('#viewPlanAddStepInput').value.trim();
   if (!text) return $('#viewPlanAddStepInput').focus();
-  addStepPlain(text);
+  addStepPlain(activeViewPlanModal.editor, text);
+};
+$('#recordPlanAddStepBtn').onclick = () => {
+  $('#recordPlanAddStepForm').hidden = false;
+  $('#recordPlanAddStepInput').focus();
+};
+$('#recordPlanAddStepCancelBtn').onclick = () => {
+  $('#recordPlanAddStepForm').hidden = true;
+  $('#recordPlanAddStepInput').value = '';
+};
+$('#recordPlanAddStepGroundBtn').onclick = () => {
+  if (!activeRecordAiPlan?.editor) return;
+  const text = $('#recordPlanAddStepInput').value.trim();
+  if (!text) return $('#recordPlanAddStepInput').focus();
+  addStepGrounded(activeRecordAiPlan.editor, text);
+};
+$('#recordPlanAddStepPlainBtn').onclick = () => {
+  if (!activeRecordAiPlan?.editor) return;
+  const text = $('#recordPlanAddStepInput').value.trim();
+  if (!text) return $('#recordPlanAddStepInput').focus();
+  addStepPlain(activeRecordAiPlan.editor, text);
 };
 $('#viewPlanModal').onclick = (e) => {
   if (e.target.id === 'viewPlanModal') closeViewPlanModal();
@@ -2306,28 +2098,6 @@ $('#viewPlanAiPromptInput').onkeydown = (e) => {
     enhancePlanInModal();
   }
 };
-
-const fileInput = $('#scriptFileInput');
-if (fileInput) {
-  fileInput.onchange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const script = JSON.parse(text);
-      if (!Array.isArray(script.steps)) throw new Error('Invalid script file: no steps array');
-      await send({ type: 'PANEL_LOAD_SCRIPT', script });
-      closeSavedScriptsModal();
-      await loadState();
-      $('#scriptName').value = script.title || formatHumanTitle(script.name) || '';
-      switchView('recording');
-    } catch (err) {
-      alert('Failed to import script: ' + err.message);
-    } finally {
-      e.target.value = '';
-    }
-  };
-}
 
 $('#stopBtn').onclick = stopAndNarrate;
 $('#bannerStopBtn').onclick = stopAndNarrate;

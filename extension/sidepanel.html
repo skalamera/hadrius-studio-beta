@@ -54,8 +54,7 @@
       <input id="scriptName" placeholder="Walkthrough name">
       <div class="record-button-row">
         <button id="recordNowBtn" class="primary record-now-btn" type="button" title="Start recording this tab right away — no plan needed. Narration is drafted when you stop."><span class="rec-dot-live">●</span> Record now</button>
-        <button id="recordBtn" class="secondary" type="button" title="Pick an existing opportunity, or generate a plan first">Record from a plan…</button>
-        <button id="openSavedBtn" class="secondary" type="button" title="Load a saved walkthrough script to view, edit, or re-render">📂 Saved scripts</button>
+        <button id="recordBtn" class="secondary" type="button" title="Describe the workflow — AI drafts a grounded, editable step-by-step plan for you to review before recording">✨ AI Plan &amp; Record</button>
         <button id="stopBtn" class="danger" type="button" hidden>■ Stop & draft narration</button>
         <button id="cancelRecordBtn" class="secondary" type="button" hidden>✕ Cancel recording</button>
         <button id="clearBtn" class="secondary" type="button">Clear</button>
@@ -120,28 +119,6 @@
       </button>
     </footer>
   </main>
-
-  <div id="savedScriptsModal" class="modal-backdrop" hidden>
-    <div class="modal-card">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <h3>Saved Walkthroughs</h3>
-          <span id="savedScriptsCount" class="badge">0</span>
-        </div>
-        <button id="closeSavedModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
-      </div>
-      <div class="modal-toolbar">
-        <input id="savedScriptsSearch" type="search" placeholder="Search saved walkthroughs…">
-        <label class="import-file-btn" title="Import a .script.json file from your computer">
-          📥 Import
-          <input type="file" id="scriptFileInput" accept=".json,.script.json" hidden>
-        </label>
-      </div>
-      <div id="savedScriptsList" class="saved-scripts-list">
-        <p class="muted small" style="padding: 16px; text-align: center;">Loading saved walkthroughs…</p>
-      </div>
-    </div>
-  </div>
 
   <!-- View & Enhance Plan Modal -->
   <div id="viewPlanModal" class="modal-backdrop" hidden>
@@ -279,29 +256,7 @@
             <button id="recordModalCurrentPlanBtn" class="primary" type="button" style="white-space: nowrap; padding: 7px 14px; font-weight: 700;">▶ Record this plan →</button>
           </div>
 
-          <!-- Option A: Choose an existing recording opportunity -->
-          <div class="record-opportunities-box">
-            <div class="record-opps-header">
-              <span class="opps-icon">📋</span>
-              <div class="record-opps-title-group">
-                <strong>Record an existing opportunity</strong>
-                <p class="muted small">Pick a module, then a workflow — its plan loads and recording starts.</p>
-              </div>
-            </div>
-            <div class="record-opps-selector-row">
-              <select id="recordModuleSelect" class="record-module-select">
-                <option value="">Select a module…</option>
-              </select>
-            </div>
-            <div id="recordModalOppsList" class="record-modal-opps-list" hidden></div>
-          </div>
-
-          <!-- Divider -->
-          <div class="record-or-divider">
-            <span>or</span>
-          </div>
-
-          <!-- Option B: Generate with AI -->
+          <!-- Generate with AI -->
           <div class="ai-plan-box ai-beta-box" style="margin-bottom: 4px;">
             <div class="ai-plan-head">
               <span class="ai-sparkle">✨</span>
@@ -345,6 +300,17 @@
 
           <div class="view-plan-steps-container" style="max-height: 32vh; margin: 8px 0;">
             <ul id="recordPlanProposedStepsList" class="plan-steps-list"></ul>
+            <div id="recordPlanAddStepRow" class="plan-add-step-row">
+              <button id="recordPlanAddStepBtn" class="secondary plan-add-step-btn" type="button">+ Add step</button>
+              <div id="recordPlanAddStepForm" class="plan-add-step-form" hidden>
+                <textarea id="recordPlanAddStepInput" rows="2" placeholder="Describe what this step should do — as rough as you like…"></textarea>
+                <div class="plan-add-step-actions">
+                  <button id="recordPlanAddStepGroundBtn" class="ai-beta ai-gen-btn" type="button" title="Look up the exact button/field label in the codebase via the Hadrius MCP before adding">✨ Ground &amp; add</button>
+                  <button id="recordPlanAddStepPlainBtn" class="secondary" type="button" title="Add exactly what you typed, unverified">Add as-is</button>
+                  <button id="recordPlanAddStepCancelBtn" class="link-btn" type="button">Cancel</button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="ai-plan-decision-area" style="margin-top: 8px; padding-top: 8px;">
