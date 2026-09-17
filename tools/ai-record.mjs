@@ -1273,6 +1273,11 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     const now = new Date().toISOString();
     const script = {
       name: item.title,
+      // Set explicitly (not left for saveScript's `title ||= name` fallback) — pumpAiQueue may
+      // rename `script.name` with a "-ai" suffix to dodge a collision with an existing script,
+      // and that fallback would otherwise bake the suffix into the human-readable title too (the
+      // video's title card, the Pylon article title).
+      title: item.title,
       description: item.description || '',
       environment: { startUrl },
       recording: {

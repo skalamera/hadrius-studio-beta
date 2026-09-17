@@ -77,6 +77,16 @@ export async function pylonSetArticleTags(articleId, tagIds) {
   return out.data;
 }
 
+/** Rename an existing article (e.g. to strip a "-ai" collision suffix that leaked into the title). */
+export async function pylonUpdateArticleTitle(articleId, title) {
+  const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${articleId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+  return out.data;
+}
+
 export async function pylonCreateArticle({ title, bodyHtml, isPublished = false, collectionId = PYLON_COLLECTION_ID, authorUserId = PYLON_AUTHOR_USER_ID }) {
   const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles`, {
     method: 'POST',
