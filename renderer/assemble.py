@@ -6,7 +6,7 @@ import asyncio, json, os, subprocess, sys, textwrap, shutil, html, re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from PIL import Image, ImageDraw, ImageFont
-from title_card import generate_title_video
+from title_card import generate_title_video, generate_support_card_video
 
 out = Path(sys.argv[1]); args = sys.argv[2:]
 MUSIC = Path(args[args.index('--music') + 1]) if '--music' in args else Path('assets/music_upbeat.wav')
@@ -346,6 +346,12 @@ try:
 except Exception as e:
     print(f"warning: could not generate title card: {e}")
 
+support_clip = tmp / 'support_card.mp4'
+try:
+    generate_support_card_video(support_clip, music_path=MUSIC if MUSIC.exists() else None)
+except Exception as e:
+    print(f"warning: could not generate support card: {e}")
+
 def crossfade_pair(c1: Path, c2: Path, out_path: Path, xf_dur: float = 0.65) -> bool:
     if not (c1 and c1.exists() and c2 and c2.exists()):
         return False
@@ -389,8 +395,17 @@ if lead_clip and lead_clip.exists():
     if crossfade_pair(lead_clip, content_video, body_path, xf_dur=0.65):
         body_video = body_path
 
-# 3. Crossfade last slide of content into OUTRO
+# 3. Crossfade last slide of content into the support/"need help?" card
+lead_included = bool(body_video)  # intro+title already merged into active_body, below
 active_body = body_video or content_video
+support_included = False
+if support_clip.exists() and active_body and active_body.exists():
+    support_path = tmp / 'body_with_support.mp4'
+    if crossfade_pair(active_body, support_clip, support_path, xf_dur=0.65):
+        active_body = support_path
+        support_included = True
+
+# 4. Crossfade that into OUTRO
 final_video = None
 if OUTRO and OUTRO.exists() and active_body and active_body.exists():
     outro_path = tmp / 'full_crossfaded.mp4'
@@ -400,28 +415,42 @@ if OUTRO and OUTRO.exists() and active_body and active_body.exists():
 final = out / f"{rep['name']}.mp4"
 if final_video and final_video.exists():
     shutil.move(str(final_video), str(final))
-elif body_video and body_video.exists():
+elif lead_included and active_body and active_body.exists():
+    # Intro+title are already crossfaded in; concat whatever crossfades above didn't cover
+    # (support, if that one crossfade failed, then outro) rather than dissolving into it.
+    concat_inputs = [active_body]
+    if not support_included and support_clip.exists():
+        concat_inputs.append(support_clip)
     if OUTRO and OUTRO.exists():
-        subprocess.run(['ffmpeg', '-y', '-i', str(body_video), '-i', str(OUTRO),
-                        '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]',
-                        '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '19',
-                        '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
-                        str(final)], check=True, capture_output=True)
+        concat_inputs.append(OUTRO)
+    if len(concat_inputs) == 1:
+        shutil.move(str(active_body), str(final))
     else:
-        shutil.move(str(body_video), str(final))
+        ins, fc_parts = [], []
+        for idx, p in enumerate(concat_inputs):
+            ins.extend(['-i', str(p)])
+            fc_parts.append(f"[{idx}:v][{idx}:a]")
+        fc = "".join(fc_parts) + f"concat=n={len(concat_inputs)}:v=1:a=1[v][a]"
+        subprocess.run(['ffmpeg', '-y', *ins, '-filter_complex', fc, '-map', '[v]', '-map', '[a]',
+                        '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p',
+                        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', str(final)], check=True, capture_output=True)
 else:
-    # Full fallback straight concat
+    # Full fallback straight concat — intro/title were never merged in (or don't exist), so build
+    # the whole sequence part by part. `active_body` already covers content (+support, if that one
+    # crossfade above succeeded even though the lead one didn't) — never list content twice.
     parts = []
     if INTRO and INTRO.exists():
         parts.append(INTRO)
     if title_clip.exists():
         parts.append(title_clip)
-    parts.append(content_video)
+    parts.append(active_body)
+    if not support_included and support_clip.exists():
+        parts.append(support_clip)
     if OUTRO and OUTRO.exists():
         parts.append(OUTRO)
 
     if len(parts) == 1:
-        shutil.move(str(content_video), str(final))
+        shutil.move(str(parts[0]), str(final))
     else:
         ins = []
         fc_parts = []
@@ -452,5 +481,5 @@ function show(){{const s=S[i];img.src=s.file;cap.textContent=s.caption;cap.hidde
 if(s.target){{const t=s.target;hot.hidden=false;hot.style.left=(t.x/s.vw*100)+'%';hot.style.top=(t.y/s.vh*100)+'%';hot.style.width=(t.width/s.vw*100)+'%';hot.style.height=(t.height/s.vh*100)+'%';}}else hot.hidden=true;}}
 function go(d){{i=Math.max(0,Math.min(S.length-1,i+d));show();}}hot.onclick=()=>go(1);document.addEventListener('keydown',e=>{{if(e.key==='ArrowRight')go(1);if(e.key==='ArrowLeft')go(-1);}});show();</script>""")
 
-json.dump({'video': str(final), 'duration': round(full_duration, 2), 'slides': slides, 'intro': bool(INTRO), 'title_card': bool(title_clip.exists()), 'outro': bool(OUTRO)}, open(out / 'assembly.json', 'w'), indent=1)
+json.dump({'video': str(final), 'duration': round(full_duration, 2), 'slides': slides, 'intro': bool(INTRO), 'title_card': bool(title_clip.exists()), 'support_card': bool(support_clip.exists()), 'outro': bool(OUTRO)}, open(out / 'assembly.json', 'w'), indent=1)
 print(f"video {final} ({full_duration:.1f}s, {len(slides)} slides, intro={bool(INTRO)}, title_card={bool(title_clip.exists())}, outro={bool(OUTRO)}) · interactive {web/'index.html'}")

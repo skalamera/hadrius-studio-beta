@@ -234,6 +234,143 @@ def generate_title_video(
 
     return output_mp4
 
+SUPPORT_DURATION_SEC = 5.6
+SUPPORT_TOTAL_FRAMES = int(SUPPORT_DURATION_SEC * FPS)
+GOLD = (245, 158, 11, 255)
+VIOLET_GLOW = (124, 107, 245, 175)
+WHITE = (255, 255, 255, 255)
+
+def generate_support_card_video(
+    output_mp4: Path,
+    music_path: Path | None = None,
+    portal: str = 'support.hadrius.com',
+    email: str = 'support@hadrius.com',
+) -> Path:
+    """Closing 'need help?' card — same obsidian/violet/gold Hadrius Academy theme as the title
+    card, inserted after the last recorded step and crossfaded in/out exactly like every other
+    segment boundary (assemble.py's crossfade_pair, transition=fade)."""
+    output_mp4 = Path(output_mp4)
+    output_mp4.parent.mkdir(parents=True, exist_ok=True)
+    frames_dir = output_mp4.parent / '_support_frames'
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    badge_font = ImageFont.truetype(str(FONT_BOLD_FILE), 22)
+    body_font = ImageFont.truetype(str(FONT_MEDIUM_FILE), 34)
+    link_font = ImageFont.truetype(str(FONT_BOLD_FILE), 46)
+
+    base_bg = get_base_background()
+    cx = W // 2
+
+    lines = [
+        ('body', 'For additional information, visit our support portal at'),
+        ('link', portal),
+        ('body', 'or reach our support team by emailing'),
+        ('link', email),
+    ]
+    line_gap = 20
+
+    def line_size(kind, text):
+        f = link_font if kind == 'link' else body_font
+        bbox = f.getbbox(text)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1], f
+
+    sizes = [line_size(k, t) for k, t in lines]
+    total_h = sum(h for _, h, _ in sizes) + line_gap * (len(lines) - 1)
+    badge_text = "N E E D   H E L P ?"
+    bbox_b = badge_font.getbbox(badge_text)
+    badge_h = bbox_b[3] - bbox_b[1]
+    top = (H - total_h) // 2 - badge_h - 36
+
+    # Badge layer — same delicate gold accent-line treatment as the title card's module badge.
+    badge_layer = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    b_draw = ImageDraw.Draw(badge_layer)
+    bw = bbox_b[2] - bbox_b[0]
+    bx, by = cx - bw // 2, top
+    line_w = 70
+    b_draw.line([(bx - line_w - 24, by + 14), (bx - 24, by + 14)], fill=(245, 158, 11, 200), width=2)
+    b_draw.line([(bx + bw + 24, by + 14), (bx + bw + line_w + 24, by + 14)], fill=(245, 158, 11, 200), width=2)
+    b_draw.text((bx, by), badge_text, font=badge_font, fill=GOLD)
+    base_composite = Image.alpha_composite(base_bg, badge_layer)
+
+    y = top + badge_h + 56
+    positions = []
+    for (kind, text), (w, h, f) in zip(lines, sizes):
+        positions.append((kind, text, cx - w // 2, y, f))
+        y += h + line_gap
+
+    # Fade the whole card in and back out — belt-and-braces alongside assemble.py's crossfade at
+    # the clip boundaries, so this still reads correctly even if a boundary crossfade ever fails
+    # and the segments fall back to a hard concat.
+    fade_frames = int(0.5 * FPS)
+
+    for fnum in range(SUPPORT_TOTAL_FRAMES):
+        if fnum < fade_frames:
+            alpha = fnum / fade_frames
+        elif fnum > SUPPORT_TOTAL_FRAMES - fade_frames:
+            alpha = max(0.0, (SUPPORT_TOTAL_FRAMES - fnum) / fade_frames)
+        else:
+            alpha = 1.0
+
+        frame = base_composite.copy()
+        text_layer = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+        t_draw = ImageDraw.Draw(text_layer)
+        for kind, text, x, ty, f in positions:
+            fill = GOLD if kind == 'link' else WHITE
+            glow = VIOLET_GLOW if kind == 'link' else (124, 107, 245, 110)
+            t_draw.text((x, ty), text, font=f, fill=glow)
+        glow_text = text_layer.filter(ImageFilter.GaussianBlur(12))
+        frame = Image.alpha_composite(frame, glow_text)
+
+        draw = ImageDraw.Draw(frame)
+        for kind, text, x, ty, f in positions:
+            draw.text((x, ty), text, font=f, fill=GOLD if kind == 'link' else WHITE)
+
+        if alpha < 1.0:
+            black = Image.new('RGB', (W, H), (8, 7, 13))
+            frame = Image.blend(black, frame.convert('RGB'), alpha)
+        else:
+            frame = frame.convert('RGB')
+        frame.save(frames_dir / f"f_{fnum:04d}.png")
+
+    audio_wav = output_mp4.parent / '_support_audio.wav'
+    if music_path and Path(music_path).exists():
+        subprocess.run([
+            'ffmpeg', '-y', '-i', str(music_path),
+            '-t', f'{SUPPORT_DURATION_SEC:.2f}',
+            '-af', f'afade=t=in:d=0.4,afade=t=out:st={SUPPORT_DURATION_SEC-0.6:.2f}:d=0.6,volume=-5dB',
+            '-ar', '48000', '-ac', '2',
+            str(audio_wav)
+        ], check=True, capture_output=True)
+    else:
+        subprocess.run([
+            'ffmpeg', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+            '-t', f'{SUPPORT_DURATION_SEC:.2f}',
+            str(audio_wav)
+        ], check=True, capture_output=True)
+
+    subprocess.run([
+        'ffmpeg', '-y',
+        '-framerate', str(FPS),
+        '-i', str(frames_dir / 'f_%04d.png'),
+        '-i', str(audio_wav),
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '17',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '256k', '-ar', '48000',
+        '-movflags', '+faststart',
+        str(output_mp4)
+    ], check=True, capture_output=True)
+
+    for p in frames_dir.glob('*.png'):
+        p.unlink()
+    try:
+        frames_dir.rmdir()
+    except OSError:
+        pass
+    if audio_wav.exists():
+        audio_wav.unlink()
+
+    return output_mp4
+
 if __name__ == '__main__':
     import sys
     name = sys.argv[1] if len(sys.argv) > 1 else 'How to Add an Affiliated Firm'
