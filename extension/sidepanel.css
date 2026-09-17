@@ -305,4 +305,21 @@ button.enhancePlan:hover{background:#f5f3ff;border-color:#c4b5fd;color:var(--pur
 button.revertBtn{color:#15803d;border-color:#bbf7d0;background:#fff}
 button.revertBtn:hover{background:#f0fdf4;border-color:#86efac;color:#166534}
 
+/* Floating render/export bar — pinned outside the tab <main>s so a render or export stays
+   visible and controllable no matter which tab you switch to while it runs. */
+.floating-render-bar{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:30;border-radius:14px 14px 0 0;border-bottom:0;box-shadow:0 -6px 24px rgba(23,35,30,.14);animation:slideUp .2s ease-out}
+body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.has-floating-bar #pylonArticlesView{padding-bottom:96px}
+@keyframes slideUp{from{transform:translateY(12px);opacity:.4}to{transform:translateY(0);opacity:1}}
+
+.render-status-spinner{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #ddd6fe;border-top-color:var(--purple);animation:spinSlow .8s linear infinite;flex-shrink:0}
+.status-top{display:flex;align-items:center;gap:7px}
+.render-status-text.error{color:var(--red);font-weight:700}
+
+/* Dismissible "ready" alert — shown in the always-visible top status bar so it surfaces
+   even when you're on a different tab than the one that started the render. */
+.ready-banner{background:linear-gradient(90deg,#065f46,#059669,#065f46);background-size:200% 100%;animation:slideDown .25s ease-out,glowGrad 3s ease infinite;color:#fff;border-bottom:2px solid #34d399;box-shadow:0 4px 14px rgba(5,150,105,.35),0 0 10px rgba(52,211,153,.35)}
+.ready-banner .ready-icon{font-size:13px;font-weight:800;flex-shrink:0}
+.banner-btn-link{background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.45);text-decoration:none;display:inline-flex;align-items:center}
+.banner-btn-link:hover{background:rgba(255,255,255,.35)}
+
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}

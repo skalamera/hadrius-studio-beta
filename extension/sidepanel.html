@@ -46,6 +46,17 @@
         <span id="scanBannerDetail" class="banner-detail">Querying Hadrius frontend…</span>
       </div>
     </div>
+    <div id="renderReadyBanner" class="top-banner ready-banner" hidden>
+      <span class="ready-icon">✓</span>
+      <div class="banner-text-group">
+        <span class="banner-title" id="renderReadyTitle">Video ready</span>
+        <span class="banner-detail" id="renderReadyDetail"></span>
+      </div>
+      <div class="banner-actions">
+        <a href="#" id="renderReadyPylonLink" class="banner-btn banner-btn-link" target="_blank" rel="noopener noreferrer" hidden>↗ Open in Pylon</a>
+        <button id="renderReadyDismissBtn" class="banner-btn banner-btn-cancel" type="button" title="Dismiss">✕</button>
+      </div>
+    </div>
   </div>
 
   <main id="recordingView">
@@ -62,23 +73,6 @@
     </section>
     <div id="narrationStatus" class="notice" hidden></div>
     <section id="steps" class="steps"></section>
-    <section class="footer-actions">
-      <div class="render-buttons">
-        <button id="renderBtn" class="primary" type="button" disabled>Render MP4</button>
-        <button id="renderBothBtn" class="secondary" type="button" disabled title="Render MP4 video and create a draft Pylon KB article">Render + Article</button>
-        <button id="downloadBtn" class="secondary" type="button" disabled>Export script</button>
-      </div>
-      <div id="renderStatusRow" class="render-status-row" hidden>
-        <div class="status-top">
-          <span id="renderStatus" class="render-status-text"></span>
-        </div>
-        <div id="renderLinks" class="render-links" hidden>
-          <a href="#" id="viewFinderLink" class="action-link">📂 View in Finder</a>
-          <a href="#" id="pylonArticleLink" class="action-link pylon-link" target="_blank" rel="noopener noreferrer" hidden>↗ Open in Pylon</a>
-          <button type="button" id="dismissResetBtn" class="dismiss-btn">✕ Dismiss & Reset</button>
-        </div>
-      </div>
-    </section>
   </main>
 
   <main id="workflowsView" hidden>
@@ -119,6 +113,27 @@
       </button>
     </footer>
   </main>
+
+  <!-- Floating render/export bar — lives outside the tab <main>s so it stays visible and
+       usable no matter which tab you're on while a render/export is running or ready. -->
+  <section id="floatingRenderBar" class="footer-actions floating-render-bar" hidden>
+    <div class="render-buttons">
+      <button id="renderBtn" class="primary" type="button" disabled>Render MP4</button>
+      <button id="renderBothBtn" class="secondary" type="button" disabled title="Render MP4 video and create a draft Pylon KB article">Render + Article</button>
+      <button id="downloadBtn" class="secondary" type="button" disabled>Export script</button>
+    </div>
+    <div id="renderStatusRow" class="render-status-row" hidden>
+      <div class="status-top">
+        <span id="renderStatusSpinner" class="render-status-spinner" hidden></span>
+        <span id="renderStatus" class="render-status-text"></span>
+      </div>
+      <div id="renderLinks" class="render-links" hidden>
+        <a href="#" id="viewFinderLink" class="action-link">📂 View in Finder</a>
+        <a href="#" id="pylonArticleLink" class="action-link pylon-link" target="_blank" rel="noopener noreferrer" hidden>↗ Open in Pylon</a>
+        <button type="button" id="dismissResetBtn" class="dismiss-btn">✕ Dismiss & Reset</button>
+      </div>
+    </div>
+  </section>
 
   <!-- View & Enhance Plan Modal -->
   <div id="viewPlanModal" class="modal-backdrop" hidden>

@@ -1450,6 +1450,20 @@ function updateRenderButtons() {
   $('#renderBothBtn').disabled = disableRender;
   $('#downloadBtn').disabled = !hasSteps;
   if ($('#clearBtn')) $('#clearBtn').disabled = !hasSteps && !($('#scriptName').value || '').trim();
+  updateFloatingBarVisibility();
+}
+
+// Shown whenever there's something to control or watch — a recorded script to render/export,
+// a render in progress, or a finished/failed render still waiting to be dismissed — so it stays
+// usable while browsing other tabs instead of only appearing on the Record tab.
+function updateFloatingBarVisibility() {
+  const bar = $('#floatingRenderBar');
+  if (!bar) return;
+  const hasSteps = (state.steps?.length || 0) > 0;
+  const statusVisible = !$('#renderStatusRow').hidden;
+  const show = hasSteps || isRenderingActive || statusVisible;
+  bar.hidden = !show;
+  document.body.classList.toggle('has-floating-bar', show);
 }
 
 function updateRecordingButtons() {
@@ -1803,19 +1817,23 @@ function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,
 
 async function renderVideo(mode = 'video') {
   if (!state.steps.length) return alert('Record at least one step first.');
+  hideRenderReadyBanner();
   isRenderingActive = true;
   updateRenderButtons();
   $('#renderStatusRow').hidden = false;
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
-  $('#renderStatus').classList.remove('ready');
+  $('#renderStatus').classList.remove('ready', 'error');
+  $('#renderStatusSpinner').hidden = false;
   $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : 'Starting render…';
+  updateFloatingBarVisibility();
 
   const result = await send({ type: 'PANEL_RENDER', script: toScript(), mode });
   if (!result?.ok) {
     isRenderingActive = false;
     updateRenderButtons();
-    $('#renderStatus').classList.remove('ready');
+    $('#renderStatusSpinner').hidden = true;
+    $('#renderStatus').classList.add('error');
     $('#renderStatus').textContent = result?.error || 'Render failed';
     return;
   }
@@ -1824,13 +1842,34 @@ async function renderVideo(mode = 'video') {
   checkRender();
 }
 
+function hideRenderReadyBanner() {
+  const banner = $('#renderReadyBanner');
+  if (banner) banner.hidden = true;
+}
+
+function showRenderReadyBanner({ title, detail, pylonUrl }) {
+  const banner = $('#renderReadyBanner');
+  if (!banner) return;
+  $('#renderReadyTitle').textContent = title;
+  $('#renderReadyDetail').textContent = detail || '';
+  const link = $('#renderReadyPylonLink');
+  if (pylonUrl) {
+    link.href = pylonUrl;
+    link.hidden = false;
+  } else {
+    link.hidden = true;
+  }
+  banner.hidden = false;
+}
+
 async function checkRender() {
   const result = await send({ type: 'PANEL_RENDER_STATUS' });
   if (!result?.ok || result.phase === 'idle') {
     $('#renderStatusRow').hidden = true;
     $('#renderLinks').hidden = true;
     $('#pylonArticleLink').hidden = true;
-    $('#renderStatus').classList.remove('ready');
+    $('#renderStatus').classList.remove('ready', 'error');
+    $('#renderStatusSpinner').hidden = true;
     $('#renderStatus').textContent = '';
     isRenderingActive = false;
     updateRenderButtons();
@@ -1844,7 +1883,8 @@ async function checkRender() {
       replaying: 'Assembling slides…',
       assembling: 'Generating narration, captions and video…'
     };
-    $('#renderStatus').classList.remove('ready');
+    $('#renderStatus').classList.remove('ready', 'error');
+    $('#renderStatusSpinner').hidden = false;
     $('#renderStatus').textContent = phaseNames[result.phase] || result.phase || 'Rendering…';
     $('#renderLinks').hidden = true;
     isRenderingActive = true;
@@ -1855,13 +1895,18 @@ async function checkRender() {
   // Not running
   isRenderingActive = false;
   updateRenderButtons();
+  $('#renderStatusSpinner').hidden = true;
+
+  const title = $('#scriptName').value.trim() || selected?.title || state.script?.name || 'Walkthrough';
 
   if (result.error) {
     $('#renderStatus').classList.remove('ready');
+    $('#renderStatus').classList.add('error');
     $('#renderStatus').textContent = `Failed: ${result.error}`;
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
     clearInterval(renderTimer);
+    showRenderReadyBanner({ title: '✕ Render failed', detail: `"${title}" — ${result.error}` });
     return;
   }
 
@@ -1869,7 +1914,8 @@ async function checkRender() {
   const pylon = result.pylon;
 
   if (mode === 'both' && pylon?.status === 'pending') {
-    $('#renderStatus').classList.remove('ready');
+    $('#renderStatus').classList.remove('ready', 'error');
+    $('#renderStatusSpinner').hidden = false;
     $('#renderStatus').textContent = '✓ MP4 ready · Drafting Pylon KB article…';
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
@@ -1897,14 +1943,17 @@ async function checkRender() {
       chrome.storage.local.set({ manualLinks: [...manualLinks] });
     }
     refreshAll().catch(() => {});
+    showRenderReadyBanner({ title: '✓ Video & Pylon article ready', detail: `"${title}" finished rendering.`, pylonUrl: pylon.url });
   } else if (mode === 'both' && pylon?.status === 'failed') {
     $('#renderStatus').textContent = `✓ MP4 ready (Pylon article failed: ${pylon.error || 'error'})`;
     $('#renderStatus').classList.add('ready');
     $('#pylonArticleLink').hidden = true;
+    showRenderReadyBanner({ title: '✓ Video ready', detail: `"${title}" — Pylon article failed: ${pylon.error || 'error'}` });
   } else {
     $('#renderStatus').textContent = '✓ MP4 ready';
     $('#renderStatus').classList.add('ready');
     $('#pylonArticleLink').hidden = true;
+    showRenderReadyBanner({ title: '✓ Video ready', detail: `"${title}" finished rendering.` });
   }
 }
 
@@ -1927,8 +1976,10 @@ async function resetRecordingSession() {
   $('#renderStatusRow').hidden = true;
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
-  $('#renderStatus').classList.remove('ready');
+  $('#renderStatus').classList.remove('ready', 'error');
+  $('#renderStatusSpinner').hidden = true;
   $('#renderStatus').textContent = '';
+  hideRenderReadyBanner();
   $('#stepCount').textContent = '';
   $('#stepCount').hidden = true;
   $('#steps').innerHTML = '';
@@ -2121,6 +2172,7 @@ $('#pylonArticleLink').onclick = (e) => {
 };
 
 $('#dismissResetBtn').onclick = resetRecordingSession;
+$('#renderReadyDismissBtn').onclick = hideRenderReadyBanner;
 
 $('#refreshWorkflowsBtn').onclick = async () => {
   const btn = $('#refreshWorkflowsBtn');
