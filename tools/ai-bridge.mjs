@@ -1467,11 +1467,18 @@ async function publishRenderToPylon(name, outDir) {
   // label, which the prompt explicitly invites) is exactly the kind of thing models occasionally
   // fail to escape correctly, and one bad quote breaks the whole response. Raw HTML after a plain
   // text marker has nothing to escape at all.
-  const marker = '---BODY---';
-  const markerAt = result.indexOf(marker);
-  if (markerAt === -1) throw new Error('model output missing the ---BODY--- marker');
+  // Tolerate the model dressing the marker up (bolding it, extra dashes/spaces, a code fence
+  // around it) before giving up — a strict indexOf() on the exact literal was failing runs where
+  // Claude's output was otherwise perfectly usable, just not byte-for-byte "---BODY---".
+  const markerMatch = result.match(/\**-{2,}\s*BODY\s*-{2,}\**/i);
+  if (!markerMatch) {
+    console.warn(`[pylon] "${name}" — model output missing the ---BODY--- marker. Raw output (first 2000 chars):\n${result.slice(0, 2000)}`);
+    throw new Error('model output missing the ---BODY--- marker');
+  }
+  const markerAt = markerMatch.index;
   const screenshotsLine = result.slice(0, markerAt);
-  let bodyHtml = result.slice(markerAt + marker.length).trim();
+  let bodyHtml = result.slice(markerAt + markerMatch[0].length).trim();
+  bodyHtml = bodyHtml.replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
   if (!bodyHtml) throw new Error('model returned an empty article body');
   const screenshotsMatch = screenshotsLine.match(/\[[\d,\s]*\]/);
   let rawScreenshots = [];
