@@ -63,13 +63,35 @@ export async function pylonUploadAttachment(filePath, description) {
   return out.data; // { id, url, name, description }
 }
 
+// The "hadriusacademy" article tag (created in the Pylon UI — the API cannot create tags, only
+// assign existing ones by id, and only via PATCH after the article exists).
+const PYLON_ACADEMY_TAG_ID = 'ffc4a94e-6bf0-489b-85b5-33214bd65944';
+
+/** Replace an article's tags. Pylon has no tag_ids on create, so this is a separate PATCH. */
+export async function pylonSetArticleTags(articleId, tagIds) {
+  const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${articleId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag_ids: tagIds }),
+  });
+  return out.data;
+}
+
 export async function pylonCreateArticle({ title, bodyHtml, isPublished = false, collectionId = PYLON_COLLECTION_ID, authorUserId = PYLON_AUTHOR_USER_ID }) {
   const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, body_html: bodyHtml, collection_id: collectionId, author_user_id: authorUserId, is_published: isPublished }),
   });
-  return out.data; // article object, includes id/slug
+  const article = out.data; // article object, includes id/slug
+  // Every Studio-published article is Hadrius Academy content. Best-effort: a tagging hiccup
+  // should never fail the publish itself.
+  try {
+    if (article?.id) await pylonSetArticleTags(article.id, [PYLON_ACADEMY_TAG_ID]);
+  } catch (e) {
+    console.warn(`[pylon] created "${title}" but could not apply the hadriusacademy tag: ${String(e?.message || e).slice(0, 160)}`);
+  }
+  return article;
 }
 
 
