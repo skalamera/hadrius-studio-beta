@@ -2130,6 +2130,14 @@ const server = http.createServer(async (req, res) => {
           try {
             const targetModule = modName || 'Testing program';
             const candKey = candSlug(`${targetModule}--${title}`);
+            // "status" isn't a stored column on this row at all — the coverage endpoint derives it
+            // live by fuzzy-matching this row's TITLE against every script in the shared scripts
+            // table, independent of linked_script. That's why clearing linked_script alone never
+            // made "Revert to To Record" stick for a workflow with a real recording already in the
+            // shared library: the very next GET found the same script by title similarity and
+            // re-derived status: 'covered' regardless. The server now sets its own no_auto_match
+            // flag whenever linked_script is explicitly cleared here (see studio-beta-coverage.ts),
+            // which skips that fuzzy match entirely — nothing else needs to change on this end.
             await libraryFetch('PATCH', null, {
               key: candKey,
               linked_script: unmark ? null : (title || 'linked'),
