@@ -217,6 +217,11 @@ async function backfillRecipeStartUrl(script) {
  * offline. Single place for that pairing — used by the /library route and the AI recorder.
  */
 async function saveScript(script, extra = {}) {
+  // Capture the real display title BEFORE sanitizing name into a filename-safe slug — safeName()
+  // turns any non-word character (including an apostrophe) into a hyphen, so "policy's" became the
+  // slug "policy-s", and every downstream reader that falls back to script.name (the video title
+  // card, the Pylon article title) rendered it as "Policy S" instead of "Policy's".
+  if (!script.title) script.title = script.name;
   script.name = safeName(script.name);
   await backfillRecipeStartUrl(script);
   const out = await libraryFetch('POST', null, { ...extra, script, updated_by: WHOAMI });
