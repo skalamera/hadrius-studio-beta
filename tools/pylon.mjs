@@ -77,6 +77,11 @@ export async function pylonSetArticleTags(articleId, tagIds) {
   return out.data;
 }
 
+/** Permanently delete an article — e.g. an older duplicate superseded by a re-recording. */
+export async function pylonDeleteArticle(articleId) {
+  await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${articleId}`, { method: 'DELETE' });
+}
+
 /** Rename an existing article (e.g. to strip a "-ai" collision suffix that leaked into the title). */
 export async function pylonUpdateArticleTitle(articleId, title) {
   const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${articleId}`, {
