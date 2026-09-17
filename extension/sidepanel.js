@@ -1224,7 +1224,7 @@ async function startAiBrowserRecording(moduleName, workflow, opts = {}) {
   const blocker = autoRecordBlocker(workflow);
   if (blocker) {
     if (opts.queued) {
-      recordAutoRecordQueueResult(false, workflow.title, blocker);
+      finishAutoRecordQueueItem({ recorded: false, title: workflow.title, recordError: blocker });
       return runNextInAutoRecordQueue();
     }
     return alert(`Auto-record is unavailable for this plan: ${blocker}.\n\nRecord it manually, or open View plan → Enhance plan so every step is verified first.`);
@@ -1271,35 +1271,37 @@ async function startAiBrowserRecording(moduleName, workflow, opts = {}) {
     if (activeAiPollInterval) { clearInterval(activeAiPollInterval); activeAiPollInterval = null; }
     updateRecordingButtons();
     if (opts.queued) {
-      recordAutoRecordQueueResult(false, title, err.message);
+      finishAutoRecordQueueItem({ recorded: false, title, recordError: err.message });
       return runNextInAutoRecordQueue();
     }
     alert(`Could not start AI recording: ${err.message}`);
   }
 }
 
-// ---- Bulk auto-record: runs each eligible selected plan one after another, since the AI
-// browser driver only supports one live automation session at a time. ----
-let autoRecordQueue = null; // { items: [{module, workflow}], idx, succeeded: [], failed: [{title, error}] }
+// ---- Bulk auto-record: runs each eligible selected plan one after another — record, then
+// render MP4 + Pylon article — since both the AI browser driver and the renderer only support
+// one live job at a time. ----
+let autoRecordQueue = null; // { items: [{module, workflow}], idx, phase, succeeded: [], failed: [{title, error}], renderFailed: [{title, error}] }
 
 function updateAutoRecordQueueBanner() {
   const banner = $('#autoRecordQueueBanner');
   if (!banner) return;
   if (!autoRecordQueue) { banner.hidden = true; return; }
   banner.hidden = false;
-  const { items, idx } = autoRecordQueue;
+  const { items, idx, phase } = autoRecordQueue;
   const current = items[idx];
+  const verb = phase === 'rendering' ? 'Rendering video & article for' : 'Recording';
   $('#autoRecordQueueText').textContent = current
-    ? `${idx + 1}/${items.length} — running "${current.workflow.title}"…`
+    ? `${idx + 1}/${items.length} — ${verb} "${current.workflow.title}"…`
     : `${items.length}/${items.length} — finishing…`;
 }
 
 async function startBulkAutoRecord(items) {
   if (!items.length) return;
   const names = items.map((i) => `• ${i.workflow.title}`).join('\n');
-  const confirmed = confirm(`⚡ Bulk auto-record ${items.length} plan${items.length === 1 ? '' : 's'}?\n\n${names}\n\nEach runs one after another in a visible browser window. You can cancel the remaining queue anytime from the banner at the top.`);
+  const confirmed = confirm(`⚡ Bulk auto-record ${items.length} plan${items.length === 1 ? '' : 's'}?\n\nEach will be recorded, then rendered to MP4 with a Pylon KB article, one after another:\n\n${names}\n\nA visible browser window runs each recording. You can cancel the remaining queue anytime from the banner at the top.`);
   if (!confirmed) return;
-  autoRecordQueue = { items: items.slice(), idx: 0, succeeded: [], failed: [] };
+  autoRecordQueue = { items: items.slice(), idx: 0, phase: 'recording', succeeded: [], failed: [], renderFailed: [] };
   bulkSelected.clear();
   renderModules();
   updateAutoRecordQueueBanner();
@@ -1314,24 +1316,74 @@ function cancelAutoRecordQueue() {
   updateAutoRecordQueueBanner();
 }
 
-function recordAutoRecordQueueResult(success, title, error) {
+// Marks the current queue item fully done (recording, and render if attempted) and advances
+// idx — the single place idx changes, so the banner always reflects the item actually in flight.
+function finishAutoRecordQueueItem({ recorded, title, recordError, renderError }) {
   if (!autoRecordQueue) return;
-  if (success) autoRecordQueue.succeeded.push(title);
-  else autoRecordQueue.failed.push({ title, error });
+  if (recorded) autoRecordQueue.succeeded.push(title);
+  else autoRecordQueue.failed.push({ title, error: recordError });
+  if (renderError) autoRecordQueue.renderFailed.push({ title, error: renderError });
   autoRecordQueue.idx += 1;
+}
+
+// After a queued recording finishes, render it to MP4 + Pylon article before moving on to the
+// next item — reuses the same PANEL_RENDER/PANEL_RENDER_STATUS flow the single-item "Render +
+// Article" button uses, just polled here instead of driving the visible status bar.
+async function renderQueuedScriptThenContinue(scriptName, title) {
+  if (!autoRecordQueue) return;
+  autoRecordQueue.phase = 'rendering';
+  updateAutoRecordQueueBanner();
+  let renderError = null;
+  try {
+    if (!scriptName) throw new Error('no script was saved to render');
+    const r = await send({ type: 'PANEL_LIBRARY_GET', name: scriptName });
+    if (!r?.ok || !r.item?.script) throw new Error(r?.error || 'could not load the recorded script');
+    const started = await send({ type: 'PANEL_RENDER', script: r.item.script, mode: 'both' });
+    if (!started?.ok) throw new Error(started?.error || 'render failed to start');
+    await waitForQueuedRender();
+  } catch (err) {
+    renderError = err.message;
+    toast(`✕ Render failed for "${title}": ${err.message}`);
+  }
+  finishAutoRecordQueueItem({ recorded: true, title, renderError });
+  setTimeout(runNextInAutoRecordQueue, 400);
+}
+
+function waitForQueuedRender() {
+  return new Promise((resolve, reject) => {
+    const poll = async () => {
+      let st;
+      try {
+        st = await send({ type: 'PANEL_RENDER_STATUS' });
+      } catch (e) {
+        return reject(e);
+      }
+      if (!st?.ok) return reject(new Error(st?.error || 'render status unavailable'));
+      if (st.running || (st.mode === 'both' && st.pylon?.status === 'pending')) {
+        setTimeout(poll, 1500);
+        return;
+      }
+      if (st.error) return reject(new Error(st.error));
+      resolve(st);
+    };
+    poll();
+  });
 }
 
 async function runNextInAutoRecordQueue() {
   if (!autoRecordQueue) return;
-  const { items, idx, succeeded, failed } = autoRecordQueue;
+  const { items, idx, succeeded, failed, renderFailed } = autoRecordQueue;
   if (idx >= items.length) {
-    const failedNote = failed.length ? `, ${failed.length} failed (${failed.map((f) => f.title).join(', ')})` : '';
-    toast(`✓ Bulk auto-record finished — ${succeeded.length} succeeded${failedNote}`);
+    const bits = [`${succeeded.length} recorded`];
+    if (failed.length) bits.push(`${failed.length} recording failed (${failed.map((f) => f.title).join(', ')})`);
+    if (renderFailed.length) bits.push(`${renderFailed.length} render/article failed (${renderFailed.map((f) => f.title).join(', ')})`);
+    toast(`✓ Bulk auto-record finished — ${bits.join(', ')}`);
     autoRecordQueue = null;
     updateAutoRecordQueueBanner();
     await refreshAll().catch(() => {});
     return;
   }
+  autoRecordQueue.phase = 'recording';
   updateAutoRecordQueueBanner();
   const { module, workflow } = items[idx];
   await startAiBrowserRecording(module, workflow, { queued: true });
@@ -1388,9 +1440,8 @@ function pollAiRecordJob(key, title, planSteps = [], opts = {}) {
         });
 
         if (opts.queued) {
-          recordAutoRecordQueueResult(true, title);
-          toast(`✓ "${title}" recorded`);
-          setTimeout(runNextInAutoRecordQueue, 400);
+          toast(`✓ "${title}" recorded — rendering…`);
+          renderQueuedScriptThenContinue(job.result?.scriptName, title);
           return;
         }
 
@@ -1419,7 +1470,7 @@ function pollAiRecordJob(key, title, planSteps = [], opts = {}) {
         state.recording = false;
         updateRecordingButtons();
         if (opts.queued) {
-          recordAutoRecordQueueResult(false, title, job.error);
+          finishAutoRecordQueueItem({ recorded: false, title, recordError: job.error });
           toast(`✕ "${title}" failed: ${job.error || 'unknown error'}`);
           setTimeout(runNextInAutoRecordQueue, 400);
           return;
