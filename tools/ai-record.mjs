@@ -1088,14 +1088,18 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         continue;
       }
       if ((decision.action === 'click' || decision.action === 'hover') && ((prev?.sig === sig && /no visible change/.test(prev.outcome || '')) || consecutive >= 2)) {
-        // Escalate past the refuse/retry cycle: once the keyboard path has ALSO run and the page
-        // still reports no visible change, the control is dead — block it for the rest of the run.
+        // Escalate past the refuse/retry cycle once this control has genuinely been ACTED ON twice
+        // already (e.g. a plain click and a keyboard-activated retry) — by attempt COUNT, not by
+        // re-matching "no visible change" on the very last attempt. An incidental side-effect of the
+        // keyboard retry (a focus ring, a hover artifact) can make describeOutcome() report something
+        // else, which let refuse/retry oscillate for 20+ turns on one dead control instead of ever
+        // escalating (verbatim what happened recording "How an employee completes and signs a
+        // certification" — 25 turns stuck on one attestation checkbox before running out of turns).
         const actedSame = acted.filter((a) => a.sig === sig).length;
-        const stillDead = prev?.sig === sig && /no visible change/.test(prev.outcome || '');
-        if (actedSame >= 2 && stillDead) {
+        if (actedSame >= 2) {
           blockedSigs.add(sig);
-          history.push({ action: decision.action, name: el.name, sig, error: `refused — "${el.name}" is dead for this run: a plain click and a keyboard activation both changed nothing (${actedSame} attempts). It will NOT be tried again. Choose a DIFFERENT element, or "fail" and say what is blocking you.` });
-          onLog(`  ! blocked "${el.name}" — unresponsive after click + keyboard activation`);
+          history.push({ action: decision.action, name: el.name, sig, error: `refused — "${el.name}" is dead for this run: ${actedSame} attempts (including a keyboard activation) produced no working result. It will NOT be tried again. Choose a DIFFERENT element, or "fail" and say what is blocking you.` });
+          onLog(`  ! blocked "${el.name}" — unresponsive after ${actedSame} attempts`);
           continue;
         }
         if (!refusedBefore) {
