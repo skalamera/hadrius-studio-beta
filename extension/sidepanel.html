@@ -12,7 +12,13 @@
 </head>
 <body>
   <header>
-    <img src="icons/wordmark.png" class="wordmark" alt="Hadrius Studio"><span class="beta-badge">Beta</span>
+    <div class="brand-block">
+      <div class="brand-top-row">
+        <img src="icons/wordmark.png" class="wordmark" alt="Hadrius Studio">
+        <span class="beta-badge">Beta</span>
+      </div>
+      <span id="appVersionLine" class="app-version-line"><span id="appVersionText">v…</span><span class="tool-status-tooltip align-left" id="appVersionTooltip"></span></span>
+    </div>
     <div class="tool-status-group">
       <span class="tool-status" id="claudeToolStatus"><span class="dot" id="claudeDot"></span>Claude<span class="tool-status-tooltip" id="claudeTooltip">Checking…</span></span>
       <span class="tool-status" id="codebaseToolStatus"><span class="dot" id="codebaseDot"></span>Codebase<span class="tool-status-tooltip" id="codebaseTooltip">Checking…</span></span>

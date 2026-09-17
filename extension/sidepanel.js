@@ -2500,4 +2500,32 @@ async function refreshToolStatus(fresh) {
   } catch (_) { /* bridge unreachable — leave the bridgeDot check below to surface that */ }
 }
 
-(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await initManualLinks();await loadState();await refreshAll();checkRender();refreshToolStatus(true);setInterval(()=>refreshToolStatus(false),45000);})();
+// Version line under the wordmark — compares this install's git HEAD to origin/main (not just the
+// package.json number, which can lag a real change), so "up to date" actually means it.
+async function refreshVersionStatus(fresh) {
+  const lineEl = $('#appVersionLine');
+  const textEl = $('#appVersionText');
+  const tooltipEl = $('#appVersionTooltip');
+  if (!lineEl || !textEl) return;
+  try {
+    const v = await api(`/version${fresh ? '?fresh=1' : ''}`);
+    textEl.textContent = `v${v.version}`;
+    if (v.upToDate === false) {
+      lineEl.classList.add('outdated');
+      const behind = v.commitsBehind ? `${v.commitsBehind} commit${v.commitsBehind === 1 ? '' : 's'} behind` : 'behind origin/main';
+      const latest = v.latestVersion && v.latestVersion !== v.version ? ` (latest: v${v.latestVersion})` : '';
+      tooltipEl.textContent = '';
+      tooltipEl.append(`${behind}${latest} — run this in the folder's terminal:\n`);
+      const code = document.createElement('code');
+      code.textContent = 'bash update.sh';
+      tooltipEl.append(code);
+    } else {
+      lineEl.classList.remove('outdated');
+      tooltipEl.textContent = v.upToDate === null
+        ? (v.checkError ? `Could not check for updates: ${v.checkError}` : 'Could not check for updates.')
+        : 'Up to date with origin/main.';
+    }
+  } catch (_) { /* bridge unreachable — leave whatever was last shown */ }
+}
+
+(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await initManualLinks();await loadState();await refreshAll();checkRender();refreshToolStatus(true);refreshVersionStatus(true);setInterval(()=>refreshToolStatus(false),45000);setInterval(()=>refreshVersionStatus(false),5*60000);})();

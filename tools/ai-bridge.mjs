@@ -183,6 +183,47 @@ async function requireClaudeAuth() {
 // still have a dead/disconnected codebase MCP, silencing every source-grounded plan and consult.
 const CODEBASE_MCP_LOGIN_HINT = 'The hadrius-codebase MCP isn\'t connected. In a terminal run:  claude mcp login hadrius-codebase   (finish the browser prompt), then try again — no restart needed.';
 const CODEBASE_MCP_MISSING_HINT = 'The hadrius-codebase MCP isn\'t registered with the Claude CLI. In a terminal run:  claude mcp add --transport http hadrius-codebase https://mcp.hadriusapi.com/codebase --scope user';
+// ---- App version + "is this install behind origin/main" — shown under the wordmark in the panel
+// header. Reads package.json rather than a hand-maintained constant: the /health endpoint used to
+// hardcode '0.1.1' while package.json said '0.1.0', silently drifting apart.
+const LOCAL_VERSION = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).version || '0.0.0'; }
+  catch { return '0.0.0'; }
+})();
+
+function execGit(args) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd: REPO_ROOT, timeout: 20000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(String(stderr || err.message).split('\n')[0]));
+      resolve(stdout.trim());
+    });
+  });
+}
+
+let updateState = { checkedAt: 0, upToDate: null, latestVersion: null, commitsBehind: null, detail: null };
+/** Compares local HEAD to origin/main by commit SHA, not just package.json's version string — a
+ * real change can land without a version bump, and we'd rather say "5 commits behind" honestly
+ * than nothing at all. */
+async function checkForUpdate({ maxAgeMs = 5 * 60000 } = {}) {
+  if (Date.now() - updateState.checkedAt < maxAgeMs) return updateState;
+  try {
+    await execGit(['fetch', 'origin', 'main', '--quiet']);
+    const [localSha, remoteSha] = await Promise.all([execGit(['rev-parse', 'HEAD']), execGit(['rev-parse', 'origin/main'])]);
+    const upToDate = localSha === remoteSha;
+    let latestVersion = null, commitsBehind = 0;
+    if (!upToDate) {
+      commitsBehind = parseInt(await execGit(['rev-list', '--count', `${localSha}..origin/main`]), 10) || 0;
+      try { latestVersion = JSON.parse(await execGit(['show', 'origin/main:package.json'])).version || null; } catch (_) {}
+    }
+    updateState = { checkedAt: Date.now(), upToDate, latestVersion, commitsBehind, detail: null };
+  } catch (e) {
+    // Offline, no network, or not a git checkout yet (zip install before the first update.sh run)
+    // — say "couldn't check" rather than false-alarming "update available".
+    updateState = { checkedAt: Date.now(), upToDate: null, latestVersion: null, commitsBehind: null, detail: String(e.message || e).slice(0, 160) };
+  }
+  return updateState;
+}
+
 let codebaseMcpState = { connected: null, checkedAt: 0, detail: null };
 function checkCodebaseMcp({ maxAgeMs = 60000 } = {}) {
   if (Date.now() - codebaseMcpState.checkedAt < maxAgeMs) return Promise.resolve(codebaseMcpState);
@@ -1680,7 +1721,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({
       ok: true,
       product: 'hadrius-studio-beta',
-      version: '0.1.1',
+      version: LOCAL_VERSION,
       library: !!LIBRARY_SECRET,
       geminiFallback: !!(GEMINI_API_KEY || process.env.GEMINI_API_KEY),
       user: WHOAMI,
@@ -1699,6 +1740,20 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       claude: { connected: claude.loggedIn === true, detail: claude.detail, fixCommand: 'claude login' },
       codebase: { connected: codebase.connected === true, detail: codebase.detail, fixCommand: 'claude mcp login hadrius-codebase' },
+    });
+  }
+
+  // ---- app version + whether this install is behind origin/main, for the header's version line ----
+  if (req.method === 'GET' && u.pathname === '/version') {
+    const fresh = u.searchParams.get('fresh') === '1';
+    const update = await checkForUpdate({ maxAgeMs: fresh ? 0 : 5 * 60000 });
+    return sendJson(res, 200, {
+      ok: true,
+      version: LOCAL_VERSION,
+      upToDate: update.upToDate,
+      latestVersion: update.latestVersion,
+      commitsBehind: update.commitsBehind,
+      checkError: update.detail,
     });
   }
 
