@@ -456,7 +456,7 @@ function pumpAiQueue() {
         try {
           let lines = null;
           try {
-            lines = JSON.parse((await runClaude(buildPrompt(script.steps, script.name))).match(/\[[\s\S]*\]/)?.[0] || '[]');
+            lines = JSON.parse((await runClaude(buildPrompt(script.steps, script.name), buildPromptPlain(script.steps, script.name))).match(/\[[\s\S]*\]/)?.[0] || '[]');
           } catch (claudeErr) {
             aiLog(key, `  (Claude narration failed, falling back to gemini-3.8-flash…)`);
             lines = await runGemini(script.steps, script.name);
@@ -572,12 +572,18 @@ async function runGeminiPrompt(prompt) {
   return text;
 }
 
-async function runClaude(prompt) {
+// `geminiPrompt` (defaults to `prompt`) is what actually gets sent if Claude fails. Several
+// callers write a prompt that tells Claude "you have access to the codebase via search_code /
+// read_file / ..." for MCP grounding — reused verbatim for the Gemini fallback, that tool-shaped
+// language made Gemini attempt a real function call with no tools declared for the request, which
+// comes back as finishReason: MALFORMED_FUNCTION_CALL and empty text. Every such caller has (or
+// should have) a tool-free "Plain" twin of its prompt to pass here instead.
+async function runClaude(prompt, geminiPrompt = prompt) {
   try {
     return await runClaudeCli(prompt);
   } catch (claudeErr) {
     console.warn(`Claude CLI failed (${claudeErr.message}), falling back to gemini-3.8-flash...`);
-    return await runGeminiPrompt(prompt);
+    return await runGeminiPrompt(geminiPrompt);
   }
 }
 
@@ -1022,6 +1028,64 @@ Example format:
 ]`;
 }
 
+// Twin of buildPrompt() with the codebase-tools paragraph removed — see runClaude()'s geminiPrompt
+// param for why a Gemini call with no tools declared needs this instead of the Claude version.
+function buildPromptPlain(steps, scriptName) {
+  const lines = steps.map((s, i) => {
+    const t = s.target || {};
+    if (s.action === 'navigate') return `${i + 1}. [navigate] arrives on route ${s.route || s.value}`;
+    if (s.action === 'press') return `${i + 1}. [press ${s.key}]`;
+    if (s.action === 'type') return `${i + 1}. [type] enters "${s.value}" into ${t.label || t.placeholder || t.name || 'a field'}${t.heading ? ` (section: ${t.heading})` : ''}`;
+    return `${i + 1}. [click] ${t.role || 'element'} "${t.name || t.text || ''}"${t.heading ? ` (section: ${t.heading})` : ''}${t.inDialog ? ' (in a dialog)' : ''}`;
+  }).join('\n');
+
+  return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
+Below is the exact, ordered sequence of recorded UI actions for the web app:
+
+${lines}
+
+Write voiceover narration that flows like an engaging, natural STORY — like a knowledgeable, friendly guide walking a colleague through the workflow.
+
+CRITICAL RULES — NEVER BE ROBOTIC:
+1. STRICT BAN ON MECHANICAL COMMANDS:
+   - NEVER say: "Click this button", "Click that button", "Click Next", "Click Submit", "Click on...", "Hit...", "Tap...", "Type this", "Type that", or "Enter [text] into the field".
+   - The viewer sees the mouse clicks and keystrokes on screen. Do NOT narrate physical movements or dictate mechanical actions.
+   - Instead, explain user intent, workflow purpose, and what is being accomplished:
+     * BAD: "Click this button." -> GOOD: "Let's open up the control details to make our updates."
+     * BAD: "Click Next." -> GOOD: "" (silent breathing room) OR "With details in place, we can move into ownership."
+     * BAD: "Type the description." -> GOOD: "Here, we'll clarify what the control actually covers."
+     * BAD: "Click Save." -> GOOD: "Saving locks in the new procedures right away, keeping your records in sync."
+     * BAD: "Click the status dropdown and select Active." -> GOOD: "We'll set the status to Active so the rule begins monitoring immediately."
+
+2. COHESIVE STORYTELLING & NATURAL FLOW:
+   - Weave the sequence into a smooth, connected story from start to finish:
+     * Opening: Set the stage and state the goal naturally (e.g. "We'll start in the Controls list to update our procedures.").
+     * Progression: Connect steps using varied narrative bridges ("With that configured, we can now...", "From here, let's...", "Next, we'll link...", "This ensures that...").
+     * Variety: Vary sentence structures and rhythm. Do NOT start every line with "Now..." or "Next...".
+     * Closing: Conclude with the result or impact.
+
+3. BREATHING ROOM (SILENT MECHANICAL TRANSITIONS):
+   - Routine mechanical transitions (clicking 'Next' between wizard steps, closing dialogs, dismissals, or minor tab switches) do NOT all need speaking lines.
+   - For these steps, output an EMPTY string "" (no narration). A great video lets the visuals breathe rather than talking over every micro-click.
+
+4. PLATFORM & PRIVACY CONVENTIONS:
+   - Platform naming: Refer to the system as "the platform" (never say the brand name "Hadrius" out loud).
+   - Genericize sample data: The recorded names, emails, dates, and test titles are SAMPLE DATA. NEVER state specific names (e.g. "John", "Acme", "2026-04-01") out loud. Always describe them generically by role ("the test owner", "the reviewer", "the employee", "this test", "the due date").
+
+5. PACING:
+   - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
+
+Output ONLY a JSON array of strings, exactly one per numbered step (${steps.length} items total), no other text.
+Example format:
+[
+  "We'll start in the Controls list, where your active compliance rules live.",
+  "Selecting Edit opens this control up for changes.",
+  "Here we'll update the description to reflect what the control actually covers.",
+  "",
+  "Saving locks in the updated procedures right away."
+]`;
+}
+
 // A recipe's own log() calls double as its slides' captions (see tools/stage-lib.mjs) — accurate,
 // but written in an engineer's internal shorthand ("[act] recipients: searching..."), not narration.
 // These two mirror buildPrompt/runGemini above but take that caption text directly instead of
@@ -1136,6 +1200,9 @@ SCREENSHOTS: [4, 9]
 ---BODY---
 <p>...</p>...[[SCREENSHOT:4]]...`;
 }
+// Note: buildKbArticlePrompt's caller (publishRenderToPylon) talks to runClaudeCli/runGeminiKbArticle
+// directly rather than through the generic runClaude() helper, and runGeminiKbArticle already builds
+// its own tool-free prompt — so it doesn't need a "Plain" twin the way buildPrompt/buildRecipePrompt do.
 
 async function findCoverageInfo(scriptName) {
   try {
@@ -2520,7 +2587,7 @@ const server = http.createServer(async (req, res) => {
 
         try {
           const prompt = buildRecipePrompt(captions, scriptName);
-          const result = await runClaude(prompt);
+          const result = await runClaude(prompt, buildRecipePromptPlain(captions, scriptName));
           const match = result.match(/\[[\s\S]*\]/);
           lines = JSON.parse(match ? match[0] : result);
           if (!Array.isArray(lines)) throw new Error('Claude did not return a JSON array');
