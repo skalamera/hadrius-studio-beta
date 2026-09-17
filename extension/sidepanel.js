@@ -104,6 +104,67 @@ async function pollScan() {
 let manualLinks = new Set();
 let dismissedWorkflows = new Set();
 
+// Bulk selection on the To Record tab — keyed by "<module>|||<title>" so items with the
+// same title in different modules don't collide.
+let bulkSelected = new Set();
+function bulkKey(moduleName, title) { return `${moduleName}|||${title}`; }
+function findWorkflowByBulkKey(key) {
+  const idx = key.indexOf('|||');
+  if (idx === -1) return null;
+  const moduleName = key.slice(0, idx);
+  const title = key.slice(idx + 3);
+  const group = (catalog.modules || []).find((g) => g.module === moduleName);
+  const workflow = group?.workflows?.find((w) => w.title === title);
+  return workflow ? { module: moduleName, workflow } : null;
+}
+
+function updateBulkActionsBar() {
+  const bar = $('#bulkActionsBar');
+  if (!bar) return;
+  const n = bulkSelected.size;
+  bar.hidden = n === 0;
+  const countEl = $('#bulkSelectedCount');
+  if (countEl) countEl.textContent = `${n} selected`;
+}
+
+async function bulkAutoRecordSelected() {
+  const resolved = [...bulkSelected].map(findWorkflowByBulkKey).filter(Boolean);
+  if (!resolved.length) return;
+  const eligible = resolved.filter((r) => !autoRecordBlocker(r.workflow));
+  const ineligibleCount = resolved.length - eligible.length;
+  if (!eligible.length) return alert('None of the selected plans are eligible for auto-record — each needs a fully verified, high-confidence plan first (open View plan → Enhance).');
+  if (ineligibleCount > 0 && !confirm(`${eligible.length} of ${resolved.length} selected plans are eligible for auto-record. The other ${ineligibleCount} will be skipped (auto-record unavailable).\n\nContinue with the ${eligible.length} eligible plan${eligible.length === 1 ? '' : 's'}?`)) return;
+  startBulkAutoRecord(eligible);
+}
+
+async function bulkMarkAsDoneSelected() {
+  const resolved = [...bulkSelected].map(findWorkflowByBulkKey).filter(Boolean);
+  if (!resolved.length) return;
+  if (!confirm(`Mark ${resolved.length} plan${resolved.length === 1 ? '' : 's'} as done?`)) return;
+  for (const { module, workflow } of resolved) {
+    manualLinks.add(workflow.title);
+    api('/workflows/link', { method: 'POST', body: JSON.stringify({ title: workflow.title, module }) }).catch(() => {});
+  }
+  await chrome.storage.local.set({ manualLinks: [...manualLinks] });
+  toast(`✓ Marked ${resolved.length} plan${resolved.length === 1 ? '' : 's'} as done`);
+  bulkSelected.clear();
+  renderModules();
+}
+
+async function bulkDismissSelected() {
+  const resolved = [...bulkSelected].map(findWorkflowByBulkKey).filter(Boolean);
+  if (!resolved.length) return;
+  if (!confirm(`Dismiss and permanently remove ${resolved.length} plan${resolved.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
+  for (const { module, workflow } of resolved) {
+    dismissedWorkflows.add(workflow.title);
+    api('/workflows/dismiss', { method: 'POST', body: JSON.stringify({ title: workflow.title, module }) }).catch(() => {});
+  }
+  await chrome.storage.local.set({ dismissedWorkflows: [...dismissedWorkflows] });
+  toast(`✕ Dismissed ${resolved.length} plan${resolved.length === 1 ? '' : 's'}`);
+  bulkSelected.clear();
+  renderModules();
+}
+
 async function initManualLinks() {
   try {
     const res = await chrome.storage.local.get(['manualLinks', 'dismissedWorkflows']);
@@ -303,10 +364,15 @@ function renderModules() {
     for (const workflow of matchingWorkflows) {
       const item = document.createElement('div'); item.className = 'item';
       const blocker = autoRecordBlocker(workflow);
+      const key = bulkKey(group.module, workflow.title);
       const aiBtn = blocker
         ? `<span class="auto-record-off" title="${esc(`Auto-record unavailable: ${blocker}. Record manually, or open View plan → Enhance so every step gets verified.`)}">⚡ Auto-record unavailable</span>`
         : `<button class="ai-beta aiRecord" title="Beta — drives your browser autonomously to perform and record this workflow. Every step of this plan was verified against the source, but results can still be inconsistent; review the result.">⚡ Auto-record <span class="beta-chip">Beta</span></button>`;
-      item.innerHTML = `<div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div><p>${esc(workflow.purpose)}</p><div class="item-actions">${aiBtn}<button class="secondary choose" title="Record this workflow manually">Record manually</button><button class="secondary plan">View plan</button><button class="icon-action check markLinked push-right" type="button" title="Mark as done" aria-label="Mark as done">✓</button><button class="icon-action dismissWf" type="button" title="Dismiss this opportunity" aria-label="Dismiss">✕</button></div>`;
+      item.innerHTML = `<div class="item-title-row"><input type="checkbox" class="bulk-check" ${bulkSelected.has(key) ? 'checked' : ''} title="Select for bulk actions" /><div class="item-title">${esc(workflow.title)}<span class="badge">Needs article</span></div></div><p>${esc(workflow.purpose)}</p><div class="item-actions">${aiBtn}<button class="secondary choose" title="Record this workflow manually">Record manually</button><button class="secondary plan">View plan</button><button class="icon-action check markLinked push-right" type="button" title="Mark as done" aria-label="Mark as done">✓</button><button class="icon-action dismissWf" type="button" title="Dismiss this opportunity" aria-label="Dismiss">✕</button></div>`;
+      item.querySelector('.bulk-check').onchange = (e) => {
+        if (e.target.checked) bulkSelected.add(key); else bulkSelected.delete(key);
+        updateBulkActionsBar();
+      };
       const aiEl = item.querySelector('.aiRecord'); if (aiEl) aiEl.onclick = () => startAiBrowserRecording(group.module, workflow);
       item.querySelector('.choose').onclick = () => chooseWorkflow(group.module, workflow);
       item.querySelector('.plan').onclick = () => openViewPlanModal(group.module, workflow);
@@ -383,6 +449,16 @@ function renderModules() {
     };
     $('#modules').appendChild(section);
   }
+
+  // Drop selections that no longer point at a live "To Record" opportunity (e.g. it got
+  // linked/dismissed elsewhere) so the bulk bar's count stays accurate.
+  for (const k of [...bulkSelected]) {
+    const resolved = findWorkflowByBulkKey(k);
+    if (!resolved || manualLinks.has(resolved.workflow.title) || dismissedWorkflows.has(resolved.workflow.title)) {
+      bulkSelected.delete(k);
+    }
+  }
+  updateBulkActionsBar();
 
   if (scrollTarget && prevScrollTop > 0) {
     requestAnimationFrame(() => {
@@ -1143,15 +1219,23 @@ function autoRecordBlocker(w) {
   return null;
 }
 
-async function startAiBrowserRecording(moduleName, workflow) {
+async function startAiBrowserRecording(moduleName, workflow, opts = {}) {
   if (!workflow) return;
   const blocker = autoRecordBlocker(workflow);
-  if (blocker) return alert(`Auto-record is unavailable for this plan: ${blocker}.\n\nRecord it manually, or open View plan → Enhance plan so every step is verified first.`);
+  if (blocker) {
+    if (opts.queued) {
+      recordAutoRecordQueueResult(false, workflow.title, blocker);
+      return runNextInAutoRecordQueue();
+    }
+    return alert(`Auto-record is unavailable for this plan: ${blocker}.\n\nRecord it manually, or open View plan → Enhance plan so every step is verified first.`);
+  }
   const title = workflow.title;
   const steps = resolveSteps(moduleName, workflow);
   const stepsCount = steps.length;
-  const confirmed = confirm(`⚡ Launch AI Browser Automation for:\n"${title}" (${stepsCount} steps)?\n\nA visible browser window will open on your screen and execute the steps live with on-screen spotlight and takeover controls.`);
-  if (!confirmed) return;
+  if (!opts.queued) {
+    const confirmed = confirm(`⚡ Launch AI Browser Automation for:\n"${title}" (${stepsCount} steps)?\n\nA visible browser window will open on your screen and execute the steps live with on-screen spotlight and takeover controls.`);
+    if (!confirmed) return;
+  }
 
   // Close modals
   closeViewPlanModal();
@@ -1180,17 +1264,80 @@ async function startAiBrowserRecording(moduleName, workflow) {
     if (!res?.ok) throw new Error(res?.error || 'Failed to start AI recording');
 
     activeAiRecordKey = res.key;
-    pollAiRecordJob(res.key, title, steps);
+    pollAiRecordJob(res.key, title, steps, opts);
   } catch (err) {
     state.recording = false;
     activeAiRecordKey = null;
     if (activeAiPollInterval) { clearInterval(activeAiPollInterval); activeAiPollInterval = null; }
     updateRecordingButtons();
+    if (opts.queued) {
+      recordAutoRecordQueueResult(false, title, err.message);
+      return runNextInAutoRecordQueue();
+    }
     alert(`Could not start AI recording: ${err.message}`);
   }
 }
 
-function pollAiRecordJob(key, title, planSteps = []) {
+// ---- Bulk auto-record: runs each eligible selected plan one after another, since the AI
+// browser driver only supports one live automation session at a time. ----
+let autoRecordQueue = null; // { items: [{module, workflow}], idx, succeeded: [], failed: [{title, error}] }
+
+function updateAutoRecordQueueBanner() {
+  const banner = $('#autoRecordQueueBanner');
+  if (!banner) return;
+  if (!autoRecordQueue) { banner.hidden = true; return; }
+  banner.hidden = false;
+  const { items, idx } = autoRecordQueue;
+  const current = items[idx];
+  $('#autoRecordQueueText').textContent = current
+    ? `${idx + 1}/${items.length} — running "${current.workflow.title}"…`
+    : `${items.length}/${items.length} — finishing…`;
+}
+
+async function startBulkAutoRecord(items) {
+  if (!items.length) return;
+  const names = items.map((i) => `• ${i.workflow.title}`).join('\n');
+  const confirmed = confirm(`⚡ Bulk auto-record ${items.length} plan${items.length === 1 ? '' : 's'}?\n\n${names}\n\nEach runs one after another in a visible browser window. You can cancel the remaining queue anytime from the banner at the top.`);
+  if (!confirmed) return;
+  autoRecordQueue = { items: items.slice(), idx: 0, succeeded: [], failed: [] };
+  bulkSelected.clear();
+  renderModules();
+  updateAutoRecordQueueBanner();
+  runNextInAutoRecordQueue();
+}
+
+function cancelAutoRecordQueue() {
+  if (!autoRecordQueue) return;
+  const { idx, items } = autoRecordQueue;
+  toast(`Cancelled bulk auto-record after ${idx}/${items.length}`);
+  autoRecordQueue = null;
+  updateAutoRecordQueueBanner();
+}
+
+function recordAutoRecordQueueResult(success, title, error) {
+  if (!autoRecordQueue) return;
+  if (success) autoRecordQueue.succeeded.push(title);
+  else autoRecordQueue.failed.push({ title, error });
+  autoRecordQueue.idx += 1;
+}
+
+async function runNextInAutoRecordQueue() {
+  if (!autoRecordQueue) return;
+  const { items, idx, succeeded, failed } = autoRecordQueue;
+  if (idx >= items.length) {
+    const failedNote = failed.length ? `, ${failed.length} failed (${failed.map((f) => f.title).join(', ')})` : '';
+    toast(`✓ Bulk auto-record finished — ${succeeded.length} succeeded${failedNote}`);
+    autoRecordQueue = null;
+    updateAutoRecordQueueBanner();
+    await refreshAll().catch(() => {});
+    return;
+  }
+  updateAutoRecordQueueBanner();
+  const { module, workflow } = items[idx];
+  await startAiBrowserRecording(module, workflow, { queued: true });
+}
+
+function pollAiRecordJob(key, title, planSteps = [], opts = {}) {
   if (activeAiPollInterval) clearInterval(activeAiPollInterval);
 
   function updateSidepanelPlanProgress(currentStepIdx) {
@@ -1240,6 +1387,13 @@ function pollAiRecordJob(key, title, planSteps = []) {
           item.classList.remove('ai-active');
         });
 
+        if (opts.queued) {
+          recordAutoRecordQueueResult(true, title);
+          toast(`✓ "${title}" recorded`);
+          setTimeout(runNextInAutoRecordQueue, 400);
+          return;
+        }
+
         const scriptName = job.result?.scriptName;
         if (scriptName) {
           try {
@@ -1264,6 +1418,12 @@ function pollAiRecordJob(key, title, planSteps = []) {
         activeAiRecordKey = null;
         state.recording = false;
         updateRecordingButtons();
+        if (opts.queued) {
+          recordAutoRecordQueueResult(false, title, job.error);
+          toast(`✕ "${title}" failed: ${job.error || 'unknown error'}`);
+          setTimeout(runNextInAutoRecordQueue, 400);
+          return;
+        }
         alert(`AI recording stopped: ${job.error || 'unknown error'}`);
       }
     } catch (_) {}
@@ -2041,6 +2201,11 @@ async function openScript(name) {
 }
 
 $('#search').oninput=renderModules;
+$('#bulkAutoRecordBtn').onclick = bulkAutoRecordSelected;
+$('#bulkMarkDoneBtn').onclick = bulkMarkAsDoneSelected;
+$('#bulkDismissBtn').onclick = bulkDismissSelected;
+$('#bulkClearSelectionBtn').onclick = () => { bulkSelected.clear(); renderModules(); };
+$('#autoRecordQueueCancelBtn').onclick = cancelAutoRecordQueue;
 $('#scanBtn').onclick = async () => {
   if (!confirm('Run a new Gemini codebase scan through the Hadrius MCP? This can take several minutes.')) return;
   updateScanStatus({ running: true, log: ['Starting codebase scan via Hadrius MCP…'] });

@@ -46,6 +46,16 @@
         <span id="scanBannerDetail" class="banner-detail">Querying Hadrius frontend…</span>
       </div>
     </div>
+    <div id="autoRecordQueueBanner" class="top-banner scan-banner" hidden>
+      <span class="spinner-icon">⚡</span>
+      <div class="banner-text-group">
+        <span class="banner-title">Bulk Auto-record Running</span>
+        <span id="autoRecordQueueText" class="banner-detail"></span>
+      </div>
+      <div class="banner-actions">
+        <button id="autoRecordQueueCancelBtn" class="banner-btn banner-btn-cancel" type="button">✕ Cancel remaining</button>
+      </div>
+    </div>
     <div id="renderReadyBanner" class="top-banner ready-banner" hidden>
       <span class="ready-icon">✓</span>
       <div class="banner-text-group">
@@ -80,6 +90,15 @@
       <input id="search" type="search" placeholder="Search workflows…">
       <button id="scanBtn" class="ai-beta" title="Beta — AI scans the codebase for new opportunities. Results can be inconsistent; review new plans before recording.">Scan codebase <span class="beta-chip">Beta</span></button>
     </section>
+    <div id="bulkActionsBar" class="bulk-actions-bar" hidden>
+      <span id="bulkSelectedCount" class="bulk-selected-count">0 selected</span>
+      <div class="bulk-actions-buttons">
+        <button id="bulkAutoRecordBtn" class="ai-beta" type="button" title="Auto-record every selected plan that's eligible (fully verified, high-confidence grounding)">⚡ Auto-record selected</button>
+        <button id="bulkMarkDoneBtn" class="secondary" type="button">✓ Mark as done</button>
+        <button id="bulkDismissBtn" class="secondary bulk-danger-btn" type="button">✕ Dismiss</button>
+        <button id="bulkClearSelectionBtn" class="link-btn" type="button">Clear selection</button>
+      </div>
+    </div>
     <p id="syncStatus" class="muted">Loading workflows…</p>
     <div id="modules"></div>
     <footer id="workflowsFooter" class="workflows-footer">
