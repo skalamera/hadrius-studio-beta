@@ -271,6 +271,30 @@ button.enhancePlan:hover{background:#f5f3ff;border-color:#c4b5fd;color:var(--pur
 .item.done-item{background:#fcfdfc;border-color:#bbf7d0;opacity:.95}
 .item.done-item:hover{background:#fff;border-color:#86efac;opacity:1}
 .badge.done-badge{background:#dcfce7;color:#166534;border:1px solid #86efac}
+.plan-steps-list.editable .plan-step-item{cursor:default;user-select:auto;flex-wrap:wrap;gap:4px 8px}
+.plan-step-verify-badge{font-size:10px;flex-shrink:0;margin-top:1px;cursor:default}
+.plan-step-verify-badge.verified{color:#059669}
+.plan-step-verify-badge.unverified{color:#b45309}
+.plan-steps-list.editable .plan-step-desc{cursor:text;min-width:120px;border-radius:5px;padding:2px 4px;margin:-2px -4px}
+.plan-steps-list.editable .plan-step-desc:hover{background:#f3f0ff}
+.plan-steps-list.editable .plan-step-desc textarea{width:100%;font:inherit;line-height:inherit;border:1px solid var(--purple-border);border-radius:5px;padding:4px 6px;resize:vertical;min-height:38px}
+.plan-step-controls{display:flex;align-items:center;gap:2px;margin-left:auto;flex-shrink:0}
+.plan-step-controls button{background:none;border:none;padding:3px 4px;font-size:11px;cursor:pointer;color:var(--muted);border-radius:4px;line-height:1}
+.plan-step-controls button:hover{background:#efecff;color:var(--purple)}
+.plan-step-controls button:disabled{opacity:.35;cursor:not-allowed;background:none}
+.plan-step-controls button.plan-step-del:hover{background:#fee2e2;color:#dc2626}
+.plan-step-controls button.plan-step-ai:hover{background:#fff7ed;color:#9a3412}
+.plan-step-reason{flex-basis:100%;font-size:10.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 7px;margin-top:2px}
+.plan-save-status{font-size:10.5px;color:var(--muted);margin-left:8px;white-space:nowrap}
+.plan-save-status.saving{color:#9a3412}
+.plan-save-status.saved{color:#059669}
+.plan-save-status.error{color:#dc2626}
+.plan-add-step-row{margin-top:8px}
+.plan-add-step-btn{width:100%;font-size:11.5px;padding:7px 9px;border-style:dashed}
+.plan-add-step-form{margin-top:8px;background:#faf8ff;border:1px solid var(--purple-border);border-radius:8px;padding:9px}
+.plan-add-step-form textarea{width:100%;font:inherit;border:1px solid #cad6d1;border-radius:6px;padding:7px 8px;resize:vertical;min-height:44px}
+.plan-add-step-actions{display:flex;gap:8px;margin-top:7px;align-items:center}
+.plan-add-step-actions button:not(.link-btn){font-size:11px;padding:6px 10px}
 button.revertBtn{color:#15803d;border-color:#bbf7d0;background:#fff}
 button.revertBtn:hover{background:#f0fdf4;border-color:#86efac;color:#166534}
 

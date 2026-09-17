@@ -552,7 +552,10 @@ function renderPlanCard(module, workflow, steps) {
         <span class="plan-module-name">${esc(module)}</span>
         <span class="plan-pill">Workflow Plan</span>
       </div>
-      <button id="closePlanBtn" class="plan-close-btn" type="button" title="Dismiss plan">✕</button>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button id="editPlanBtn" class="link-btn" type="button" title="Add, reorder, edit, or AI-ground steps — changes save for everyone">✏️ Edit plan</button>
+        <button id="closePlanBtn" class="plan-close-btn" type="button" title="Dismiss plan">✕</button>
+      </div>
     </div>
     <h2 class="plan-card-title">${esc(workflow.title)}</h2>
     <p class="plan-card-subtitle">Follow this step-by-step plan while recording in Hadrius:</p>
@@ -569,6 +572,10 @@ function renderPlanCard(module, workflow, steps) {
 
   el.querySelector('#closePlanBtn').onclick = () => {
     el.hidden = true;
+  };
+
+  el.querySelector('#editPlanBtn').onclick = () => {
+    openViewPlanModal(module, { ...workflow, steps });
   };
 
   el.querySelectorAll('.plan-step-item').forEach((item) => {
@@ -681,16 +688,21 @@ function renderViewPlanContent(plan, isProposed = false) {
   const steps = Array.isArray(plan.steps) ? plan.steps : resolveSteps(mod, plan);
   $('#viewPlanStepsCount').textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
 
-  const stepsList = $('#viewPlanModalStepsList');
-  if (steps.length > 0) {
-    stepsList.innerHTML = steps.map((s, i) => `
-      <li class="plan-step-item">
-        <span class="plan-step-num">${i + 1}.</span>
-        <span class="plan-step-desc">${formatPlanStep(s)}</span>
-      </li>
-    `).join('');
+  const addStepRow = $('#viewPlanAddStepRow');
+  const saveStatus = $('#viewPlanSaveStatus');
+  if (isProposed) {
+    // The proposed-enhancement preview is Accept/Refine/Discard, not something to hand-edit —
+    // editing it would fork state between "what's on screen" and "what Accept actually replaces".
+    if (addStepRow) addStepRow.hidden = true;
+    if (saveStatus) saveStatus.hidden = true;
+    const stepsList = $('#viewPlanModalStepsList');
+    stepsList.classList.remove('editable');
+    stepsList.innerHTML = steps.length
+      ? steps.map((s, i) => `<li class="plan-step-item"><span class="plan-step-num">${i + 1}.</span><span class="plan-step-desc">${formatPlanStep(s)}</span></li>`).join('')
+      : '<li class="plan-step-item muted">No steps defined yet.</li>';
   } else {
-    stepsList.innerHTML = '<li class="plan-step-item muted">No steps defined yet.</li>';
+    if (addStepRow) addStepRow.hidden = false;
+    renderEditableSteps(steps);
   }
 
   const sources = plan.sources || activeViewPlanModal?.originalWorkflow?.sources || [];
@@ -705,6 +717,17 @@ function renderViewPlanContent(plan, isProposed = false) {
 }
 
 function openViewPlanModal(moduleName, workflow) {
+  const steps = resolveSteps(moduleName, workflow);
+  // stepMeta is a parallel array, one entry per step, tracking what "Ground & add" / "Edit with AI"
+  // last verified about it — kept in lockstep with `steps` through every add/reorder/delete/edit, and
+  // folded back into a plan.grounding object (the same shape assessGrounding() produces) on save, so
+  // a fully hand-verified plan can still light up Auto-record instead of always needing a full Enhance.
+  const groundingByStep = new Map((workflow.grounding?.steps || []).map((g) => [g.step - 1, g]));
+  const stepMeta = steps.map((_, i) => {
+    const g = groundingByStep.get(i);
+    return g ? { verified: g.verified === true, file: g.file || null, quote: g.quote || null, reason: g.reason || null } : { verified: false, file: null, quote: null, reason: null };
+  });
+
   activeViewPlanModal = {
     module: moduleName,
     originalWorkflow: workflow,
@@ -713,7 +736,7 @@ function openViewPlanModal(moduleName, workflow) {
       module: moduleName,
       startRoute: workflow.startRoute || workflow.start_route,
       summary: workflow.purpose || workflow.summary || '',
-      steps: resolveSteps(moduleName, workflow),
+      steps,
       sources: workflow.sources || [],
       prerequisites: workflow.prerequisites || [],
       provisionable: workflow.provisionable || null,
@@ -723,7 +746,9 @@ function openViewPlanModal(moduleName, workflow) {
       planUpdatedAt: workflow.planUpdatedAt || null,
       planUpdatedBy: workflow.planUpdatedBy || null
     },
-    enhancedPlan: null
+    stepMeta,
+    enhancedPlan: null,
+    saveTimer: null
   };
 
   renderViewPlanContent(activeViewPlanModal.currentPlan, false);
@@ -733,12 +758,224 @@ function openViewPlanModal(moduleName, workflow) {
   $('#viewPlanAiPromptBox').hidden = false;
   $('#viewPlanAiReviewBox').hidden = true;
   $('#viewPlanLoadingState').hidden = true;
+  $('#viewPlanAddStepForm').hidden = true;
+  $('#viewPlanAddStepInput').value = '';
+  $('#viewPlanSaveStatus').hidden = true;
   $('#viewPlanModal').hidden = false;
 }
 
 function closeViewPlanModal() {
+  if (activeViewPlanModal?.saveTimer) clearTimeout(activeViewPlanModal.saveTimer);
   $('#viewPlanModal').hidden = true;
   activeViewPlanModal = null;
+}
+
+// ---- Plan editing: add/reorder/edit/delete steps, ground new ones, refine existing ones with AI ----
+
+function renderEditableSteps(steps) {
+  const stepsList = $('#viewPlanModalStepsList');
+  stepsList.classList.add('editable');
+  const meta = activeViewPlanModal?.stepMeta || [];
+
+  if (!steps.length) {
+    stepsList.innerHTML = '<li class="plan-step-item muted">No steps yet — use "+ Add step" below.</li>';
+    return;
+  }
+
+  stepsList.innerHTML = steps.map((s, i) => {
+    const m = meta[i] || {};
+    const verified = !!m.verified;
+    const badgeTitle = verified
+      ? `Verified against ${m.file || 'the codebase'}${m.quote ? `: "${m.quote}"` : ''}`
+      : (m.reason || 'Not verified against the codebase — Auto-record may get stuck here.');
+    return `
+      <li class="plan-step-item" data-idx="${i}">
+        <span class="plan-step-verify-badge ${verified ? 'verified' : 'unverified'}" title="${esc(badgeTitle)}">${verified ? '✓' : '?'}</span>
+        <span class="plan-step-num">${i + 1}.</span>
+        <span class="plan-step-desc" data-idx="${i}" tabindex="0" title="Click to edit">${formatPlanStep(s)}</span>
+        <span class="plan-step-controls">
+          <button type="button" class="plan-step-up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" class="plan-step-down" title="Move down" ${i === steps.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" class="plan-step-ai" title="Edit with AI — refine or re-verify this step against the codebase">✨</button>
+          <button type="button" class="plan-step-del" title="Delete step">🗑</button>
+        </span>
+        ${!verified && m.reason ? `<span class="plan-step-reason">${esc(m.reason)}</span>` : ''}
+      </li>
+    `;
+  }).join('');
+
+  stepsList.querySelectorAll('.plan-step-item').forEach((li) => {
+    const idx = Number(li.dataset.idx);
+    li.querySelector('.plan-step-up')?.addEventListener('click', () => moveStep(idx, -1));
+    li.querySelector('.plan-step-down')?.addEventListener('click', () => moveStep(idx, 1));
+    li.querySelector('.plan-step-del')?.addEventListener('click', () => deleteStepAt(idx));
+    li.querySelector('.plan-step-ai')?.addEventListener('click', () => refineStepAI(idx));
+    const desc = li.querySelector('.plan-step-desc');
+    if (desc) desc.addEventListener('click', () => beginEditStep(idx));
+  });
+}
+
+function beginEditStep(idx) {
+  const li = $(`.plan-step-item[data-idx="${idx}"]`);
+  const desc = li?.querySelector('.plan-step-desc');
+  if (!desc || desc.querySelector('textarea')) return;
+  const plan = activeViewPlanModal.currentPlan;
+  const original = String(plan.steps[idx] || '');
+  desc.innerHTML = '';
+  const ta = document.createElement('textarea');
+  ta.value = original;
+  desc.appendChild(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+
+  const commit = () => {
+    const next = ta.value.trim();
+    if (next && next !== original) {
+      plan.steps[idx] = next;
+      activeViewPlanModal.stepMeta[idx] = { verified: false, file: null, quote: null, reason: 'Edited by hand — not re-verified. Use ✨ to check it against the codebase.' };
+      scheduleSavePlanEdits();
+    }
+    renderEditableSteps(plan.steps);
+  };
+  ta.addEventListener('blur', commit);
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); renderEditableSteps(plan.steps); }
+  });
+}
+
+function moveStep(idx, dir) {
+  const plan = activeViewPlanModal.currentPlan;
+  const j = idx + dir;
+  if (j < 0 || j >= plan.steps.length) return;
+  [plan.steps[idx], plan.steps[j]] = [plan.steps[j], plan.steps[idx]];
+  [activeViewPlanModal.stepMeta[idx], activeViewPlanModal.stepMeta[j]] = [activeViewPlanModal.stepMeta[j], activeViewPlanModal.stepMeta[idx]];
+  renderEditableSteps(plan.steps);
+  scheduleSavePlanEdits();
+}
+
+function deleteStepAt(idx) {
+  const plan = activeViewPlanModal.currentPlan;
+  if (!confirm(`Delete step ${idx + 1}?\n\n"${plan.steps[idx]}"`)) return;
+  plan.steps.splice(idx, 1);
+  activeViewPlanModal.stepMeta.splice(idx, 1);
+  renderEditableSteps(plan.steps);
+  $('#viewPlanStepsCount').textContent = `${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'}`;
+  scheduleSavePlanEdits();
+}
+
+async function refineStepAI(idx) {
+  const plan = activeViewPlanModal.currentPlan;
+  const instruction = prompt(`How should step ${idx + 1} change?\n\nLeave blank to just re-verify it against the codebase as-is.`, '');
+  if (instruction === null) return; // cancelled
+
+  const li = $(`.plan-step-item[data-idx="${idx}"]`);
+  const aiBtn = li?.querySelector('.plan-step-ai');
+  if (aiBtn) { aiBtn.disabled = true; aiBtn.textContent = '⏳'; }
+  try {
+    const res = await api('/workflows/step/refine', {
+      method: 'POST',
+      body: JSON.stringify({ module: plan.module, workflow: plan, steps: plan.steps, stepIndex: idx, instruction: instruction || null })
+    });
+    if (!res?.ok) throw new Error(res?.error || 'Refine failed');
+    plan.steps[idx] = res.instruction;
+    activeViewPlanModal.stepMeta[idx] = { verified: res.verified, file: res.file, quote: res.quote, reason: res.reason };
+    renderEditableSteps(plan.steps);
+    scheduleSavePlanEdits();
+  } catch (err) {
+    alert(`Could not refine step ${idx + 1}: ${err.message}`);
+    renderEditableSteps(plan.steps);
+  }
+}
+
+async function addStepGrounded(rawIdea) {
+  const plan = activeViewPlanModal.currentPlan;
+  const btn = $('#viewPlanAddStepGroundBtn');
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '⏳ Grounding…';
+  try {
+    const res = await api('/workflows/step/ground', {
+      method: 'POST',
+      body: JSON.stringify({ module: plan.module, workflow: plan, steps: plan.steps, insertAt: plan.steps.length, rawIdea })
+    });
+    if (!res?.ok) throw new Error(res?.error || 'Grounding failed');
+    plan.steps.push(res.instruction);
+    activeViewPlanModal.stepMeta.push({ verified: res.verified, file: res.file, quote: res.quote, reason: res.reason });
+    finishAddStep();
+  } catch (err) {
+    alert(`Could not ground that step: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+function addStepPlain(text) {
+  const plan = activeViewPlanModal.currentPlan;
+  plan.steps.push(text);
+  activeViewPlanModal.stepMeta.push({ verified: false, file: null, quote: null, reason: 'Added manually — not verified against the codebase.' });
+  finishAddStep();
+}
+
+function finishAddStep() {
+  const plan = activeViewPlanModal.currentPlan;
+  renderEditableSteps(plan.steps);
+  $('#viewPlanStepsCount').textContent = `${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'}`;
+  $('#viewPlanAddStepForm').hidden = true;
+  $('#viewPlanAddStepInput').value = '';
+  scheduleSavePlanEdits();
+}
+
+function scheduleSavePlanEdits() {
+  if (!activeViewPlanModal) return;
+  if (activeViewPlanModal.saveTimer) clearTimeout(activeViewPlanModal.saveTimer);
+  const statusEl = $('#viewPlanSaveStatus');
+  statusEl.hidden = false;
+  statusEl.className = 'plan-save-status saving';
+  statusEl.textContent = 'Saving…';
+  activeViewPlanModal.saveTimer = setTimeout(persistPlanEdits, 600);
+}
+
+async function persistPlanEdits() {
+  if (!activeViewPlanModal) return;
+  const plan = activeViewPlanModal.currentPlan;
+  const meta = activeViewPlanModal.stepMeta;
+  const statusEl = $('#viewPlanSaveStatus');
+
+  // Same shape assessGrounding() produces server-side, built from what each step's own metadata
+  // already knows — a plan that's been fully hand-verified (every step individually grounded or
+  // re-checked) can light up Auto-record again without a full Enhance re-run.
+  const groundingSteps = plan.steps.map((_, i) => ({ step: i + 1, file: meta[i]?.file || '', quote: meta[i]?.quote || '', verified: !!meta[i]?.verified, ...(meta[i]?.reason && !meta[i]?.verified ? { reason: meta[i].reason } : {}) }));
+  const verifiedCount = groundingSteps.filter((s) => s.verified).length;
+  const unverified = groundingSteps.filter((s) => !s.verified);
+  const grounding = groundingSteps.length ? {
+    confidence: unverified.length === 0 ? 'high' : (unverified.length <= 2 ? 'medium' : 'low'),
+    steps: groundingSteps,
+    unverified,
+    verifiedSteps: verifiedCount,
+    totalSteps: groundingSteps.length,
+    checkedAt: new Date().toISOString()
+  } : null;
+  plan.grounding = grounding;
+
+  try {
+    const res = await api('/workflows/opportunity', {
+      method: 'POST',
+      body: JSON.stringify({ module: plan.module, workflow: plan })
+    });
+    if (!res?.ok) throw new Error(res?.error || 'Save failed');
+    statusEl.className = 'plan-save-status saved';
+    statusEl.textContent = '✓ Saved — shared with everyone';
+    if (activeViewPlanModal) {
+      activeViewPlanModal.originalWorkflow = { ...activeViewPlanModal.originalWorkflow, ...plan, autoRecordBlocker: autoRecordBlocker(plan) };
+      renderViewPlanContent(plan, false);
+    }
+    refreshAll().catch(() => {});
+  } catch (err) {
+    statusEl.className = 'plan-save-status error';
+    statusEl.textContent = `⚠ Could not save: ${err.message}`;
+  }
 }
 
 async function enhancePlanInModal() {
@@ -2036,6 +2273,24 @@ $('#viewPlanEnhanceBtn').onclick = enhancePlanInModal;
 $('#viewPlanIterateBtn').onclick = refinePlanInModal;
 $('#viewPlanAcceptBtn').onclick = acceptEnhancedPlanInModal;
 $('#viewPlanDiscardBtn').onclick = discardEnhancedPlanInModal;
+$('#viewPlanAddStepBtn').onclick = () => {
+  $('#viewPlanAddStepForm').hidden = false;
+  $('#viewPlanAddStepInput').focus();
+};
+$('#viewPlanAddStepCancelBtn').onclick = () => {
+  $('#viewPlanAddStepForm').hidden = true;
+  $('#viewPlanAddStepInput').value = '';
+};
+$('#viewPlanAddStepGroundBtn').onclick = () => {
+  const text = $('#viewPlanAddStepInput').value.trim();
+  if (!text) return $('#viewPlanAddStepInput').focus();
+  addStepGrounded(text);
+};
+$('#viewPlanAddStepPlainBtn').onclick = () => {
+  const text = $('#viewPlanAddStepInput').value.trim();
+  if (!text) return $('#viewPlanAddStepInput').focus();
+  addStepPlain(text);
+};
 $('#viewPlanModal').onclick = (e) => {
   if (e.target.id === 'viewPlanModal') closeViewPlanModal();
 };

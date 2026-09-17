@@ -174,9 +174,21 @@
             </div>
             <button id="viewPlanAiRecordBtn" class="ai-beta ai-gen-btn" type="button" title="Beta — drives your browser autonomously to perform and record this plan. Results can be inconsistent; use with caution and review the result.">⚡ Auto-record with AI <span class="beta-chip">Beta</span></button>
             <span id="viewPlanAutoRecordNote" class="auto-record-off" hidden></span>
+            <span id="viewPlanSaveStatus" class="plan-save-status" hidden></span>
           </div>
           <div class="view-plan-steps-container">
-            <ul id="viewPlanModalStepsList" class="plan-steps-list"></ul>
+            <ul id="viewPlanModalStepsList" class="plan-steps-list editable"></ul>
+            <div id="viewPlanAddStepRow" class="plan-add-step-row">
+              <button id="viewPlanAddStepBtn" class="secondary plan-add-step-btn" type="button">+ Add step</button>
+              <div id="viewPlanAddStepForm" class="plan-add-step-form" hidden>
+                <textarea id="viewPlanAddStepInput" rows="2" placeholder="Describe what this step should do — as rough as you like…"></textarea>
+                <div class="plan-add-step-actions">
+                  <button id="viewPlanAddStepGroundBtn" class="ai-beta ai-gen-btn" type="button" title="Look up the exact button/field label in the codebase via the Hadrius MCP before adding">✨ Ground &amp; add</button>
+                  <button id="viewPlanAddStepPlainBtn" class="secondary" type="button" title="Add exactly what you typed, unverified">Add as-is</button>
+                  <button id="viewPlanAddStepCancelBtn" class="link-btn" type="button">Cancel</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

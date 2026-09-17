@@ -874,6 +874,93 @@ Return ONLY a valid JSON object in this exact shape:
   return plan;
 }
 
+/** Shared plan context block both step-editing prompts below prefix onto their own instructions. */
+function planContextBlock({ module, workflow, steps, markIndex }) {
+  const lines = (steps || []).map((s, i) => `${i + 1}${i === markIndex ? '  <-- INSERT HERE' : ''}. ${typeof s === 'string' ? s : (s.instruction || '')}`);
+  return `WORKFLOW: ${workflow?.title || '(untitled)'}
+Module: ${module || workflow?.module || '(unknown)'}
+Start route: ${workflow?.startRoute || workflow?.start_route || '(unknown)'}
+Summary: ${workflow?.summary || workflow?.purpose || '(none given)'}
+
+FULL PLAN FOR CONTEXT (do not rewrite these — you are only producing the ONE step described below):
+${lines.join('\n') || '(no steps yet)'}`;
+}
+
+/**
+ * "Ground in codebase" for a brand-new step a person is inserting by hand. Takes their rough idea
+ * of what the step should do and turns it into the same precise, source-verified instruction style
+ * as the rest of the plan — exact visible button/field text in quotes — so it doesn't leave
+ * Auto-record stuck guessing at a label that doesn't exist on the page.
+ */
+async function groundNewStepFromCodebase({ module, workflow, steps, insertAt, rawIdea }) {
+  const prompt = `You are grounding ONE new step being inserted into an existing, source-verified walkthrough plan for the Hadrius compliance web app (repo "hadrius_frontend", app code under apps/hadrius-app/src/). Use ONLY the hadrius-codebase MCP tools (search_code, read_file, list_directory, file_tree) — read the real component behind the surrounding steps' page/dialog before answering.
+
+${planContextBlock({ module, workflow, steps, markIndex: insertAt })}
+
+THE PERSON'S ROUGH IDEA FOR THE NEW STEP (rewrite this, don't just repeat it):
+"${rawIdea}"
+
+Find the exact page/dialog/component this step happens in (inferred from the surrounding steps above) and rewrite the idea into ONE precise, imperative instruction sentence in the same style as the plan — reference the EXACT visible button/field/tab label in quotes, e.g. Click "Archive policy", Enter the date in "Due date". If you cannot confirm a matching control in the source, say so honestly rather than inventing a label.
+
+Return ONLY a JSON object, no markdown fence, no other text:
+{"instruction": "the rewritten step", "verified": true|false, "file": "apps/... or empty if not verified", "quote": "the exact code snippet proving the label, or empty", "reason": "only when verified is false — what you could not confirm"}`;
+
+  let raw;
+  try { raw = await runClaudeCli(prompt); }
+  catch (claudeErr) {
+    console.warn(`Claude CLI with MCP failed for step grounding (${claudeErr.message}), falling back to Gemini with tools...`);
+    try { raw = await runGeminiWithTools(prompt); }
+    catch (toolErr) {
+      console.warn(`Gemini with tools failed for step grounding (${toolErr.message}), falling back to Gemini direct prompt (ungrounded)...`);
+      raw = await runGeminiPrompt(`${prompt}\n\n(No codebase tools are available to you right now — do your best from the workflow context alone, and set "verified": false.)`);
+    }
+  }
+  const out = extractJson(String(raw));
+  if (!out?.instruction) throw new Error('AI did not return a usable step');
+  return { instruction: String(out.instruction).trim(), verified: out.verified === true, file: out.file || null, quote: out.quote || null, reason: out.reason || null };
+}
+
+/**
+ * Per-step "Edit with AI" — re-grounds or rewrites ONE existing step, either against a free-text
+ * ask from the person, or (no instruction given) just re-verifies its labels against the current
+ * codebase, which is exactly what a step needs after the underlying UI changed out from under it.
+ */
+async function refineStepWithCodebase({ module, workflow, steps, stepIndex, instruction }) {
+  const current = steps?.[stepIndex];
+  const currentText = typeof current === 'string' ? current : (current?.instruction || '');
+  if (!currentText) throw new Error('no step at that position');
+
+  const ask = instruction?.trim()
+    ? `THE PERSON'S REQUESTED CHANGE:\n"${instruction.trim()}"\nApply it, and verify the result against the source.`
+    : `No specific change was requested — just RE-VERIFY this step against the current codebase and correct anything that has drifted (a renamed button, a moved control, a label that no longer exists) while keeping its intent the same.`;
+
+  const prompt = `You are revising ONE step of an existing, source-verified walkthrough plan for the Hadrius compliance web app (repo "hadrius_frontend", app code under apps/hadrius-app/src/). Use ONLY the hadrius-codebase MCP tools (search_code, read_file, list_directory, file_tree) — read the real component behind this step before answering.
+
+${planContextBlock({ module, workflow, steps, markIndex: stepIndex })}
+
+THE STEP TO REVISE (step ${stepIndex + 1}):
+"${currentText}"
+
+${ask}
+
+Return ONLY a JSON object, no markdown fence, no other text:
+{"instruction": "the revised step", "verified": true|false, "file": "apps/... or empty if not verified", "quote": "the exact code snippet proving the label, or empty", "reason": "only when verified is false — what you could not confirm"}`;
+
+  let raw;
+  try { raw = await runClaudeCli(prompt); }
+  catch (claudeErr) {
+    console.warn(`Claude CLI with MCP failed for step refine (${claudeErr.message}), falling back to Gemini with tools...`);
+    try { raw = await runGeminiWithTools(prompt); }
+    catch (toolErr) {
+      console.warn(`Gemini with tools failed for step refine (${toolErr.message}), falling back to Gemini direct prompt (ungrounded)...`);
+      raw = await runGeminiPrompt(`${prompt}\n\n(No codebase tools are available to you right now — do your best from the workflow context alone, and set "verified": false.)`);
+    }
+  }
+  const out = extractJson(String(raw));
+  if (!out?.instruction) throw new Error('AI did not return a usable step');
+  return { instruction: String(out.instruction).trim(), verified: out.verified === true, file: out.file || null, quote: out.quote || null, reason: out.reason || null };
+}
+
 /**
  * Post-process narration lines to eliminate robotic command clichés and
  * ensure natural storytelling flow with breathing room on routine transitions.
@@ -1964,6 +2051,40 @@ const server = http.createServer(async (req, res) => {
         });
 
         return sendJson(res, 200, { ok: true, plan: enhancedPlan });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
+  }
+
+  // ---- Ground a brand-new step being manually inserted into a plan ----
+  if (req.method === 'POST' && u.pathname === '/workflows/step/ground') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { module: modName, workflow, steps, insertAt, rawIdea } = JSON.parse(body || '{}');
+        if (!rawIdea?.trim()) throw new Error('rawIdea required — describe what this step should do');
+        const result = await groundNewStepFromCodebase({ module: modName, workflow, steps, insertAt: Number.isInteger(insertAt) ? insertAt : (steps?.length || 0), rawIdea });
+        return sendJson(res, 200, { ok: true, ...result });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+      }
+    });
+    return;
+  }
+
+  // ---- Per-step "Edit with AI": refine or re-verify ONE existing step ----
+  if (req.method === 'POST' && u.pathname === '/workflows/step/refine') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', async () => {
+      try {
+        const { module: modName, workflow, steps, stepIndex, instruction } = JSON.parse(body || '{}');
+        if (!Number.isInteger(stepIndex)) throw new Error('stepIndex required');
+        const result = await refineStepWithCodebase({ module: modName, workflow, steps, stepIndex, instruction });
+        return sendJson(res, 200, { ok: true, ...result });
       } catch (e) {
         return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
       }
