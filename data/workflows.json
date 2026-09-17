@@ -297,8 +297,7 @@
             "On the entity's Tests page, click \"Export\" (Download icon) in the top right corner of the page header.",
             "In the \"Export testing program\" dialog, set the \"Start date\" and \"End date\" fields to the desired range, or click one of the preset buttons — \"YTD\", \"Last quarter\", or \"Last month\" — to fill them automatically. Note this exports the whole testing program company-wide, not just the entity you launched it from.",
             "Click \"Prepare export\" to queue the export job.",
-            "A \"Preparing your export\" confirmation toast appears. Click \"Open export\" in the toast to go to that export's detail page under Settings > Exports.",
-            "Once the export finishes building its files, download the archive using the \"Download\" button on each part (or \"Download all\" when there is more than one part)."
+            "A \"Preparing your export\" confirmation toast appears. Click \"Open export\" in the toast to go to that export's detail page under Settings > Exports."
           ],
           "evidence": [],
           "sources": [
@@ -1944,7 +1943,7 @@
             "apps/hadrius-app/src/pages/coreloop/firm_oversight/calendar/calendar_detail_drawer.tsx",
             "packages/ui/src/v3/page_elements/schedule_modal.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "Access to Testing Program (firm_oversight.all.basic_access permission on the recording account, standard for any active employee/admin role)"
           ],
@@ -2020,7 +2019,8 @@
             "totalSteps": 10,
             "unverified": [],
             "verifiedSteps": 10
-          }
+          },
+          "linkedScript": "How-to-schedule-a-new-calendar-task"
         },
         {
           "title": "How to edit or reassign a scheduled calendar task",
@@ -2321,7 +2321,7 @@
           "linkedScript": "How-to-mark-a-calendar-task-complete"
         },
         {
-          "status": "missing",
+          "status": "covered",
           "steps": [
             "Navigate to Testing program > Controls (the page opens on the \"Register\" tab)",
             "Confirm the manual version selector in the page header shows the current version (labelled \"(Current)\"); the \"Add control\" button is only shown for the active version",
@@ -2361,10 +2361,11 @@
             "totalSteps": 9,
             "unverified": [],
             "verifiedSteps": 9
-          }
+          },
+          "linkedScript": "How-to-add-a-new-control-to-the-register"
         },
         {
-          "status": "missing",
+          "status": "covered",
           "steps": [
             "Navigate to Testing program > Entities",
             "Click \"Add entity\" (top right of the entities table) — the \"Add entity\" dialog opens with the description \"Create a new entity and optionally upload a WSP file.\"",
@@ -2400,7 +2401,8 @@
             "totalSteps": 6,
             "unverified": [],
             "verifiedSteps": 6
-          }
+          },
+          "linkedScript": "How-to-add-a-new-entity"
         },
         {
           "status": "missing",
@@ -2700,8 +2702,8 @@
             "verifiedSteps": 10
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-17T00:37:00.511Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedAt": "2026-09-17T15:41:54.516Z",
+          "planUpdatedBy": "michaelflanagan"
         },
         {
           "title": "How to create a disclosure template for People oversight",
@@ -4180,7 +4182,7 @@
             "Enter the representative's CRD number and date of birth, then submit — this tenant's FINRA integration is mocked (company 1013 is classified INTERNAL/sandbox, so `finra_client()` always uses `call_mock=True`), so the sync succeeds immediately without any real external FINRA connectivity and creates the underlying FirmAssociation record needed for amendments.",
             "Confirm the sync completed (toast says \"Sync successful\" / \"Account connected and synced\"), then return to People oversight > U4 filings and use this employee as the representative in Section 1 of the amendment wizard."
           ],
-          "planUpdatedAt": "2026-09-17T00:36:12.873Z",
+          "planUpdatedAt": "2026-09-17T15:38:11.798Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [
@@ -6523,6 +6525,86 @@
       "module": "Communications",
       "workflows": [
         {
+          "title": "How to review and close out an email in the Communications archive",
+          "purpose": "There is no literal \"Archive email\" button in Hadrius — all captured mail is automatically stored in the searchable Email archive, and the closest user action is opening a conversation from that archive and closing it as compliant or non-compliant.",
+          "startRoute": "/communications/email",
+          "trigger": "",
+          "priority": "medium",
+          "steps": [
+            "Navigate to Communications > Email",
+            "Enter search terms in \"Search body, subject, conversation ID, or participant email...\"",
+            "Click the vertical-ellipsis \"More actions for conversation {id}\" button at the right end of a row",
+            "Click \"Close as compliant\" (or \"Close as non-compliant\") in the menu",
+            "Enter optional context in \"Notes (optional)\"",
+            "Click \"Confirm\" in the \"Mark conversation as compliant\" dialog"
+          ],
+          "evidence": [],
+          "sources": [
+            "apps/hadrius-app/pages/communications/email/index.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/email/page_email_archive_route.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/email/email_message_search_table.tsx",
+            "apps/hadrius-app/src/pages/coreloop/archive/email/email_message_search_row_action_dialogs.tsx",
+            "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx"
+          ],
+          "prerequisites": [
+            "Comms review access (canAccessCommsReview) and the Email tab enabled (allCommsEnabled or emailEnabled), plus archiveTabHidden not set, or the nav tab won't render",
+            "The email_search_ux_v2_feature config flag must be true, or the route falls back to the older ArchivePage (tabOverride=\"email review\") with a different layout not covered by this plan",
+            "At least one email conversation must already be captured/ingested into the archive to act on"
+          ],
+          "provisionable": "structurally-blocked",
+          "blockerReason": "\"Archive an email\" as a discrete user action does not exist in the codebase — email_message_search_table.tsx's row-action menu only exposes Escalate..., Remove assignee, Close as compliant, Close as non-compliant, and Export (lines 486-527); there is no Archive item. Emails enter the archive automatically via ingestion, not a UI click.",
+          "suggestedSetupSteps": [],
+          "fileFixtureKind": null,
+          "grounding": {
+            "steps": [
+              {
+                "file": "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx",
+                "step": 1,
+                "quote": "<TabIndex title={\"Email\"} path={\"/communications/email\"} Icon={Mail} isMinimized={isMinimized} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/email/page_email_archive_route.tsx",
+                "step": 2,
+                "quote": "aria-label=\"Search email messages\" placeholder=\"Search body, subject, conversation ID, or participant email...\"",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/email/email_message_search_table.tsx",
+                "step": 3,
+                "quote": "let actionsLabel = `More actions for conversation ${conversationId ?? \"unavailable\"}`;",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/email/email_message_search_table.tsx",
+                "step": 4,
+                "quote": "<DropdownMenuItem label=\"Close as compliant\" icon={ShieldCheck} onClick={() => { ... onRowAction({ type: \"review\", conversationId, reviewStatus: \"NEGATIVE\" }); }} />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/email/email_message_search_row_action_dialogs.tsx",
+                "step": 5,
+                "quote": "<TextareaField label=\"Notes (optional)\" placeholder=\"Add notes for this conversation\" ... />",
+                "verified": true
+              },
+              {
+                "file": "apps/hadrius-app/src/pages/coreloop/archive/email/email_message_search_row_action_dialogs.tsx",
+                "step": 6,
+                "quote": "title={`Mark conversation as ${reviewOutcome}`} ... <Button loading={loading} loadingText=\"Updating...\" onClick={submitReview}>Confirm</Button>",
+                "verified": true
+              }
+            ],
+            "checkedAt": "2026-09-17T15:39:36.775Z",
+            "confidence": "medium",
+            "totalSteps": 6,
+            "unverified": [],
+            "verifiedSteps": 6
+          },
+          "status": "missing",
+          "planUpdatedAt": "2026-09-17T15:48:09.062Z",
+          "planUpdatedBy": "michaelflanagan"
+        },
+        {
           "title": "How to create a visibility (information barrier) policy for instant messages",
           "purpose": "Create a scoped visibility barrier policy that controls which employees' instant-message communications a defined group of people can or cannot see.",
           "startRoute": "/communications/im/settings?tab=policies",
@@ -6679,7 +6761,7 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-16T05:58:39.426Z",
+          "planUpdatedAt": "2026-09-17T15:39:40.741Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [],
@@ -6808,10 +6890,8 @@
             "Optionally click \"Filters\" to open the filter sidebar and narrow by date, status, participants, etc.",
             "Click \"More actions\" in the page header and choose \"Export\" (the item shows a count pill of matching emails)",
             "In the \"Export N matching emails\" dialog, read the note that all emails matching the search will be included and click \"Export search\"",
-            "A \"Search export started\" toast appears; when the background job finishes a \"Search export ready\" toast says the export is ready in Exports",
-            "Navigate to Communications > Exports",
-            "Find the export row whose \"Status\" badge reads \"Complete\"",
-            "Click the download icon button at the end of the row — a single file opens directly; multiple files open a download modal"
+            "A \"Search export started\" toast appears — do not wait for it to finish; go straight to Communications > Exports to show where the file will land.",
+            "Navigate to Communications > Exports"
           ],
           "evidence": [],
           "sources": [
