@@ -2214,4 +2214,29 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await initManualLinks();await loadState();await refreshAll();checkRender();})();
+// Claude CLI / hadrius-codebase MCP indicators in the header — every AI feature (narration, plan
+// grounding, recording decisions) depends on both, and each expires silently (separate OAuth
+// sessions), so a red dot with the exact terminal fix on hover beats discovering it mid-recording.
+function renderToolStatus(dotEl, tooltipEl, label, state) {
+  dotEl.classList.remove('ok', 'bad');
+  if (state.connected) {
+    dotEl.classList.add('ok');
+    tooltipEl.textContent = `${label}: connected.`;
+  } else {
+    dotEl.classList.add('bad');
+    tooltipEl.textContent = '';
+    tooltipEl.append((state.detail || `${label} is not connected.`) + '\n');
+    const code = document.createElement('code');
+    code.textContent = state.fixCommand;
+    tooltipEl.append(code);
+  }
+}
+async function refreshToolStatus(fresh) {
+  try {
+    const s = await api(`/status/tools${fresh ? '?fresh=1' : ''}`);
+    renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', s.claude);
+    renderToolStatus($('#codebaseDot'), $('#codebaseTooltip'), 'Codebase', s.codebase);
+  } catch (_) { /* bridge unreachable — leave the bridgeDot check below to surface that */ }
+}
+
+(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta')$('#bridgeDot').classList.add('ok');else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;}await initManualLinks();await loadState();await refreshAll();checkRender();refreshToolStatus(true);setInterval(()=>refreshToolStatus(false),45000);})();

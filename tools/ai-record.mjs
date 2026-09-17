@@ -360,11 +360,14 @@ async function ensureVisualHud(page, { title = 'Walkthrough', stepNum = 1, total
       // 2. Floating HUD Widget
       const hud = document.createElement('div');
       hud.id = '__hadrius_hud__';
-      // pointer-events:none on the panel (re-enabled on its buttons below): the HUD sits over the
-      // app's top-right header, where "Create …" / "Publish" / library links live, and a solid panel
-      // there swallowed the agent's clicks on them — Playwright timed out, the coordinate fallback
-      // hit the HUD too, and only keyboard activation got through.
-      hud.style.cssText = 'position:fixed;top:16px;right:20px;z-index:2147483647;width:330px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:12px;box-shadow:0 16px 36px rgba(0,0,0,0.55);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:12px 14px;pointer-events:none;';
+      // The HUD sits over the app's top-right header, where "Create …" / "Publish" / library links
+      // live, and used to swallow the agent's own scripted clicks on them with pointer-events:none
+      // as the fix — which also silently killed the drag handler below, since a pointer-events:none
+      // element never receives mousedown at all. The hudHidden/restoreHud check further down (every
+      // scripted action hides the HUD outright via display:none if its target overlaps the HUD's
+      // bounding box) already covers that original bug on its own, so pointer-events can stay auto
+      // here and the HUD can be draggable for a human watching the recording.
+      hud.style.cssText = 'position:fixed;top:16px;right:20px;z-index:2147483647;width:330px;background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:12px;box-shadow:0 16px 36px rgba(0,0,0,0.55);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:12px 14px;';
       hud.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <div style="display:flex;align-items:center;gap:7px;">

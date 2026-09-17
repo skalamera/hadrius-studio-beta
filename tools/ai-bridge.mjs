@@ -178,6 +178,30 @@ async function requireClaudeAuth() {
   }
 }
 
+// ---- hadrius-codebase MCP connection state — separate from the Claude CLI login above: this is
+// its own OAuth session (`claude mcp login hadrius-codebase`), so a signed-in `claude` CLI can
+// still have a dead/disconnected codebase MCP, silencing every source-grounded plan and consult.
+const CODEBASE_MCP_LOGIN_HINT = 'The hadrius-codebase MCP isn\'t connected. In a terminal run:  claude mcp login hadrius-codebase   (finish the browser prompt), then try again — no restart needed.';
+const CODEBASE_MCP_MISSING_HINT = 'The hadrius-codebase MCP isn\'t registered with the Claude CLI. In a terminal run:  claude mcp add --transport http hadrius-codebase https://mcp.hadriusapi.com/codebase --scope user';
+let codebaseMcpState = { connected: null, checkedAt: 0, detail: null };
+function checkCodebaseMcp({ maxAgeMs = 60000 } = {}) {
+  if (Date.now() - codebaseMcpState.checkedAt < maxAgeMs) return Promise.resolve(codebaseMcpState);
+  return new Promise((resolve) => {
+    const child = execFile('claude', ['mcp', 'list'], { timeout: 15000, env: claudeEnv() }, (err, stdout) => {
+      let connected = null, detail = null;
+      if (err?.code === 'ENOENT') { connected = false; detail = CLAUDE_MISSING_HINT; }
+      else {
+        const line = String(stdout || '').split('\n').find((l) => l.trim().startsWith('hadrius-codebase:'));
+        if (!line) { connected = false; detail = CODEBASE_MCP_MISSING_HINT; }
+        else { connected = /✔|connected/i.test(line) && !/✗|failed|disconnected/i.test(line); if (!connected) detail = CODEBASE_MCP_LOGIN_HINT; }
+      }
+      codebaseMcpState = { connected, checkedAt: Date.now(), detail };
+      resolve(codebaseMcpState);
+    });
+    child.stdin?.end();
+  });
+}
+
 // ai-record.mjs compiles its in-page helpers with new Function() at import time, so a bad edit there
 // (e.g. an unescaped regex inside the template string) throws on load — and without this wrapper that
 // surfaced as a cryptic per-workflow "Invalid regular expression" on every plan and every job. Name
@@ -1547,6 +1571,20 @@ const server = http.createServer(async (req, res) => {
       user: WHOAMI,
       loggedIn: fs.existsSync(PROFILE_DIR),
     }));
+  }
+
+  // ---- status of the two things every AI feature depends on, for the panel's header indicators ----
+  if (req.method === 'GET' && u.pathname === '/status/tools') {
+    const fresh = u.searchParams.get('fresh') === '1';
+    const [claude, codebase] = await Promise.all([
+      checkClaudeAuth({ maxAgeMs: fresh ? 0 : 60000 }),
+      checkCodebaseMcp({ maxAgeMs: fresh ? 0 : 60000 }),
+    ]);
+    return sendJson(res, 200, {
+      ok: true,
+      claude: { connected: claude.loggedIn === true, detail: claude.detail, fixCommand: 'claude login' },
+      codebase: { connected: codebase.connected === true, detail: codebase.detail, fixCommand: 'claude mcp login hadrius-codebase' },
+    });
   }
 
   // ---- Studio Lite: source-grounded workflows and live Pylon collection contents ----
