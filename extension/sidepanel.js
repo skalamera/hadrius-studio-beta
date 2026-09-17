@@ -260,7 +260,7 @@ function renderModules() {
   for (const group of orderedGroups) {
     const articles = getModuleArticles(group.module);
     const unlinked = (group.workflows || []).filter((w) => {
-      const isAutoLinked = articles.some((article) => articleMatches(w, article));
+      const isAutoLinked = !w.noAutoMatch && articles.some((article) => articleMatches(w, article));
       const isManuallyLinked = manualLinks.has(w.title);
       const isDismissed = dismissedWorkflows.has(w.title);
       return !isAutoLinked && !isManuallyLinked && !isDismissed;
@@ -280,7 +280,7 @@ function renderModules() {
 
     // Only display recording opportunities that do NOT have a linked article and are not dismissed
     const unlinkedWorkflows = (group.workflows || []).filter((w) => {
-      const isAutoLinked = articles.some((article) => articleMatches(w, article));
+      const isAutoLinked = !w.noAutoMatch && articles.some((article) => articleMatches(w, article));
       const isManuallyLinked = manualLinks.has(w.title);
       const isDismissed = dismissedWorkflows.has(w.title);
       return !isAutoLinked && !isManuallyLinked && !isDismissed;
@@ -1012,7 +1012,7 @@ function getModuleUnlinkedWorkflows(modName) {
   if (!modGroup) return [];
   const articles = getModuleArticles(modName);
   return (modGroup.workflows || []).filter((w) => {
-    const isAutoLinked = articles.some((article) => articleMatches(w, article));
+    const isAutoLinked = !w.noAutoMatch && articles.some((article) => articleMatches(w, article));
     const isManuallyLinked = manualLinks.has(w.title);
     const isDismissed = dismissedWorkflows.has(w.title);
     return !isAutoLinked && !isManuallyLinked && !isDismissed;

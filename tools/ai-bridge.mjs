@@ -1704,7 +1704,14 @@ const server = http.createServer(async (req, res) => {
                     planUpdatedAt: plan?.planUpdatedAt || it.plan_updated_at || null,
                     planUpdatedBy: plan?.planUpdatedBy || it.plan_updated_by || null,
                     linkedScript: it.linked_script || null,
-                    status: it.status || 'missing'
+                    status: it.status || 'missing',
+                    // The panel's own To-Record filter also excludes a workflow whose title
+                    // fuzzy-matches a live Pylon article, independent of status/linkedScript — the
+                    // same problem the server's no_auto_match flag was built to solve, just on the
+                    // client side. Forward it so "Revert to To Record" overrides that check too;
+                    // otherwise a title that still has a (correctly still-published) article stays
+                    // permanently invisible in To Record no matter how many times it's reverted.
+                    noAutoMatch: !!it.no_auto_match
                   });
                 }
 
@@ -1773,7 +1780,14 @@ const server = http.createServer(async (req, res) => {
                     evidence: [],
                     sources: [it.source_file].filter(Boolean),
                     linkedScript: it.linked_script || null,
-                    status: it.status || 'missing'
+                    status: it.status || 'missing',
+                    // The panel's own To-Record filter also excludes a workflow whose title
+                    // fuzzy-matches a live Pylon article, independent of status/linkedScript — the
+                    // same problem the server's no_auto_match flag was built to solve, just on the
+                    // client side. Forward it so "Revert to To Record" overrides that check too;
+                    // otherwise a title that still has a (correctly still-published) article stays
+                    // permanently invisible in To Record no matter how many times it's reverted.
+                    noAutoMatch: !!it.no_auto_match
                   });
                 }
               }
