@@ -490,14 +490,20 @@ function renderPylonArticles() {
         const cleanTitle = formatHumanTitle(article.title);
         const statusClass = article.isPublished ? 'published' : 'draft';
         const statusLabel = article.isPublished ? 'Published' : 'Draft';
+        const loadBtnHtml = article.linkedScript
+          ? `<button type="button" class="pylon-load-script-btn" title="Load this walkthrough's script into the editor">📂 Load script</button>`
+          : '';
         item.innerHTML = `
           <a href="#" class="pylon-article-title">${esc(cleanTitle)}</a>
           <span class="badge ${statusClass}">${statusLabel}</span>
+          ${loadBtnHtml}
         `;
         item.querySelector('a').onclick = (e) => {
           e.preventDefault();
           chrome.tabs.create({ url: article.url });
         };
+        const loadBtn = item.querySelector('.pylon-load-script-btn');
+        if (loadBtn) loadBtn.onclick = (e) => { e.preventDefault(); openScript(article.linkedScript); };
         moduleBody.appendChild(item);
       }
     }

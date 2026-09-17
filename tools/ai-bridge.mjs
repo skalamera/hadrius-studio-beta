@@ -221,6 +221,21 @@ async function libraryGetByName(name) {
   catch { return null; }
 }
 
+/** Pylon article id -> local script name, for the panel's Recorded tab "Load script" button. */
+function buildArticleScriptIndex() {
+  const index = new Map();
+  const scriptsDir = path.join(REPO_ROOT, 'scripts');
+  if (!fs.existsSync(scriptsDir)) return index;
+  for (const f of fs.readdirSync(scriptsDir)) {
+    if (!f.endsWith('.script.json')) continue;
+    try {
+      const s = JSON.parse(fs.readFileSync(path.join(scriptsDir, f), 'utf8'));
+      if (s.pylonArticleId) index.set(String(s.pylonArticleId), s.name || f.replace('.script.json', ''));
+    } catch (_) {}
+  }
+  return index;
+}
+
 /**
  * A recipe-backed script has no steps to read a startUrl from, so any caller that builds one from
  * scratch (or from stale in-memory state — see the panel's toScript()) can end up sending null.
@@ -1380,6 +1395,19 @@ async function publishRenderToPylon(name, outDir) {
 
   const targetModule = canonicalModule(module) || module || 'Testing program';
 
+  // 0. Link the saved script to the article it was published from, both directions: the script
+  // gets the article id/url (so a re-render knows an article already exists for it), and
+  // /pylon/articles reads this same field back to offer a "Load script" button per article.
+  if (scriptObj) {
+    scriptObj.pylonArticleId = article.id;
+    scriptObj.pylonArticleUrl = pylonArticleUrl(article);
+    try { fs.writeFileSync(scriptPath, JSON.stringify(scriptObj, null, 2)); } catch (_) {}
+    if (LIBRARY_SECRET) {
+      try { await libraryFetch('POST', null, { script: scriptObj, updated_by: WHOAMI }); }
+      catch (e) { console.warn('[pylon] Could not sync article link to shared script library:', e.message); }
+    }
+  }
+
   // 1. Record in local manual links
   try {
     const links = new Set(readManualLinks());
@@ -1399,8 +1427,8 @@ async function publishRenderToPylon(name, outDir) {
           module: targetModule,
           title: title,
           description: `Walkthrough video: ${name}`,
-          start_route: script.environment?.startUrl || script.steps?.[0]?.route || '/overview',
-          source_file: script.steps?.[0]?.sources?.[0] || null,
+          start_route: scriptObj?.environment?.startUrl || scriptObj?.steps?.[0]?.route || '/overview',
+          source_file: scriptObj?.steps?.[0]?.sources?.[0] || null,
           priority: 'medium',
           updated_by: WHOAMI
         }],
@@ -1436,9 +1464,9 @@ async function publishRenderToPylon(name, outDir) {
           modObj.workflows.unshift({
             title,
             purpose: `Walkthrough video: ${name}`,
-            startRoute: script.environment?.startUrl || script.steps?.[0]?.route || '/overview',
+            startRoute: scriptObj?.environment?.startUrl || scriptObj?.steps?.[0]?.route || '/overview',
             priority: 'medium',
-            steps: (script.steps || []).map(s => s.instruction || s.caption || s.narration || '').filter(Boolean),
+            steps: (scriptObj?.steps || []).map(s => s.instruction || s.caption || s.narration || '').filter(Boolean),
             sources: [],
             linkedScript: name,
             status: 'covered'
@@ -2230,6 +2258,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && u.pathname === '/pylon/articles') {
     try {
       const articles = await pylonListArticles();
+      const articleScriptIndex = buildArticleScriptIndex();
       const modules = {};
       for (const [module, collectionId] of Object.entries(PYLON_MODULE_COLLECTION_MAP)) {
         const entry = {
@@ -2237,7 +2266,8 @@ const server = http.createServer(async (req, res) => {
           collectionUrl: `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/collections/${collectionId}`,
           articles: articles.filter((article) => article.collection_id === collectionId).map((article) => ({
             id: article.id, title: article.title, url: pylonArticleUrl(article), isPublished: !!article.is_published,
-            visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at
+            visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at,
+            linkedScript: articleScriptIndex.get(String(article.id)) || null
           }))
         };
         const canon = ALLOWED_MODULES.find((m) => m.toLowerCase() === module.toLowerCase()) || module;
