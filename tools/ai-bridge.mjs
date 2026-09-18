@@ -1449,12 +1449,18 @@ function titleCaseFromScriptName(name) {
 // Recorded tab can show a Drive icon next to the Pylon one.
 async function startDriveUpload(name, videoPath) {
   const title = formatHumanTitle(name);
-  const drive = await googleDriveUploadVideo(videoPath, title);
-
   const scriptPath = path.join(REPO_ROOT, 'scripts', `${name}.script.json`);
+  let scriptObj = null;
   if (fs.existsSync(scriptPath)) {
+    try { scriptObj = JSON.parse(fs.readFileSync(scriptPath, 'utf8')); } catch (_) {}
+  }
+  // Same module resolution publishRenderToPylon uses: the script's own module field first, falling
+  // back to the shared coverage table's record for this script name.
+  const module = scriptObj?.module || (await findCoverageInfo(name)).module;
+  const drive = await googleDriveUploadVideo(videoPath, title, module);
+
+  if (scriptObj) {
     try {
-      const scriptObj = JSON.parse(fs.readFileSync(scriptPath, 'utf8'));
       scriptObj.driveVideoId = drive.id;
       scriptObj.driveVideoUrl = drive.url;
       fs.writeFileSync(scriptPath, JSON.stringify(scriptObj, null, 2));
