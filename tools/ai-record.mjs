@@ -1177,7 +1177,16 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
           if (clickErr) onLog(`  (click "${el.name}" did not complete normally: ${clickErr} — falling back)`);
           // A menu item that is still in the DOM after being clicked means the menu didn't act on the
           // click; give it the keyboard path right away rather than reporting "no visible change".
-          if (clicked && !activateWithKeyboard && ['menuitem', 'option', 'menuitemradio', 'menuitemcheckbox'].includes(el.role)) {
+          // NOT for menuitemradio/menuitemcheckbox: a checkbox-style menu item is commonly built to
+          // stay open after selection (multi-select pickers keep the menu up so you can pick several
+          // without reopening it) — "still in the DOM" there is the normal, successful outcome, not
+          // evidence the click failed. Retrying with Enter anyway (the wrong key for these roles to
+          // begin with — they toggle on Space, see below) could re-fire selection and toggle a
+          // genuinely-successful check right back off, which is indistinguishable from the click
+          // having done nothing at all. This exact pattern made every reviewer in an
+          // "Add reviewer step" checkbox picker read as unresponsive even though the first click on
+          // each one had actually worked.
+          if (clicked && !activateWithKeyboard && ['menuitem', 'option'].includes(el.role)) {
             await page.waitForTimeout(300);
             const stillThere = await loc.count().catch(() => 0);
             if (stillThere) {
