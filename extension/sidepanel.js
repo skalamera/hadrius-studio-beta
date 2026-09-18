@@ -1873,6 +1873,17 @@ async function startRecordingDirectly() {
 }
 
 async function stopAndNarrate() {
+  // This drives the extension's own manual recording (content.js in the current tab) — it has
+  // no connection to an AI-driven recording, which runs in a separate Playwright-controlled
+  // browser window. Clicking this while an AI job is active used to just silently no-op (nothing
+  // was ever recorded here to stop), leaving the "RECORDING LIVE" banner up forever with no
+  // feedback. The real control for that case is the "✓ Finish & Draft" button in that browser
+  // window's own HUD (next to Take Over / Skip / Cancel) — it ends the AI run in place and drafts
+  // narration from whatever was captured, the same way this button does for a manual recording.
+  if (activeAiRecordKey) {
+    alert('This is an AI-driven recording, running in its own browser window — this button can\'t reach it.\n\nTo finish it: click "⏸ Take Over" on the HUD in that window if you haven\'t already, then click "✓ Finish & Draft" to end the recording there and draft narration from what was captured.\n\nTo discard it instead, use "✕ Cancel recording" here.');
+    return;
+  }
   await send({type:'PANEL_STOP'});
   await loadState();
   if (!state.steps.length) return;

@@ -333,6 +333,7 @@ async function ensureVisualHud(page, { title = 'Walkthrough', stepNum = 1, total
       window.__hadrius_hud_injected__ = true;
       window.__hadrius_takeover_paused__ = false;
       window.__hadrius_skip_step__ = false;
+      window.__hadrius_finish_now__ = false;
 
       // 1. Animated Spotlight Overlay & Simulated Cursor
       const overlay = document.createElement('div');
@@ -383,6 +384,9 @@ async function ensureVisualHud(page, { title = 'Walkthrough', stepNum = 1, total
           <button id="__hadrius_hud_skip_btn__" type="button" style="background:transparent;color:#94a3b8;border:1px solid #475569;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:600;cursor:pointer;pointer-events:auto;">⏭ Skip Step</button>
           <button id="__hadrius_hud_cancel_btn__" type="button" style="background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:700;cursor:pointer;pointer-events:auto;">✕ Cancel</button>
         </div>
+        <div style="display:flex;margin-top:6px;">
+          <button id="__hadrius_hud_finish_btn__" type="button" title="Stop here and draft narration from everything captured so far — use this after Take Over once you've finished the workflow by hand." style="flex:1;background:#065f46;color:#d1fae5;border:1px solid #059669;border-radius:6px;padding:7px 8px;font-size:11px;font-weight:700;cursor:pointer;pointer-events:auto;">✓ Finish &amp; Draft</button>
+        </div>
       `;
       document.body.appendChild(hud);
 
@@ -430,6 +434,22 @@ async function ensureVisualHud(page, { title = 'Walkthrough', stepNum = 1, total
           window.__hadrius_cancel_record__ = true;
           cancelBtn.textContent = 'Stopping…';
           cancelBtn.style.background = '#7f1d1d';
+        };
+      }
+
+      // Only real way to end a take-over successfully: Cancel discards everything ("cancelled by
+      // user" throws out of the whole run), and there was previously no way to say "stop here, keep
+      // what's captured, draft narration" — the sidepanel's own Stop & draft button looks like it
+      // should do this, but it drives the extension's separate manual-recording flow, not this
+      // Playwright-driven browser, so clicking it during a take-over does nothing and the banner
+      // just sits there forever. This button is the actual exit.
+      const finishBtn = document.getElementById('__hadrius_hud_finish_btn__');
+      if (finishBtn) {
+        finishBtn.onclick = (e) => {
+          e.stopPropagation();
+          window.__hadrius_finish_now__ = true;
+          finishBtn.textContent = 'Finishing…';
+          finishBtn.disabled = true;
         };
       }
 
@@ -528,12 +548,18 @@ async function handleTakeOverPause(page, onLog) {
     const status = await page.evaluate(() => ({
       paused: !!window.__hadrius_takeover_paused__,
       skip: !!window.__hadrius_skip_step__,
-      cancel: !!window.__hadrius_cancel_record__
-    })).catch(() => ({ paused: false, skip: false, cancel: false }));
+      cancel: !!window.__hadrius_cancel_record__,
+      finish: !!window.__hadrius_finish_now__
+    })).catch(() => ({ paused: false, skip: false, cancel: false, finish: false }));
 
     if (status.cancel) {
       onLog('✕ Recording cancelled by user via on-screen HUD.');
       throw new Error('cancelled by user');
+    }
+
+    if (status.finish) {
+      onLog('✓ Finish & Draft clicked — ending the recording here and drafting narration from what was captured.');
+      return 'finish';
     }
 
     if (status.skip) {
@@ -953,6 +979,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     for (let turn = 0; turn < MAX_STEPS; turn++) {
       throwIfCancelled();
       const pauseStatus = await handleTakeOverPause(page, onLog);
+      if (pauseStatus === 'finish') { finished = true; break; }
       if (pauseStatus === 'skip') {
         onLog(`⏭ Turn ${turn + 1} skipped by user via HUD control.`);
         await clearSpotlight(page);
@@ -1137,6 +1164,13 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
 
       // Visual feedback & human takeover check (Step 6)
       const actionPauseStatus = await handleTakeOverPause(page, onLog);
+      if (actionPauseStatus === 'finish') {
+        // This step was recorded above but not yet actually performed — drop it so the walkthrough
+        // doesn't end on an action that never happened.
+        steps.pop();
+        finished = true;
+        break;
+      }
       if (actionPauseStatus === 'skip') {
         steps.pop();
         onLog(`⏭ Action skipped by user via HUD control.`);
