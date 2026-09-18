@@ -228,13 +228,21 @@ let codebaseMcpState = { connected: null, checkedAt: 0, detail: null };
 function checkCodebaseMcp({ maxAgeMs = 60000 } = {}) {
   if (Date.now() - codebaseMcpState.checkedAt < maxAgeMs) return Promise.resolve(codebaseMcpState);
   return new Promise((resolve) => {
-    const child = execFile('claude', ['mcp', 'list'], { timeout: 15000, env: claudeEnv() }, (err, stdout) => {
+    // Probe hadrius-codebase directly via `claude mcp get hadrius-codebase` (~1s) rather than
+    // `claude mcp list` (10-15s+), which health-checks 60+ other configured third-party servers
+    // and regularly exceeded the 15s timeout, truncating stdout before hadrius-codebase was parsed.
+    const child = execFile('claude', ['mcp', 'get', 'hadrius-codebase'], { timeout: 15000, env: claudeEnv() }, (err, stdout, stderr) => {
       let connected = null, detail = null;
       if (err?.code === 'ENOENT') { connected = false; detail = CLAUDE_MISSING_HINT; }
       else {
-        const line = String(stdout || '').split('\n').find((l) => l.trim().startsWith('hadrius-codebase:'));
-        if (!line) { connected = false; detail = CODEBASE_MCP_MISSING_HINT; }
-        else { connected = /✔|connected/i.test(line) && !/✗|failed|disconnected/i.test(line); if (!connected) detail = CODEBASE_MCP_LOGIN_HINT; }
+        const out = `${stdout || ''}\n${stderr || ''}`;
+        if (/No MCP server named/i.test(out)) {
+          connected = false;
+          detail = CODEBASE_MCP_MISSING_HINT;
+        } else {
+          connected = /✔|connected/i.test(out) && !/✗|✘|failed|disconnected|needs authentication/i.test(out);
+          if (!connected) detail = CODEBASE_MCP_LOGIN_HINT;
+        }
       }
       codebaseMcpState = { connected, checkedAt: Date.now(), detail };
       resolve(codebaseMcpState);

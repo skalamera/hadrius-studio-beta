@@ -133,7 +133,7 @@ def env_from_dotenv(name):
     return ''
 
 VOICESTUDIO_URL = env_from_dotenv('VOICESTUDIO_URL') or 'http://127.0.0.1:3900'
-VOICESTUDIO_VOICE = env_from_dotenv('VOICESTUDIO_VOICE_ID') or '4bfebca6'  # "The Upbeat"
+VOICESTUDIO_VOICE = args[args.index('--vs-voice') + 1] if '--vs-voice' in args else (env_from_dotenv('VOICESTUDIO_VOICE_ID') or '4bfebca6')
 
 def voicestudio_alive():
     import urllib.request
@@ -156,7 +156,7 @@ def voicestudio_tts(text, path):
         f'{VOICESTUDIO_URL}/v1/audio/speech',
         data=body, method='POST',
         headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=120) as resp:
         path.write_bytes(resp.read())
 
 ELEVEN_KEY = env_from_dotenv('ELEVENLABS_API_KEY')
@@ -183,7 +183,7 @@ async def tts():
     for s in slides:
         if not s['narration']: s['audio'] = None; continue
         # Provider tag in filename prevents reusing mismatched cached audio
-        tag = 'vs' if vs_active else ('el' if ELEVEN_KEY else 'edge')
+        tag = f'vs-{VOICESTUDIO_VOICE}' if vs_active else ('el' if ELEVEN_KEY else 'edge')
         f = tmp / f"n{s['slide']:02d}-{tag}.mp3"
         if not f.exists():
             if vs_active:
@@ -206,7 +206,7 @@ async def tts():
                 f = f_edge
         s['audio'] = str(f)
     if vs_active:
-        provider = f'VoiceStudio (The Upbeat, {VOICESTUDIO_VOICE})'
+        provider = f'VoiceStudio ({VOICESTUDIO_VOICE})'
     elif ELEVEN_KEY:
         provider = f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})'
     else:
@@ -462,6 +462,13 @@ else:
                         '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p',
                         '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart',
                         str(final)], check=True, capture_output=True)
+
+alt_final = out / f"{out.name}.mp4"
+if final != alt_final and final.exists():
+    try:
+        shutil.copyfile(str(final), str(alt_final))
+    except Exception:
+        pass
 
 full_duration = dur(str(final)) if final.exists() else 0.0
 
