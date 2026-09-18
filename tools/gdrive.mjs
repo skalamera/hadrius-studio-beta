@@ -1,5 +1,5 @@
 // Hadrius Studio — thin client for the Google Drive v3 REST API, used to mirror every rendered
-// walkthrough video into the "Hadrius Academy" Shared Drive (module subfolder matching the
+// walkthrough video into the "Hadrius Academy" folder in My Drive (module subfolder matching the
 // workflow's module, same grouping as PYLON_MODULE_COLLECTION_MAP) as a shareable "Anyone with the
 // link" viewer copy, alongside the Pylon KB article. Same .env pattern as PYLON_API_TOKEN /
 // GEMINI_API_KEY — see tools/ai-bridge.mjs's loadDotEnv().
@@ -18,8 +18,8 @@ function creds() {
     clientId: (process.env.GOOGLE_CLIENT_ID || '').trim(),
     clientSecret: (process.env.GOOGLE_CLIENT_SECRET || '').trim(),
     refreshToken: (process.env.GOOGLE_REFRESH_TOKEN || '').trim(),
-    // Optional override — when unset, uploads route into the Hadrius Academy shared drive's
-    // per-module folder (googleDriveFolderForModule below) instead.
+    // Optional override — when unset, uploads route into the Hadrius Academy folder's per-module
+    // subfolder (googleDriveFolderForModule below) instead.
     folderId: (process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim(),
   };
 }
@@ -29,21 +29,22 @@ export function googleDriveConfigured() {
   return !!(c.clientId && c.clientSecret && c.refreshToken);
 }
 
-// The "Hadrius Academy" Shared Drive, with one folder per workflow module — same six modules (plus
-// "Other") as PYLON_MODULE_COLLECTION_MAP in pylon.mjs, just a Drive folder id instead of a Pylon
-// collection id. Hardcoded rather than env-configured, same call as that map: these are fixed
-// destinations for this one shared drive, not something a install-specific .env should override.
-export const HADRIUS_ACADEMY_DRIVE_ID = '0ANVB1Dckst21Uk9PVA';
+// The "Hadrius Academy" folder in My Drive (https://drive.google.com/drive/folders/1MlLinwFLBprG3Ybz8JAHhuL0V_VubTJr),
+// with one subfolder per workflow module — same six modules (plus "Other") as
+// PYLON_MODULE_COLLECTION_MAP in pylon.mjs, just a Drive folder id instead of a Pylon collection
+// id. Hardcoded rather than env-configured, same call as that map: these are fixed destinations
+// for this one folder tree, not something a install-specific .env should override.
+export const HADRIUS_ACADEMY_FOLDER_ID = '1MlLinwFLBprG3Ybz8JAHhuL0V_VubTJr';
 const MODULE_FOLDER_IDS = {
-  'testing program': '1NOT6mltcJ8z6ag5qrZbxDokMhlHeHOq0',
-  'people oversight': '1s2dKZJVwAZJti6n6aj_rCqv1gcuEy1nM',
-  'branches': '19n4KHMTFf17SoOi6dY0BE-84Q8q00w-h',
-  'communications': '1uDZYqjwZtdoVOkvquf-DH1wu2ZzU1Ve0',
-  'marketing': '12trzlRECwBJgKd5UBquF3qyxRgWz0FcR',
-  'account surveillance': '1jZv0BgQAWS6Rt7DYaKOIBiSlZiy-O8m6',
-  'other': '1TvPQnCGwMRawjamMmcP44XmxbnZV4TS0',
+  'testing program': '1O2il8Fis3R7JncdY3MYqfkyDMIxtKol4',
+  'people oversight': '1yAMHz8inOU_iaFtxv8vH5VeKg7Cu592-',
+  'branches': '1jUnGi4BmsRYzvq68lxgdU1h-G2CMHXt3',
+  'communications': '1n-mseLIM0HVxOrxPOxjlwaWTnkJoFdNd',
+  'marketing': '1-4ZUTzlx1Cftm0VOCIFTKvjZCVqVBRAn',
+  'account surveillance': '1sQFEs6yJhK8HXzbNjKZNak3PzcVX3JEX',
+  'other': '1b8s4ZCWh1jimRiWjFpVh-rzNRdlLNfKK',
 };
-/** The right module subfolder in the Hadrius Academy shared drive, or "Other" if unrecognized. */
+/** The right module subfolder under the Hadrius Academy folder, or "Other" if unrecognized. */
 export function googleDriveFolderForModule(module) {
   const m = String(module || '').trim().toLowerCase();
   return MODULE_FOLDER_IDS[m] || MODULE_FOLDER_IDS.other;
@@ -93,7 +94,7 @@ async function getAccessToken() {
 }
 
 /**
- * Upload a local video file into the Hadrius Academy Shared Drive's folder for `module` (or the
+ * Upload a local video file into the Hadrius Academy folder's subfolder for `module` (or the
  * explicit GOOGLE_DRIVE_FOLDER_ID override, or "Other" if the module isn't recognized), share it
  * "Anyone with the link" as a viewer, and return the shareable link. Simple (non-resumable)
  * multipart upload — fine for walkthrough videos, which run well under Drive's ~5GB ceiling for it.
@@ -114,8 +115,8 @@ export async function googleDriveUploadVideo(filePath, title, module) {
   const epilogue = Buffer.from(`\r\n--${boundary}--`);
   const body = Buffer.concat([preamble, buf, epilogue]);
 
-  // supportsAllDrives is required on every call below — without it, a Shared Drive folder id is
-  // silently treated as "not found" rather than uploaded into.
+  // supportsAllDrives is a no-op for a plain My Drive folder but required if this ever points at a
+  // Shared Drive folder instead — cheap to always send.
   const uploadResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink', {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
