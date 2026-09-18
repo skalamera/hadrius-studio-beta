@@ -318,6 +318,9 @@ fi
 if ! grep -qs '^ELEVENLABS_API_KEY=.\+' .env 2>/dev/null; then
   echo "ℹ ELEVENLABS_API_KEY is not set in .env — videos will use the free edge-tts voice instead of ElevenLabs (Matilda)."
 fi
+if ! grep -qs '^GOOGLE_REFRESH_TOKEN=.\+' .env 2>/dev/null; then
+  echo "ℹ GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN are not set in .env — optional; rendered videos won't be mirrored to Google Drive until they are (see README.md)."
+fi
 
 # Configure Hadrius Codebase MCP for Claude Code if installed
 if command -v claude >/dev/null; then

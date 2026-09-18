@@ -12,6 +12,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID } from './pylon.mjs';
+import { googleDriveConfigured, googleDriveUploadVideo } from './gdrive.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -21,7 +22,7 @@ const PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browse
 // Only the keys the bridge itself uses are imported. ~/.hermes/.env in particular is shared with
 // other tools and carries ANTHROPIC_API_KEY etc.; if those reached process.env they would be
 // inherited by every `claude` we spawn and override the operator's `claude login` session.
-const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID']);
+const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GOOGLE_DRIVE_FOLDER_ID']);
 let LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
 let GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 
@@ -270,7 +271,8 @@ async function libraryGetByName(name) {
   catch { return null; }
 }
 
-/** Pylon article id -> local script name, for the panel's Recorded tab "Load script" button. */
+/** Pylon article id -> { scriptName, driveVideoUrl }, for the panel's Recorded tab "Load script"
+ * button and its Google Drive video link. */
 function buildArticleScriptIndex() {
   const index = new Map();
   const scriptsDir = path.join(REPO_ROOT, 'scripts');
@@ -279,7 +281,7 @@ function buildArticleScriptIndex() {
     if (!f.endsWith('.script.json')) continue;
     try {
       const s = JSON.parse(fs.readFileSync(path.join(scriptsDir, f), 'utf8'));
-      if (s.pylonArticleId) index.set(String(s.pylonArticleId), s.name || f.replace('.script.json', ''));
+      if (s.pylonArticleId) index.set(String(s.pylonArticleId), { scriptName: s.name || f.replace('.script.json', ''), driveVideoUrl: s.driveVideoUrl || null });
     } catch (_) {}
   }
   return index;
@@ -1441,6 +1443,32 @@ function titleCaseFromScriptName(name) {
   return formatHumanTitle(name);
 }
 
+// Mirrors a rendered video into stephen@hadrius.com's Google Drive as an "Anyone with the link"
+// viewer copy, alongside the Pylon KB article — same shape as publishRenderToPylon: upload, then
+// write the link back onto the saved script (both the local mirror and the shared library) so the
+// Recorded tab can show a Drive icon next to the Pylon one.
+async function startDriveUpload(name, videoPath) {
+  const title = formatHumanTitle(name);
+  const drive = await googleDriveUploadVideo(videoPath, title);
+
+  const scriptPath = path.join(REPO_ROOT, 'scripts', `${name}.script.json`);
+  if (fs.existsSync(scriptPath)) {
+    try {
+      const scriptObj = JSON.parse(fs.readFileSync(scriptPath, 'utf8'));
+      scriptObj.driveVideoId = drive.id;
+      scriptObj.driveVideoUrl = drive.url;
+      fs.writeFileSync(scriptPath, JSON.stringify(scriptObj, null, 2));
+      if (LIBRARY_SECRET) {
+        try { await libraryFetch('POST', null, { script: scriptObj, updated_by: WHOAMI }); }
+        catch (e) { console.warn('[gdrive] Could not sync video link to shared script library:', e.message); }
+      }
+    } catch (e) {
+      console.warn('[gdrive] Could not write video link onto the saved script:', e.message);
+    }
+  }
+  return drive;
+}
+
 async function publishRenderToPylon(name, outDir) {
   const reportPath = path.join(outDir, 'report.json');
   const videoPath = path.join(outDir, `${name}.mp4`);
@@ -2477,11 +2505,15 @@ const server = http.createServer(async (req, res) => {
         const entry = {
           collectionId,
           collectionUrl: `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/collections/${collectionId}`,
-          articles: articles.filter((article) => article.collection_id === collectionId).map((article) => ({
-            id: article.id, title: article.title, url: pylonArticleUrl(article), isPublished: !!article.is_published,
-            visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at,
-            linkedScript: articleScriptIndex.get(String(article.id)) || null
-          }))
+          articles: articles.filter((article) => article.collection_id === collectionId).map((article) => {
+            const linked = articleScriptIndex.get(String(article.id));
+            return {
+              id: article.id, title: article.title, url: pylonArticleUrl(article), isPublished: !!article.is_published,
+              visibility: article.visibility_config?.visibility || 'internal_only', updatedAt: article.last_edited_at || article.created_at,
+              linkedScript: linked?.scriptName || null,
+              driveVideoUrl: linked?.driveVideoUrl || null
+            };
+          })
         };
         const canon = ALLOWED_MODULES.find((m) => m.toLowerCase() === module.toLowerCase()) || module;
         modules[canon] = entry;
@@ -3201,6 +3233,19 @@ function startRender(scriptPath, name, prelude = [], mode = 'both') {
     }
     if (code === 0 && (render.video || (mode === 'pylon' && render.report?.slides))) {
       render.phase = 'done';
+      if (render.video && googleDriveConfigured()) {
+        const driveName = name, driveOutDir = render.outDir, driveVideoPath = render.video;
+        render.drive = { status: 'pending' };
+        startDriveUpload(driveName, driveVideoPath).then((drive) => {
+          if (render.outDir === driveOutDir) render.drive = { status: 'done', ...drive };
+          console.log(`Google Drive upload complete for "${driveName}": ${drive.url}`);
+        }).catch((e) => {
+          if (render.outDir === driveOutDir) render.drive = { status: 'failed', error: String(e?.message || e) };
+          console.warn(`Google Drive upload failed for "${driveName}": ${String(e?.message || e)}`);
+        });
+      } else if (render.video) {
+        render.drive = null;
+      }
       if (mode === 'video') {
         render.pylon = null;
         console.log(`Render complete for "${name}" (video only, skipping Pylon article)`);

@@ -27,6 +27,12 @@ Setup asks for the team's `STUDIO_SHARED_SECRET` (ask Stephen) so you share the 
 - `PYLON_API_TOKEN` — needed for **Render + Article** and the Recorded tab's Pylon sync.
 - `ELEVENLABS_API_KEY` — narration voice for rendered videos (ElevenLabs "Matilda" by default; set `ELEVENLABS_VOICE_ID` to change). Without it, renders fall back to the free edge-tts voice.
 - `GEMINI_API_KEY` — optional; only used as a fallback when the Claude CLI is unavailable.
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` — optional; when set, every rendered video (both **Render MP4** and **Render + Article**) is also mirrored into that Google account's Drive as an "Anyone with the link" viewer copy, linked from the Recorded tab next to the Pylon article. One-time setup for stephen@hadrius.com's account:
+  1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an OAuth client of type **Desktop app** (any project with the Drive API enabled) — this gives you a client ID and secret.
+  2. Open the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground), click the gear icon, check "Use your own OAuth credentials", and paste in that client ID/secret.
+  3. In Step 1, authorize scope `https://www.googleapis.com/auth/drive.file`, sign in as stephen@hadrius.com, then in Step 2 click "Exchange authorization code for tokens" and copy the **refresh token**.
+  4. Put all three values in `.env` as `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, then restart the bridge.
+  Optionally set `GOOGLE_DRIVE_FOLDER_ID` to upload into a specific Drive folder instead of "My Drive"'s root.
 
 Afterwards, sign in once: `claude login`, then `claude mcp login hadrius-codebase` (the Hadrius codebase MCP is what grounds plans and narration in the real source).
 

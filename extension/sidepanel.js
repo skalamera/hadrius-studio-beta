@@ -569,15 +569,21 @@ function renderPylonArticles() {
         const loadBtnHtml = article.linkedScript
           ? `<button type="button" class="pylon-load-script-btn" title="Load this walkthrough's script into the editor">📂 Load script</button>`
           : '';
+        const driveLinkHtml = article.driveVideoUrl
+          ? `<a href="#" class="drive-article-link" target="_blank" rel="noopener noreferrer" title="Open the video in Google Drive"><span class="link-icon-badge badge-google">G</span> Drive</a>`
+          : '';
         item.innerHTML = `
-          <a href="#" class="pylon-article-title">${esc(cleanTitle)}</a>
+          <a href="#" class="pylon-article-title"><span class="link-icon-badge badge-pylon pylon-article-badge">P</span>${esc(cleanTitle)}</a>
           <span class="badge ${statusClass}">${statusLabel}</span>
+          ${driveLinkHtml}
           ${loadBtnHtml}
         `;
-        item.querySelector('a').onclick = (e) => {
+        item.querySelector('.pylon-article-title').onclick = (e) => {
           e.preventDefault();
           chrome.tabs.create({ url: article.url });
         };
+        const driveLink = item.querySelector('.drive-article-link');
+        if (driveLink) driveLink.onclick = (e) => { e.preventDefault(); chrome.tabs.create({ url: article.driveVideoUrl }); };
         const loadBtn = item.querySelector('.pylon-load-script-btn');
         if (loadBtn) loadBtn.onclick = (e) => { e.preventDefault(); openScript(article.linkedScript); };
         moduleBody.appendChild(item);
@@ -2045,6 +2051,7 @@ async function renderVideo(mode = 'video') {
   $('#renderStatusRow').hidden = false;
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
+  $('#driveVideoLink').hidden = true;
   $('#renderStatus').classList.remove('ready', 'error');
   $('#renderStatusSpinner').hidden = false;
   $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : 'Starting render…';
@@ -2090,6 +2097,7 @@ async function checkRender() {
     $('#renderStatusRow').hidden = true;
     $('#renderLinks').hidden = true;
     $('#pylonArticleLink').hidden = true;
+    $('#driveVideoLink').hidden = true;
     $('#renderStatus').classList.remove('ready', 'error');
     $('#renderStatusSpinner').hidden = true;
     $('#renderStatus').textContent = '';
@@ -2127,6 +2135,7 @@ async function checkRender() {
     $('#renderStatus').textContent = `Failed: ${result.error}`;
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
+    $('#driveVideoLink').hidden = true;
     clearInterval(renderTimer);
     showRenderReadyBanner({ title: '✕ Render failed', detail: `"${title}" — ${result.error}` });
     return;
@@ -2134,13 +2143,18 @@ async function checkRender() {
 
   const mode = result.mode || 'video';
   const pylon = result.pylon;
+  const drive = result.drive;
+  const pylonPending = mode === 'both' && pylon?.status === 'pending';
+  const drivePending = drive?.status === 'pending';
 
-  if (mode === 'both' && pylon?.status === 'pending') {
+  if (pylonPending || drivePending) {
     $('#renderStatus').classList.remove('ready', 'error');
     $('#renderStatusSpinner').hidden = false;
-    $('#renderStatus').textContent = '✓ MP4 ready · Drafting Pylon KB article…';
+    const waitingOn = [pylonPending && 'Pylon KB article', drivePending && 'Google Drive upload'].filter(Boolean).join(' & ');
+    $('#renderStatus').textContent = `✓ MP4 ready · ${waitingOn}…`;
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
+    $('#driveVideoLink').hidden = true;
     isRenderingActive = true;
     updateRenderButtons();
     return;
@@ -2151,8 +2165,17 @@ async function checkRender() {
   updateRenderButtons();
   $('#renderLinks').hidden = false;
 
+  if (drive?.status === 'done' && drive.url) {
+    $('#driveVideoLink').href = drive.url;
+    $('#driveVideoLink').hidden = false;
+  } else {
+    $('#driveVideoLink').hidden = true;
+  }
+
+  const driveNote = drive?.status === 'failed' ? ` (Drive upload failed: ${drive.error || 'error'})` : '';
+
   if (mode === 'both' && pylon?.status === 'done') {
-    $('#renderStatus').textContent = '✓ MP4 & Pylon article ready';
+    $('#renderStatus').textContent = `✓ MP4 & Pylon article ready${driveNote}`;
     $('#renderStatus').classList.add('ready');
     if (pylon.url) {
       $('#pylonArticleLink').href = pylon.url;
@@ -2165,17 +2188,17 @@ async function checkRender() {
       chrome.storage.local.set({ manualLinks: [...manualLinks] });
     }
     refreshAll().catch(() => {});
-    showRenderReadyBanner({ title: '✓ Video & Pylon article ready', detail: `"${title}" finished rendering.`, pylonUrl: pylon.url });
+    showRenderReadyBanner({ title: '✓ Video & Pylon article ready', detail: `"${title}" finished rendering.${driveNote}`, pylonUrl: pylon.url });
   } else if (mode === 'both' && pylon?.status === 'failed') {
-    $('#renderStatus').textContent = `✓ MP4 ready (Pylon article failed: ${pylon.error || 'error'})`;
+    $('#renderStatus').textContent = `✓ MP4 ready (Pylon article failed: ${pylon.error || 'error'})${driveNote}`;
     $('#renderStatus').classList.add('ready');
     $('#pylonArticleLink').hidden = true;
-    showRenderReadyBanner({ title: '✓ Video ready', detail: `"${title}" — Pylon article failed: ${pylon.error || 'error'}` });
+    showRenderReadyBanner({ title: '✓ Video ready', detail: `"${title}" — Pylon article failed: ${pylon.error || 'error'}${driveNote}` });
   } else {
-    $('#renderStatus').textContent = '✓ MP4 ready';
+    $('#renderStatus').textContent = `✓ MP4 ready${driveNote}`;
     $('#renderStatus').classList.add('ready');
     $('#pylonArticleLink').hidden = true;
-    showRenderReadyBanner({ title: '✓ Video ready', detail: `"${title}" finished rendering.` });
+    showRenderReadyBanner({ title: '✓ Video ready', detail: `"${title}" finished rendering.${driveNote}` });
   }
 }
 
@@ -2198,6 +2221,7 @@ async function resetRecordingSession() {
   $('#renderStatusRow').hidden = true;
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
+  $('#driveVideoLink').hidden = true;
   $('#renderStatus').classList.remove('ready', 'error');
   $('#renderStatusSpinner').hidden = true;
   $('#renderStatus').textContent = '';
@@ -2395,6 +2419,12 @@ $('#viewFinderLink').onclick = async (e) => {
 $('#pylonArticleLink').onclick = (e) => {
   e.preventDefault();
   const url = $('#pylonArticleLink').href;
+  if (url) chrome.tabs.create({ url });
+};
+
+$('#driveVideoLink').onclick = (e) => {
+  e.preventDefault();
+  const url = $('#driveVideoLink').href;
   if (url) chrome.tabs.create({ url });
 };
 

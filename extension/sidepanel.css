@@ -332,4 +332,12 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .bulk-danger-btn{color:var(--red);border-color:#f0c9c9}
 .bulk-danger-btn:hover{background:#fee2e2;border-color:#fca5a5}
 
+/* Small colored badges identifying a link's destination (Pylon article vs. Google Drive video) */
+.link-icon-badge{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;color:#fff;font-size:9px;font-weight:800;line-height:1;flex-shrink:0;margin-right:2px;vertical-align:-2px}
+.badge-pylon{background:var(--purple)}
+.badge-google{background:#1a73e8}
+.pylon-article-badge{margin-right:6px}
+.drive-article-link{display:inline-flex;align-items:center;gap:0;margin-left:8px;color:var(--blue);text-decoration:none;font-size:11px}
+.drive-article-link:hover{text-decoration:underline}
+
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}
