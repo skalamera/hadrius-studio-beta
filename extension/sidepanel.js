@@ -2565,10 +2565,13 @@ function renderToolStatus(dotEl, tooltipEl, label, state) {
   } else {
     dotEl.classList.add('bad');
     tooltipEl.textContent = '';
-    tooltipEl.append((state.detail || `${label} is not connected.`) + '\n');
-    const code = document.createElement('code');
-    code.textContent = state.fixCommand;
-    tooltipEl.append(code);
+    tooltipEl.append(state.detail || `${label} is not connected.`);
+    if (state.fixCommand) {
+      tooltipEl.append('\n');
+      const code = document.createElement('code');
+      code.textContent = state.fixCommand;
+      tooltipEl.append(code);
+    }
   }
 }
 async function refreshToolStatus(fresh) {
@@ -2576,6 +2579,7 @@ async function refreshToolStatus(fresh) {
     const s = await api(`/status/tools${fresh ? '?fresh=1' : ''}`);
     renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', s.claude);
     renderToolStatus($('#codebaseDot'), $('#codebaseTooltip'), 'Codebase', s.codebase);
+    if (s.drive) renderToolStatus($('#driveDot'), $('#driveTooltip'), 'Drive', s.drive);
   } catch (_) { /* bridge unreachable — leave the bridgeDot check below to surface that */ }
 }
 

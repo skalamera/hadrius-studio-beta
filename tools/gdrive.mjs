@@ -27,6 +27,28 @@ export function googleDriveConfigured() {
   return !!(c.clientId && c.clientSecret && c.refreshToken);
 }
 
+const GOOGLE_DRIVE_SETUP_HINT = 'Google Drive isn\'t connected. See the "Google Drive" section in README.md for the one-time OAuth setup (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN in .env), then restart the bridge.';
+
+let driveState = { connected: null, checkedAt: 0, detail: null };
+/** Live check for the panel's header status dot — same shape/caching pattern as
+ * checkClaudeAuth/checkCodebaseMcp in ai-bridge.mjs. Actually exchanges the refresh token rather
+ * than just checking presence, so a revoked/expired token shows as disconnected, not falsely OK. */
+export async function checkGoogleDrive({ maxAgeMs = 60000 } = {}) {
+  if (Date.now() - driveState.checkedAt < maxAgeMs) return driveState;
+  if (!googleDriveConfigured()) {
+    driveState = { connected: false, checkedAt: Date.now(), detail: GOOGLE_DRIVE_SETUP_HINT };
+    return driveState;
+  }
+  try {
+    cachedToken = null; // force a real refresh-token exchange, not a cached access token
+    await getAccessToken();
+    driveState = { connected: true, checkedAt: Date.now(), detail: null };
+  } catch (e) {
+    driveState = { connected: false, checkedAt: Date.now(), detail: `Google Drive token refresh failed: ${String(e?.message || e).slice(0, 160)} — the refresh token may have been revoked; redo the OAuth setup in README.md.` };
+  }
+  return driveState;
+}
+
 let cachedToken = null; // { accessToken, expiresAt }
 
 async function getAccessToken() {

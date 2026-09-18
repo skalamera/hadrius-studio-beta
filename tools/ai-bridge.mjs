@@ -12,7 +12,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID } from './pylon.mjs';
-import { googleDriveConfigured, googleDriveUploadVideo } from './gdrive.mjs';
+import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive } from './gdrive.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1775,14 +1775,16 @@ const server = http.createServer(async (req, res) => {
   // ---- status of the two things every AI feature depends on, for the panel's header indicators ----
   if (req.method === 'GET' && u.pathname === '/status/tools') {
     const fresh = u.searchParams.get('fresh') === '1';
-    const [claude, codebase] = await Promise.all([
+    const [claude, codebase, drive] = await Promise.all([
       checkClaudeAuth({ maxAgeMs: fresh ? 0 : 60000 }),
       checkCodebaseMcp({ maxAgeMs: fresh ? 0 : 60000 }),
+      checkGoogleDrive({ maxAgeMs: fresh ? 0 : 60000 }),
     ]);
     return sendJson(res, 200, {
       ok: true,
       claude: { connected: claude.loggedIn === true, detail: claude.detail, fixCommand: 'claude login' },
       codebase: { connected: codebase.connected === true, detail: codebase.detail, fixCommand: 'claude mcp login hadrius-codebase' },
+      drive: { connected: drive.connected === true, detail: drive.detail, fixCommand: null },
     });
   }
 
