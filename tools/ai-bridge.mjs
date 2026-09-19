@@ -185,12 +185,16 @@ async function requireClaudeAuth() {
 const CODEBASE_MCP_LOGIN_HINT = 'The hadrius-codebase MCP isn\'t connected. In a terminal run:  claude mcp login hadrius-codebase   (finish the browser prompt), then try again — no restart needed.';
 const CODEBASE_MCP_MISSING_HINT = 'The hadrius-codebase MCP isn\'t registered with the Claude CLI. In a terminal run:  claude mcp add --transport http hadrius-codebase https://mcp.hadriusapi.com/codebase --scope user';
 // ---- App version + "is this install behind origin/main" — shown under the wordmark in the panel
-// header. Reads package.json rather than a hand-maintained constant: the /health endpoint used to
-// hardcode '0.1.1' while package.json said '0.1.0', silently drifting apart.
-const LOCAL_VERSION = (() => {
+// header. Base number reads package.json (a hand-maintained string nobody reliably bumps — it sat
+// at "0.1.0" through dozens of real feature commits), so it's suffixed with the commit count and
+// short SHA (standard semver build-metadata syntax: 0.1.0+142.a3f9c1d) computed from git below —
+// that part changes on every single commit with no manual step, so the header always moves even
+// when package.json's own number doesn't.
+const PACKAGE_VERSION = (() => {
   try { return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).version || '0.0.0'; }
   catch { return '0.0.0'; }
 })();
+let LOCAL_VERSION = PACKAGE_VERSION;
 
 function execGit(args) {
   return new Promise((resolve, reject) => {
@@ -200,6 +204,15 @@ function execGit(args) {
     });
   });
 }
+
+// Runs once at startup — not a git checkout yet (a zip install before the first update.sh run)
+// just leaves LOCAL_VERSION as the bare package.json number.
+(async () => {
+  try {
+    const [count, sha] = await Promise.all([execGit(['rev-list', '--count', 'HEAD']), execGit(['rev-parse', '--short', 'HEAD'])]);
+    LOCAL_VERSION = `${PACKAGE_VERSION}+${count}.${sha}`;
+  } catch (_) {}
+})();
 
 let updateState = { checkedAt: 0, upToDate: null, latestVersion: null, commitsBehind: null, detail: null };
 /** Compares local HEAD to origin/main by commit SHA, not just package.json's version string — a
