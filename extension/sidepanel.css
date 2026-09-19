@@ -341,3 +341,16 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .drive-article-link:hover{text-decoration:underline}
 
 @media(max-width:420px){.toolbar{grid-template-columns:1fr}.wordmark{width:140px}.item-actions{flex-wrap:wrap}}
+
+/* Header status dots (Claude/Codebase/Drive/Bridge) — at typical side-panel widths all four labels
+   plus the wordmark don't fit on one line, and since the header's height is relied on elsewhere
+   (nav/toolbar sticky offsets are hardcoded to it), letting the row wrap would clip vertically
+   instead of just clipping horizontally. Past the point where labels don't fit, drop to dots only
+   — the full name is still one hover away via the existing tooltip — rather than truncating one of
+   them off the edge. */
+@media(max-width:640px){
+  .tool-status-group{gap:7px}
+  .tool-status{gap:0}
+  .tool-status-label{display:none}
+}
+@media(max-width:340px){.wordmark{width:118px}}
