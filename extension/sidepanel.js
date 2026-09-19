@@ -2557,13 +2557,11 @@ chrome.runtime.onMessage.addListener((message) => {
 // Claude CLI / hadrius-codebase MCP indicators in the header — every AI feature (narration, plan
 // grounding, recording decisions) depends on both, and each expires silently (separate OAuth
 // sessions), so a red dot with the exact terminal fix on hover beats discovering it mid-recording.
-function renderToolStatus(dotEl, tooltipEl, label, state) {
-  dotEl.classList.remove('ok', 'bad');
+function renderToolStatus(dotEl, tooltipEl, label, state, iconName) {
+  dotEl.src = `icons/status/${iconName}-${state.connected ? 'connected' : 'disconnected'}.svg`;
   if (state.connected) {
-    dotEl.classList.add('ok');
     tooltipEl.textContent = `${label}: connected.`;
   } else {
-    dotEl.classList.add('bad');
     tooltipEl.textContent = '';
     tooltipEl.append(state.detail || `${label} is not connected.`);
     if (state.fixCommand) {
@@ -2577,9 +2575,9 @@ function renderToolStatus(dotEl, tooltipEl, label, state) {
 async function refreshToolStatus(fresh) {
   try {
     const s = await api(`/status/tools${fresh ? '?fresh=1' : ''}`);
-    renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', s.claude);
-    renderToolStatus($('#codebaseDot'), $('#codebaseTooltip'), 'Codebase', s.codebase);
-    if (s.drive) renderToolStatus($('#driveDot'), $('#driveTooltip'), 'Drive', s.drive);
+    renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', s.claude, 'claude');
+    renderToolStatus($('#codebaseDot'), $('#codebaseTooltip'), 'Codebase', s.codebase, 'codebase');
+    if (s.drive) renderToolStatus($('#driveDot'), $('#driveTooltip'), 'Drive', s.drive, 'drive');
   } catch (_) { /* bridge unreachable — leave the bridgeDot check below to surface that */ }
 }
 
@@ -2611,4 +2609,4 @@ async function refreshVersionStatus(fresh) {
   } catch (_) { /* bridge unreachable — leave whatever was last shown */ }
 }
 
-(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta'){$('#bridgeDot').classList.add('ok');$('#bridgeTooltip').textContent='Bridge: connected (port 8787).';}else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;$('#bridgeDot').classList.add('bad');$('#bridgeTooltip').textContent=`${e.message} Run npm start from hadrius-studio-beta, or bash update.sh if it's not running as a service.`;}await initManualLinks();await loadState();await refreshAll();checkRender();refreshToolStatus(true);refreshVersionStatus(true);setInterval(()=>refreshToolStatus(false),45000);setInterval(()=>refreshVersionStatus(false),5*60000);})();
+(async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta'){$('#bridgeDot').src='icons/status/bridge-connected.svg';$('#bridgeTooltip').textContent='Bridge: connected (port 8787).';}else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;$('#bridgeDot').src='icons/status/bridge-disconnected.svg';$('#bridgeTooltip').textContent=`${e.message} Run npm start from hadrius-studio-beta, or bash update.sh if it's not running as a service.`;}await initManualLinks();await loadState();await refreshAll();checkRender();refreshToolStatus(true);refreshVersionStatus(true);setInterval(()=>refreshToolStatus(false),45000);setInterval(()=>refreshVersionStatus(false),5*60000);})();

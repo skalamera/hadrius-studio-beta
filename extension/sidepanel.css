@@ -354,3 +354,5 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
   .tool-status-label{display:none}
 }
 @media(max-width:340px){.wordmark{width:118px}}
+
+.status-icon{width:15px;height:15px;flex-shrink:0;object-fit:contain}
