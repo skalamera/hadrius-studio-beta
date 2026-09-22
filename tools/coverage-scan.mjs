@@ -281,9 +281,9 @@ export async function runClaude(prompt, opts = {}) {
     return await runClaudeCli(prompt, opts);
   } catch (claudeErr) {
     if (opts.signal?.aborted) throw claudeErr;
-    console.warn(`Claude CLI failed (${claudeErr.message}), falling back to Gemini CLI...`);
+    console.warn(`Claude CLI failed (${claudeErr.message}), falling back to Gemini API...`);
     try {
-      return await runGeminiCli(prompt, opts);
+      return await runGeminiFallback(prompt, opts);
     } catch (geminiErr) {
       if (opts.signal?.aborted) throw geminiErr;
       // Report BOTH, Claude first. When only Gemini's message surfaced, a whole batch of jobs

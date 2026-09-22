@@ -26,7 +26,7 @@ export const STAGING_BASE = (process.env.KBS_STAGING_BASE || 'https://app.hadriu
 // Recordings run in the "Hadrius Sandbox" company (1048) in production — a sandbox tenant with
 // realistic data, chosen over staging after staging data gaps kept failing walkthroughs.
 export const RECORD_COMPANY_ID = process.env.KBS_COMPANY_ID || '1048';
-const MAX_STEPS = 45; // a 6-step wizard with a couple of detours needs ~30; leave headroom so the model doesn't bail early
+const MAX_STEPS = 60; // a 6-step wizard with a couple of detours needs ~40; leave headroom so the model doesn't bail early
 const VIEWPORT = { width: 1600, height: 900 };
 const LOGIN_WAIT_MS = 10 * 60 * 1000; // how long to hold a window open for a manual Hadrius sign-in
 
@@ -133,10 +133,17 @@ const DOM_HELPERS_JS = `
       parts.unshift(sel); n = parent; }
     return parts.join(' > ');
   }
-  // Rendered and not hidden — but NOT limited to the viewport: wizard/form fields below the fold must
-  // be in the model's list (Playwright scrolls to them on click). Elements the model can't see, it
-  // can't use, and it concludes "nothing happened" when a section renders off-screen.
-  const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 3 && r.height > 3 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none'; };
+  // Rendered and not hidden — but NOT limited to vertical scroll: wizard/form fields below the fold must
+  // be in the model's list (Playwright scrolls to them on click). BUT horizontally off-screen elements
+  // (r.left >= innerWidth or r.right <= 0) are closed slide-over drawers (e.g. FilterSidebar parked at
+  // translateX(100%)) that cannot be scrolled to and must be opened via their trigger button first.
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 3 || r.height <= 3) return false;
+    if (r.right <= 0 || r.left >= innerWidth) return false;
+    const cs = getComputedStyle(el);
+    return cs.visibility !== 'hidden' && cs.display !== 'none';
+  };
   // Calendar day cell → { today, day } so replay picks the date by meaning, not by its literal label (see content.js dateHint).
   // Trailing suffix allowed: react-day-picker and similar libs append ", Selected" to the selected
   // day's aria-label — without it the one cell that actually needs {today|day} resolution silently stopped matching.
@@ -227,10 +234,17 @@ export const SNAPSHOT_FN = new Function(`
     .filter((el) => !semantic.has(el) && pointerBoundary(el) && visible(el));
   // pointer-events is the truth about clickability: a Radix MODAL sets pointer-events:none on
   // <body> and re-enables it inside the dialog, so while a modal is open every background
-  // control computes to 'none'. Listing those gave the model decoys — the U4 page has a filter
-  // chip named "Amendment" behind a dialog whose radio is also named "Amendment", and both the
-  // agent and a hand-written script clicked the dead chip for a whole run.
-  const canReceiveClicks = (el) => getComputedStyle(el).pointerEvents !== 'none';
+  // control computes to 'none'. Listing those gave the model decoys. BUT Tailwind puts
+  // disabled:pointer-events-none on disabled buttons/inputs — those are real dialog controls
+  // the model MUST see as disabled so it knows what step gates remain.
+  const modalOpen = !!document.querySelector('[role="dialog"],[role="alertdialog"]');
+  const canReceiveClicks = (el) => {
+    if (getComputedStyle(el).pointerEvents !== 'none') return true;
+    if (el.disabled || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') {
+      return !modalOpen || !!el.closest('[role="dialog"],[role="alertdialog"]');
+    }
+    return false;
+  };
   const found = Array.from(semantic)
     .filter((el) => visible(el) && wanted(el) && labelWanted(el))
     .concat(boundaryExtras)
@@ -259,7 +273,7 @@ export const SNAPSHOT_FN = new Function(`
     // radio/checkbox click as "no visible change", which fed the retry-then-block-as-dead escalation
     // even when the click had genuinely worked (verbatim what happened to the Form U4 amendment-type
     // radios: aria-checked flipped to true, but the model was told nothing happened and gave up).
-    const stateAttr = el.getAttribute('aria-checked') ?? el.getAttribute('aria-pressed')
+    const stateAttr = el.getAttribute('aria-checked') ?? el.getAttribute('data-state') ?? el.getAttribute('aria-pressed')
       ?? el.getAttribute('aria-selected') ?? el.getAttribute('aria-expanded')
       ?? (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio') ? String(el.checked) : null);
     out.push({
@@ -1098,8 +1112,12 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       // Hard loop guard (the prompt asks for this too, but asking isn't enough). Only CONSECUTIVE
       // repeats count: re-clicking the control that was just clicked and changed nothing, or a third
       // click in a row on the same control. A run-wide count would refuse the "Next" button that
-      // every wizard step legitimately has.
-      const sig = `${decision.action}|${el.role}|${el.name}`;
+      // every wizard step legitimately has. Disambiguate unnamed controls (e.g. empty-label checkboxes)
+      // and duplicate names (e.g. six "Answer No to all" buttons in different sections of Form U5) so
+      // acting on one control does not block a completely different control that shares its name.
+      const isDuplicateName = el.name && snap.elements.filter((n) => n.name === el.name).length > 1;
+      const nameKey = !el.name ? `unnamed_${el.id}` : isDuplicateName ? `${el.name}_#${el.id}` : el.name;
+      const sig = `${decision.action}|${el.role}|${nameKey}`;
       const acted = history.filter((h) => !h.error && h.action !== 'wait');
       const prev = acted[acted.length - 1];
       let consecutive = 0; for (let i = acted.length - 1; i >= 0 && acted[i].sig === sig; i--) consecutive++;
@@ -1263,8 +1281,9 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
           // field sits inside — in a dialog rendered within a clickable table row, that click reached
           // the row's own handler and navigated away mid-rename. Focus has no such side effects.
           try { await loc.focus({ timeout: 2500 }); } catch (_) { try { await loc.click({ timeout: 2500 }); } catch (_) {} }
-          try { await loc.fill(''); } catch (_) {}
-          await loc.type(text, { delay: 15 });
+          try { await loc.fill(text); } catch (_) { await loc.type(text, { delay: 15 }); }
+          await loc.dispatchEvent('input').catch(() => {});
+          await loc.dispatchEvent('change').catch(() => {});
         }
       } catch (e) {
         if (hudHidden) await restoreHud();

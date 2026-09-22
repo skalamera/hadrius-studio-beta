@@ -336,7 +336,7 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .link-icon-badge{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;color:#fff;font-size:9px;font-weight:800;line-height:1;flex-shrink:0;margin-right:2px;vertical-align:-2px}
 .badge-pylon{background:var(--purple)}
 .badge-google{background:#1a73e8}
-.pylon-article-badge{margin-right:6px}
+.pylon-article-badge{width:14px;height:14px;margin-right:6px;vertical-align:-2px;flex-shrink:0;object-fit:contain;display:inline-block}
 .drive-article-link{display:inline-flex;align-items:center;gap:0;margin-left:8px;color:var(--blue);text-decoration:none;font-size:11px}
 .drive-article-link:hover{text-decoration:underline}
 

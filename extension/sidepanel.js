@@ -573,7 +573,7 @@ function renderPylonArticles() {
           ? `<a href="#" class="drive-article-link" target="_blank" rel="noopener noreferrer" title="Open the video in Google Drive"><span class="link-icon-badge badge-google">G</span> Drive</a>`
           : '';
         item.innerHTML = `
-          <a href="#" class="pylon-article-title"><span class="link-icon-badge badge-pylon pylon-article-badge">P</span>${esc(cleanTitle)}</a>
+          <a href="#" class="pylon-article-title"><img class="pylon-article-badge" src="icons/status/pylon-connected.svg" alt="Pylon">${esc(cleanTitle)}</a>
           <span class="badge ${statusClass}">${statusLabel}</span>
           ${driveLinkHtml}
           ${loadBtnHtml}
@@ -2575,9 +2575,18 @@ function renderToolStatus(dotEl, tooltipEl, label, state, iconName) {
 async function refreshToolStatus(fresh) {
   try {
     const s = await api(`/status/tools${fresh ? '?fresh=1' : ''}`);
-    renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', s.claude, 'claude');
+    if (s.claude?.connected) {
+      renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', s.claude, 'claude');
+      const lbl = $('#claudeLabel');
+      if (lbl) lbl.textContent = 'Claude';
+    } else {
+      renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Gemini', s.gemini || { connected: false, detail: 'Gemini fallback' }, 'gemini');
+      const lbl = $('#claudeLabel');
+      if (lbl) lbl.textContent = 'Gemini';
+    }
     renderToolStatus($('#codebaseDot'), $('#codebaseTooltip'), 'Codebase', s.codebase, 'codebase');
     if (s.drive) renderToolStatus($('#driveDot'), $('#driveTooltip'), 'Drive', s.drive, 'drive');
+    if (s.pylon) renderToolStatus($('#pylonDot'), $('#pylonTooltip'), 'Pylon', s.pylon, 'pylon');
   } catch (_) { /* bridge unreachable — leave the bridgeDot check below to surface that */ }
 }
 

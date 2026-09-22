@@ -36,6 +36,30 @@ export function pylonCollectionForModule(module) {
   return PYLON_MODULE_COLLECTIONS[m] || PYLON_OTHER_COLLECTION_ID;
 }
 
+let pylonState = { connected: null, checkedAt: 0, detail: null };
+export async function checkPylon({ maxAgeMs = 60000 } = {}) {
+  if (Date.now() - pylonState.checkedAt < maxAgeMs && pylonState.connected !== null) return pylonState;
+  const t = (process.env.PYLON_API_TOKEN || '').trim();
+  if (!t) {
+    pylonState = { connected: false, checkedAt: Date.now(), detail: 'PYLON_API_TOKEN is not set in .env' };
+    return pylonState;
+  }
+  const kbId = process.env.PYLON_KB_ID || '01dbe3ef-3f4e-46d5-ba0f-0cde759181ec';
+  try {
+    const res = await fetch(`${PYLON_BASE}/knowledge-bases/${kbId}`, {
+      headers: { Authorization: `Bearer ${t}` }
+    });
+    if (res.ok) {
+      pylonState = { connected: true, checkedAt: Date.now(), detail: null };
+    } else {
+      pylonState = { connected: false, checkedAt: Date.now(), detail: `Pylon API returned HTTP ${res.status}` };
+    }
+  } catch (e) {
+    pylonState = { connected: false, checkedAt: Date.now(), detail: `Pylon connection failed: ${e.message}` };
+  }
+  return pylonState;
+}
+
 function token() {
   const t = (process.env.PYLON_API_TOKEN || '').trim();
   if (!t) throw new Error('PYLON_API_TOKEN is not set (add it to .env)');

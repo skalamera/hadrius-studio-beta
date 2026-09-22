@@ -87,18 +87,10 @@ def find_clip(arg_name, candidates):
     return None
 
 ROOT = Path(__file__).resolve().parent.parent
-INTRO = None if '--no-intro' in args else find_clip('--intro', [
-    ROOT / 'assets' / 'intro.mp4',
-    '/Users/stephenskalamera/Videos/hadrius_academy_intro.mp4',
-    '/Users/stephenskalamera/Videos/Hadrius Studio Intro.mp4',
-    'assets/intro.mp4',
-])
-OUTRO = None if '--no-outro' in args else find_clip('--outro', [
-    ROOT / 'assets' / 'outro.mp4',
-    '/Users/stephenskalamera/Videos/hadrius_academy_outro.mp4',
-    '/Users/stephenskalamera/Videos/Hadrius Studio Outtro.mp4',
-    'assets/outro.mp4',
-])
+# No intro or outro bumper clips by default: videos open on the title card and close on the support card.
+# Pass --intro <clip> or --outro <clip> explicitly to prepend/append branded bumpers.
+INTRO = Path(args[args.index('--intro') + 1]) if '--intro' in args else None
+OUTRO = Path(args[args.index('--outro') + 1]) if '--outro' in args else None
 rep = json.load(open(out / 'report.json'))
 slides = rep['slides']
 # Only renderer/from-recording.mjs needs a drawn-on highlight: it renders straight from screenshots

@@ -11,7 +11,7 @@ import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
-import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID } from './pylon.mjs';
+import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
 import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive } from './gdrive.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
@@ -285,18 +285,57 @@ async function libraryGetByName(name) {
 }
 
 /** Pylon article id -> { scriptName, driveVideoUrl }, for the panel's Recorded tab "Load script"
- * button and its Google Drive video link. */
-function buildArticleScriptIndex() {
+ * button and its Google Drive video link. Includes scripts stored in the shared Neon library
+ * created by teammates, matching by pylonArticleId or normalized title/name slug. */
+async function buildArticleScriptIndex(articles = []) {
   const index = new Map();
+  const titleIndex = new Map();
   const scriptsDir = path.join(REPO_ROOT, 'scripts');
-  if (!fs.existsSync(scriptsDir)) return index;
-  for (const f of fs.readdirSync(scriptsDir)) {
-    if (!f.endsWith('.script.json')) continue;
+  if (fs.existsSync(scriptsDir)) {
+    for (const f of fs.readdirSync(scriptsDir)) {
+      if (!f.endsWith('.script.json')) continue;
+      try {
+        const s = JSON.parse(fs.readFileSync(path.join(scriptsDir, f), 'utf8'));
+        const sName = s.name || f.replace('.script.json', '');
+        const entry = { scriptName: sName, driveVideoUrl: s.driveVideoUrl || null };
+        if (s.pylonArticleId) index.set(String(s.pylonArticleId), entry);
+        if (s.title) titleIndex.set(candSlug(s.title), entry);
+        titleIndex.set(candSlug(sName), entry);
+      } catch (_) {}
+    }
+  }
+
+  // Also query the shared Neon library so teammate scripts link automatically
+  if (LIBRARY_SECRET) {
     try {
-      const s = JSON.parse(fs.readFileSync(path.join(scriptsDir, f), 'utf8'));
-      if (s.pylonArticleId) index.set(String(s.pylonArticleId), { scriptName: s.name || f.replace('.script.json', ''), driveVideoUrl: s.driveVideoUrl || null });
+      const remote = await libraryFetch('GET');
+      const remoteItems = remote?.items || [];
+      for (const item of remoteItems) {
+        const sName = item.name;
+        if (!sName) continue;
+        const entry = { scriptName: sName, driveVideoUrl: item.driveVideoUrl || null };
+        if (item.title) {
+          const slug = candSlug(item.title);
+          if (!titleIndex.has(slug)) titleIndex.set(slug, entry);
+        }
+        const nameSlug = candSlug(sName);
+        if (!titleIndex.has(nameSlug)) titleIndex.set(nameSlug, entry);
+      }
     } catch (_) {}
   }
+
+  // Fallback: match any unlinked articles by title or name slug
+  for (const article of articles) {
+    const artId = String(article.id);
+    if (!index.has(artId)) {
+      const artSlug = candSlug(article.title);
+      const match = titleIndex.get(artSlug);
+      if (match) {
+        index.set(artId, match);
+      }
+    }
+  }
+
   return index;
 }
 
@@ -343,7 +382,9 @@ function findDoneRecipe(key) {
   if (!key) return null;
   try {
     const d = JSON.parse(fs.readFileSync(TAXONOMY_PATH, 'utf8'));
-    return d.items.find((i) => i.key === key && i.status === 'done' && i.recipe)?.recipe || null;
+    const rec = d.items.find((i) => i.key === key && i.status === 'done' && i.recipe)?.recipe;
+    if (!rec) return null;
+    return fs.existsSync(path.resolve(REPO_ROOT, rec)) ? rec : null;
   } catch { return null; }
 }
 /** Same lookup, keyed by script name instead of coverage key — mirrors render.sh's own match exactly. */
@@ -352,7 +393,9 @@ function findRecipeForScriptName(name) {
   try {
     const d = JSON.parse(fs.readFileSync(TAXONOMY_PATH, 'utf8'));
     const n = String(name).toLowerCase();
-    return d.items.find((i) => i.status === 'done' && i.recipe && i.key.toLowerCase().endsWith(n))?.recipe || null;
+    const rec = d.items.find((i) => i.status === 'done' && i.recipe && i.key.toLowerCase().endsWith(n))?.recipe;
+    if (!rec) return null;
+    return fs.existsSync(path.resolve(REPO_ROOT, rec)) ? rec : null;
   } catch { return null; }
 }
 
@@ -579,7 +622,11 @@ function pumpAiQueue() {
           aiLog(key, `A script named "${desired}" already exists — saving as "${script.name}" instead.`);
         }
         const out = await saveScript(script);
-        await libraryFetch('PATCH', null, { key, linked_script: out.item.name, updated_by: WHOAMI }, COVERAGE_URL);
+        try {
+          await libraryFetch('PATCH', null, { key, linked_script: out.item.name, updated_by: WHOAMI }, COVERAGE_URL);
+        } catch (linkErr) {
+          aiLog(key, `  (remote library link skipped: ${linkErr.message || linkErr})`);
+        }
         job.result = { scriptName: out.item.name, steps: script.steps.length };
         job.state = 'done';
         aiLog(key, `Saved as "${out.item.name}" and linked to this workflow.`);
@@ -1557,24 +1604,12 @@ async function publishRenderToPylon(name, outDir) {
   }
   bodyHtml = bodyHtml.replace(/\[\[SCREENSHOT:\d+\]\]/g, ''); // any the model referenced but we didn't upload
 
-  // Pylon's article editor parses body_html into its own rich-text node model, which — confirmed
-  // live — has no node type for <video>, <iframe>, or a bare top-level <a> hyperlink: all three get
-  // silently unwrapped/stripped within seconds of creation (an automatic normalization pass, not
-  // something triggered by a human opening the draft). A <figure><img>...<figcaption><a>...</a>
-  // does survive intact, though — Pylon's own "captioned image" node apparently allows a link inside
-  // the caption specifically. That gives a poster image with a clickable "watch the video" caption
-  // right under it, the closest thing to an embed this API actually supports.
+  // Embed video using Pylon's native video player component
   if (fs.existsSync(videoPath)) {
     try {
       const videoAtt = await pylonUploadAttachment(videoPath, title);
-      const posterSlide = slides[0];
-      let videoHtml = `<p><strong>Video walkthrough:</strong> ${videoAtt.url}</p>\n`; // fallback if the poster upload fails
-      try {
-        const posterAtt = await pylonUploadAttachment(path.join(outDir, 'slides', posterSlide.file), `${title} — video`);
-        videoHtml = `<figure><img src="${posterAtt.url}" alt="Video walkthrough"><figcaption><a href="${videoAtt.url}">▶ Watch the video walkthrough</a></figcaption></figure>\n`;
-      } catch (e) {
-        console.warn(`  video poster upload failed: ${e.message} — url text only`);
-      }
+      const videoFileName = path.basename(videoPath);
+      const videoHtml = `<video src="${videoAtt.url}" data-width="100%" alt="${videoFileName}" title="${videoFileName}" class="kb-video" controls="true" preload="metadata"></video>\n`;
       bodyHtml = `${videoHtml}${bodyHtml}`;
     } catch (e) {
       console.warn(`  video upload failed: ${e.message} — publishing article without video`);
@@ -1794,16 +1829,20 @@ const server = http.createServer(async (req, res) => {
   // ---- status of the two things every AI feature depends on, for the panel's header indicators ----
   if (req.method === 'GET' && u.pathname === '/status/tools') {
     const fresh = u.searchParams.get('fresh') === '1';
-    const [claude, codebase, drive] = await Promise.all([
+    const [claude, codebase, drive, pylon] = await Promise.all([
       checkClaudeAuth({ maxAgeMs: fresh ? 0 : 60000 }),
       checkCodebaseMcp({ maxAgeMs: fresh ? 0 : 60000 }),
       checkGoogleDrive({ maxAgeMs: fresh ? 0 : 60000 }),
+      checkPylon({ maxAgeMs: fresh ? 0 : 60000 }),
     ]);
+    const hasGemini = !!(GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim());
     return sendJson(res, 200, {
       ok: true,
       claude: { connected: claude.loggedIn === true, detail: claude.detail, fixCommand: 'claude login' },
+      gemini: { connected: hasGemini, detail: hasGemini ? 'Gemini API connected (fallback)' : 'GEMINI_API_KEY not configured', fixCommand: null },
       codebase: { connected: codebase.connected === true, detail: codebase.detail, fixCommand: 'claude mcp login hadrius-codebase' },
       drive: { connected: drive.connected === true, detail: drive.detail, fixCommand: null },
+      pylon: { connected: pylon.connected === true, detail: pylon.detail, fixCommand: null },
     });
   }
 
@@ -2520,7 +2559,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && u.pathname === '/pylon/articles') {
     try {
       const articles = await pylonListArticles();
-      const articleScriptIndex = buildArticleScriptIndex();
+      const articleScriptIndex = await buildArticleScriptIndex(articles);
       const modules = {};
       for (const [module, collectionId] of Object.entries(PYLON_MODULE_COLLECTION_MAP)) {
         const entry = {
@@ -2561,7 +2600,15 @@ const server = http.createServer(async (req, res) => {
           if (LIBRARY_SECRET) {
             try {
               const remote = await libraryFetch('GET', { name });
-              if (remote?.item) return sendJson(res, 200, { ok: true, ...remote });
+              if (remote?.item?.script) {
+                try {
+                  fs.mkdirSync(path.join(REPO_ROOT, 'scripts'), { recursive: true });
+                  fs.writeFileSync(localScriptPath, JSON.stringify(remote.item.script, null, 2));
+                } catch (_) {}
+                return sendJson(res, 200, { ok: true, ...remote });
+              } else if (remote?.item) {
+                return sendJson(res, 200, { ok: true, ...remote });
+              }
             } catch (_) {}
           }
           return sendJson(res, 404, { ok: false, error: `Script "${name}" not found` });
