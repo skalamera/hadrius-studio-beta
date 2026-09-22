@@ -101,7 +101,7 @@
           "sources": [],
           "linkedScript": "How-to-escalate-a-flagged-compliance-exception",
           "status": "covered",
-          "planUpdatedAt": "2026-09-22T05:58:30.728Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.568Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -120,7 +120,7 @@
           "sources": [],
           "linkedScript": "How-to-edit-a-surveillance-rule-s-configuration",
           "status": "covered",
-          "planUpdatedAt": "2026-09-22T05:54:19.374Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.044Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -142,7 +142,7 @@
           "sources": [],
           "linkedScript": "How-to-create-a-new-surveillance-rule-from-a-template",
           "status": "covered",
-          "planUpdatedAt": "2026-09-22T05:58:30.734Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.575Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -192,7 +192,7 @@
           "sources": [],
           "linkedScript": "How-to-archive-a-flagged-exception",
           "status": "covered",
-          "planUpdatedAt": "2026-09-22T05:54:19.382Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.058Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -350,7 +350,7 @@
             "At least one employee record if the operator wants to demonstrate assigning the task to a named person (optional — the assignee dropdown defaults to and can be left as 'Unassigned', so this is not a hard blocker)."
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-22T05:58:30.740Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.581Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -455,7 +455,7 @@
             "If no row already shows an uploaded document, click a policy's actions button (three dots) and click \"Upload document\" (or \"Upload new version\"), then attach a document to it so has_content becomes true and its sections can be parsed",
             "Return to the policy list and click that row's actions button again to reach \"Update sections\""
           ],
-          "planUpdatedAt": "2026-09-22T05:58:30.746Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.593Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -499,7 +499,7 @@
           ],
           "provisionable": "likely-already-present",
           "suggestedSetupSteps": [],
-          "planUpdatedAt": "2026-09-22T05:58:30.753Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.599Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -533,7 +533,7 @@
             "At least one employee record if the operator wants to demonstrate assigning the task to a named person (optional — the assignee dropdown defaults to and can be left as 'Unassigned', so this is not a hard blocker)."
           ],
           "provisionable": "none-needed",
-          "planUpdatedAt": "2026-09-22T05:54:19.385Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.065Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [
@@ -1074,7 +1074,7 @@
             "Return to the policy list and click that row's actions button again to reach \"Update sections\""
           ],
           "fileFixtureKind": "pdf",
-          "planUpdatedAt": "2026-09-22T05:54:19.393Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.077Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [
@@ -2857,7 +2857,7 @@
           "fileFixtureKind": null,
           "suggestedSetupSteps": [],
           "title": "How to add a new control to the register",
-          "planUpdatedAt": "2026-09-22T05:54:19.399Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.085Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [],
@@ -3539,7 +3539,7 @@
             "verifiedSteps": 10
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-22T05:54:19.405Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.092Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -5022,7 +5022,7 @@
             "Enter the representative's CRD number and date of birth, then submit — this tenant's FINRA integration is mocked (company 1013 is classified INTERNAL/sandbox, so `finra_client()` always uses `call_mock=True`), so the sync succeeds immediately without any real external FINRA connectivity and creates the underlying FirmAssociation record needed for amendments.",
             "Confirm the sync completed (toast says \"Sync successful\" / \"Account connected and synced\"), then return to People oversight > U4 filings and use this employee as the representative in Section 1 of the amendment wizard."
           ],
-          "planUpdatedAt": "2026-09-22T05:58:30.761Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.605Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [
@@ -7461,7 +7461,7 @@
             "verifiedSteps": 6
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-22T05:54:19.415Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.108Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -7621,7 +7621,7 @@
           "blockerReason": "",
           "suggestedSetupSteps": [],
           "fileFixtureKind": null,
-          "planUpdatedAt": "2026-09-22T05:58:30.767Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.611Z",
           "planUpdatedBy": "stephenskalamera",
           "grounding": {
             "steps": [],
@@ -7856,7 +7856,7 @@
             "verifiedSteps": 12
           },
           "status": "missing",
-          "planUpdatedAt": "2026-09-22T05:58:30.773Z",
+          "planUpdatedAt": "2026-09-22T09:24:22.621Z",
           "planUpdatedBy": "stephenskalamera"
         },
         {
@@ -8963,7 +8963,7 @@
           "fileFixtureKind": null,
           "suggestedSetupSteps": [],
           "title": "How to export email search results for a single employee",
-          "planUpdatedAt": "2026-09-22T05:54:19.420Z",
+          "planUpdatedAt": "2026-09-22T09:07:42.116Z",
           "planUpdatedBy": "stephenskalamera"
         }
       ]
