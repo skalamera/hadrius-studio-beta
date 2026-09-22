@@ -5,6 +5,16 @@
       "module": "Testing program",
       "workflows": [
         {
+          "title": "How to schedule a new branch exam",
+          "purpose": "Walkthrough video: How-to-schedule-a-new-branch-exam",
+          "startRoute": "https://app.hadrius.com/branch-exams?company_id=1048",
+          "priority": "medium",
+          "steps": [],
+          "sources": [],
+          "linkedScript": "How-to-schedule-a-new-branch-exam",
+          "status": "covered"
+        },
+        {
           "title": "How to view a rule run's results",
           "purpose": "Walkthrough video: How-to-view-a-rule-run-s-results",
           "startRoute": "https://app.hadrius.com/account-surveillance?company_id=1048",
@@ -1703,7 +1713,9 @@
             "totalSteps": 7,
             "unverified": [],
             "verifiedSteps": 7
-          }
+          },
+          "linkedScript": "How-to-archive-a-policy",
+          "status": "covered"
         },
         {
           "title": "How to rename a policy",
@@ -2065,7 +2077,7 @@
             "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/question_review_actions.tsx",
             "apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/tests/test_details/components/review_outcome_forms.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "A test run that is in \"Pending review\" (or \"Pending final review\") status — i.e. the test owner has already answered and submitted the questionnaire, and it has not yet been approved or completed",
             "The recording account must itself be an assigned reviewer (first, final, or sole) on that run — admins who are not the assigned reviewer see the review actions locked out (canRecordReviewOutcome / resultsLocked)",
@@ -2153,7 +2165,8 @@
             "totalSteps": 10,
             "unverified": [],
             "verifiedSteps": 10
-          }
+          },
+          "linkedScript": "How-to-raise-a-corrective-action-during-test-review"
         },
         {
           "title": "How to acknowledge a business risk during test review",
@@ -3856,7 +3869,7 @@
             "apps/hadrius-app/src/pages/template_library/submission/components/questionnaire_footer_nav.tsx",
             "apps/hadrius-app/src/pages/template_library/submission/question_types/question_inputs.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "An employee with a certification task in \"Not started\", \"Draft\", or \"Action required\" status (i.e. assigned but not yet submitted) — confirmed live via DB query: company 1013 currently has ~18 CertTask rows with status IN_PROGRESS/review_status UNREVIEWED across distinct employees, from an active quarterly (Q2 2026 capture period) recurring certification round, due 2026-09-24.",
             "A way to view the /employee/certifications self-service portal as that employee: either direct employee-role login credentials, or an admin account with impersonation rights (the frontend has a built-in impersonation_selector / onBehalfOf mechanism, so a demo admin account likely does not need separate employee credentials).",
@@ -3929,7 +3942,8 @@
             "totalSteps": 8,
             "unverified": [],
             "verifiedSteps": 8
-          }
+          },
+          "linkedScript": "How-an-employee-completes-and-signs-a-certification"
         },
         {
           "title": "How to review and approve or reject a disclosure",
@@ -4771,7 +4785,7 @@
             "apps/hadrius-app/pages/employees/[id]/account/[account_id]/upload_initial_holdings/index.tsx",
             "apps/hadrius-app/src/pages/employees/accounts/page_employee_manual_account_holdings_upload.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "At least one employee already listed in People oversight with a brokerage/investment account connection (row) to click into",
             "An employee account that has NOT yet had initial holdings submitted — the upload_initial_holdings page shows a hard-blocking 'Holdings already uploaded' screen (with no upload form) for any account that already has even one holding row, so the operator needs a zero-holdings account to actually reach the steps in this plan",
@@ -4852,7 +4866,8 @@
             "totalSteps": 9,
             "unverified": [],
             "verifiedSteps": 9
-          }
+          },
+          "linkedScript": "How-to-upload-or-manually-enter-an-employee-s-account-holdings"
         },
         {
           "title": "How to file a new Form U5",
@@ -5784,7 +5799,7 @@
             "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
             "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/use_tab_states.ts"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "Company feature 'employee_c8e', company.finra_api_enabled === 'ACTIVE' (or sandbox), and at least one FINRA API credential (gates the 'U4 filings' sidebar item)",
             "For delete: selected filings must have status Unvalidated, Failed validation or Ready to file (\"Delete [N]\" is disabled otherwise)",
@@ -5806,7 +5821,8 @@
             "totalSteps": 7,
             "unverified": [],
             "verifiedSteps": 7
-          }
+          },
+          "linkedScript": "How-to-delete-or-reject-U4-filings-in-bulk"
         },
         {
           "title": "How to file a new Form U4 for a representative",
@@ -6166,9 +6182,10 @@
             "unverified": [],
             "verifiedSteps": 7
           },
-          "status": "missing",
+          "status": "covered",
           "planUpdatedAt": "2026-09-16T16:05:35.006Z",
-          "planUpdatedBy": null
+          "planUpdatedBy": null,
+          "linkedScript": "How-to-generate-and-download-a-branch-exam-follow-up-letter"
         },
         {
           "title": "How to export a branch exam's remediation tracker to CSV",
@@ -6193,7 +6210,7 @@
             "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/shared/helpers/csv_download_helper.ts",
             "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_branch_tabs.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "Company feature 'branches_enabled' and a role that can view branch exams (super admin, branch view/manage role, or exam inspector)",
             "An existing branch exam, ideally with findings/remediation tasks so the export has rows"
@@ -6215,7 +6232,8 @@
             "totalSteps": 5,
             "unverified": [],
             "verifiedSteps": 5
-          }
+          },
+          "linkedScript": "How-to-export-a-branch-exam-s-remediation-tracker-to-CSV"
         },
         {
           "title": "How to download a branch exam's audit trail",
@@ -7582,9 +7600,10 @@
             "unverified": [],
             "verifiedSteps": 11
           },
-          "status": "missing",
+          "status": "covered",
           "planUpdatedAt": "2026-09-16T16:06:43.867Z",
-          "planUpdatedBy": null
+          "planUpdatedBy": null,
+          "linkedScript": "How-to-create-a-visibility-information-barrier-policy-for-instant-messages"
         },
         {
           "title": "How to review and close an email as compliant or non-compliant",
@@ -8146,7 +8165,9 @@
             "totalSteps": 8,
             "unverified": [],
             "verifiedSteps": 8
-          }
+          },
+          "linkedScript": "How-to-approve-or-reject-pending-social-media-account-requests",
+          "status": "covered"
         },
         {
           "title": "How to add a website subdomain for archiving",
@@ -8420,7 +8441,7 @@
             "apps/hadrius-app/src/pages/coreloop/cases/datasets/dataset_results_page.tsx",
             "apps/hadrius-app/src/pages/coreloop/cases/details/tabs/case_datasets_tab.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "An existing case with status Ongoing (the \"Add datasets\" button is disabled on resolved/archived cases)",
             "The current user is the case manager or has Edit access on the case (otherwise \"Add datasets\" is disabled with tooltip \"You need editor or manager access to add datasets\")",
@@ -8443,7 +8464,8 @@
             "totalSteps": 10,
             "unverified": [],
             "verifiedSteps": 10
-          }
+          },
+          "linkedScript": "How-to-add-a-dataset-of-filtered-communications-to-a-case"
         },
         {
           "title": "How to manage employee access to a case",
@@ -8467,7 +8489,7 @@
             "apps/hadrius-app/src/pages/coreloop/cases/details/case_details_page.tsx",
             "apps/hadrius-app/src/pages/coreloop/cases/details/components/manage_access_sheet.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "An existing case with status Ongoing (\"Manage access\" is disabled on resolved/archived cases)",
             "The current user is the case's \"Internal case manager\" (otherwise \"Manage access\" is disabled with tooltip \"You need manager access to manage case access\")",
@@ -8489,7 +8511,8 @@
             "totalSteps": 8,
             "unverified": [],
             "verifiedSteps": 8
-          }
+          },
+          "linkedScript": "How-to-manage-employee-access-to-a-case"
         },
         {
           "title": "How to share a case export with an external recipient",
@@ -8631,7 +8654,9 @@
             "totalSteps": 11,
             "unverified": [],
             "verifiedSteps": 11
-          }
+          },
+          "linkedScript": "How-to-share-a-case-export-with-an-external-recipient",
+          "status": "covered"
         },
         {
           "title": "How to rename or delete an export in Settings > Exports",
@@ -8739,9 +8764,10 @@
             "unverified": [],
             "verifiedSteps": 10
           },
-          "status": "missing",
+          "status": "covered",
           "planUpdatedAt": "2026-09-16T16:06:24.856Z",
-          "planUpdatedBy": null
+          "planUpdatedBy": null,
+          "linkedScript": "How-to-rename-or-delete-an-export-in-Settings-Exports"
         },
         {
           "title": "How to upload reviewed emails to test an AI compliance subrule",
@@ -8853,7 +8879,7 @@
           "linkedScript": "How-to-create-a-new-email-compliance-subrule"
         },
         {
-          "status": "missing",
+          "status": "covered",
           "steps": [
             "Navigate to Communications > Email",
             "Click \"Filters\" to open the filter panel",
@@ -8964,7 +8990,8 @@
           "suggestedSetupSteps": [],
           "title": "How to export email search results for a single employee",
           "planUpdatedAt": "2026-09-22T09:07:42.116Z",
-          "planUpdatedBy": "stephenskalamera"
+          "planUpdatedBy": "stephenskalamera",
+          "linkedScript": "How-to-export-email-search-results-for-a-single-employee"
         }
       ]
     },
@@ -9103,7 +9130,7 @@
             "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/routing_questionnaires/component_routing_rule_form_shared.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/workflows/routing_questionnaires/component_routing_rule_card.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "User is an admin (useIsAdmin) and the company marketing config has enable_routing_questionnaires = true; otherwise the \"Routing questionnaires\" tab is not rendered",
             "A routing questionnaire exists with status ACTIVE (a draft questionnaire shows \"Questionnaire saved as draft\" and hides the routing rules section; no questionnaire shows \"Set up your routing questionnaire first\" with a \"Create questionnaire\" button)",
@@ -9127,7 +9154,8 @@
             "totalSteps": 10,
             "unverified": [],
             "verifiedSteps": 10
-          }
+          },
+          "linkedScript": "How-to-create-a-routing-rule-to-auto-assign-projects-to-a-workflow"
         },
         {
           "title": "How to archive a disclosure",
@@ -9807,7 +9835,7 @@
             "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project/component_modal_new_doc.tsx",
             "apps/hadrius-app/src/components/containers/upload_files_dialog.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "At least one existing marketing project on the board whose workflow is active.",
             "The user can submit to that project (project submitter/collaborator or has change_submitter permission).",
@@ -9829,7 +9857,8 @@
             "totalSteps": 7,
             "unverified": [],
             "verifiedSteps": 7
-          }
+          },
+          "linkedScript": "How-to-add-a-new-document-to-an-existing-marketing-project"
         },
         {
           "title": "How to configure comment templates for document review",
@@ -9853,7 +9882,7 @@
             "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/settings/tab_comment_templates.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/component_manage_settings_button.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "Company has the marketing_review feature and the user can reach Marketing settings."
           ],
@@ -9871,7 +9900,8 @@
             "totalSteps": 8,
             "unverified": [],
             "verifiedSteps": 8
-          }
+          },
+          "linkedScript": "How-to-configure-comment-templates-for-document-review"
         },
         {
           "title": "How to configure marketing document types",
@@ -9895,7 +9925,7 @@
             "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/settings/tab_document_types.tsx",
             "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/component_manage_settings_button.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "User holds the exact permission marketing_review.workflows.write_all and the document type library loads (the tab is hidden otherwise)."
           ],
@@ -9913,7 +9943,8 @@
             "totalSteps": 8,
             "unverified": [],
             "verifiedSteps": 8
-          }
+          },
+          "linkedScript": "How-to-configure-marketing-document-types"
         },
         {
           "title": "How to move a project card through the review kanban board",
@@ -10075,7 +10106,9 @@
             "totalSteps": 8,
             "unverified": [],
             "verifiedSteps": 8
-          }
+          },
+          "linkedScript": "How-to-add-context-to-Firm-Intelligence",
+          "status": "covered"
         },
         {
           "title": "How to edit or manage a Firm Intelligence finding",
@@ -10101,7 +10134,7 @@
             "apps/hadrius-app/src/pages/context_iq/component_manage_context_finding_detail.tsx",
             "apps/hadrius-app/src/pages/context_iq/component_edit_finding_dialog.tsx"
           ],
-          "status": "missing",
+          "status": "covered",
           "prerequisites": [
             "Company has the context_iq feature ACTIVE and the user passes useCanAccessContextIQ.",
             "At least one source with extracted findings in the context library (the \"Delete\" and \"Save Context\" buttons appear only for findings with status ready_for_review)."
@@ -10122,10 +10155,11 @@
             "totalSteps": 7,
             "unverified": [],
             "verifiedSteps": 7
-          }
+          },
+          "linkedScript": "How-to-edit-or-manage-a-Firm-Intelligence-finding"
         },
         {
-          "status": "missing",
+          "status": "covered",
           "steps": [
             "Navigate to Marketing > Workflows and click the \"Groups\" tab",
             "Click \"Create group\" (next to the \"Search groups\" bar) — the \"Create workflow group\" page opens at /marketing/workflows/groups/new",
@@ -10161,7 +10195,8 @@
             "totalSteps": 6,
             "unverified": [],
             "verifiedSteps": 6
-          }
+          },
+          "linkedScript": "How-to-create-a-workflow-group"
         }
       ]
     },
