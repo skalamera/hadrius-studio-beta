@@ -1503,10 +1503,39 @@ function titleCaseFromScriptName(name) {
   return formatHumanTitle(name);
 }
 
+/**
+ * Merge `fields` into the saved script (local mirror + shared library) by RE-READING it at write
+ * time. The Drive upload and the Pylon publish run concurrently after a render; each used to hold a
+ * copy read minutes earlier and write the whole thing back, so whichever finished last silently
+ * erased the other's link (most scripts ended up with pylonArticleId but no driveVideoId). The
+ * read-merge-write here is synchronous, so the two can't interleave inside it. `tag` prefixes the
+ * warnings. Returns the merged script, or null if there's no saved script to update.
+ */
+async function patchSavedScript(name, fields, tag) {
+  const scriptPath = path.join(REPO_ROOT, 'scripts', `${name}.script.json`);
+  let merged = null;
+  try {
+    if (!fs.existsSync(scriptPath)) return null;
+    merged = { ...JSON.parse(fs.readFileSync(scriptPath, 'utf8')), ...fields };
+    fs.writeFileSync(scriptPath, JSON.stringify(merged, null, 2));
+  } catch (e) {
+    console.warn(`[${tag}] Could not write onto the saved script:`, e.message);
+    return null;
+  }
+  if (LIBRARY_SECRET) {
+    try { await libraryFetch('POST', null, { script: merged, updated_by: WHOAMI }); }
+    catch (e) { console.warn(`[${tag}] Could not sync to shared script library:`, e.message); }
+  }
+  return merged;
+}
+
 // Mirrors a rendered video into stephen@hadrius.com's Google Drive as an "Anyone with the link"
-// viewer copy, alongside the Pylon KB article — same shape as publishRenderToPylon: upload, then
-// write the link back onto the saved script (both the local mirror and the shared library) so the
-// Recorded tab can show a Drive icon next to the Pylon one.
+// viewer copy, alongside the Pylon KB article, then writes the link back onto the saved script so
+// the Recorded tab can show a Drive icon next to the Pylon one.
+//
+// A re-render replaces the SAME Drive file (see googleDriveUploadVideo) rather than creating a new
+// one, so the share link embedded in the Circle training modules keeps working and picks up the new
+// video. The saved driveVideoId is what identifies that file across re-renders.
 async function startDriveUpload(name, videoPath) {
   const title = formatHumanTitle(name);
   const scriptPath = path.join(REPO_ROOT, 'scripts', `${name}.script.json`);
@@ -1517,21 +1546,8 @@ async function startDriveUpload(name, videoPath) {
   // Same module resolution publishRenderToPylon uses: the script's own module field first, falling
   // back to the shared coverage table's record for this script name.
   const module = scriptObj?.module || (await findCoverageInfo(name)).module;
-  const drive = await googleDriveUploadVideo(videoPath, title, module);
-
-  if (scriptObj) {
-    try {
-      scriptObj.driveVideoId = drive.id;
-      scriptObj.driveVideoUrl = drive.url;
-      fs.writeFileSync(scriptPath, JSON.stringify(scriptObj, null, 2));
-      if (LIBRARY_SECRET) {
-        try { await libraryFetch('POST', null, { script: scriptObj, updated_by: WHOAMI }); }
-        catch (e) { console.warn('[gdrive] Could not sync video link to shared script library:', e.message); }
-      }
-    } catch (e) {
-      console.warn('[gdrive] Could not write video link onto the saved script:', e.message);
-    }
-  }
+  const drive = await googleDriveUploadVideo(videoPath, title, module, { existingId: scriptObj?.driveVideoId });
+  await patchSavedScript(name, { driveVideoId: drive.id, driveVideoUrl: drive.url }, 'gdrive');
   return drive;
 }
 
@@ -1623,14 +1639,12 @@ async function publishRenderToPylon(name, outDir) {
   // 0. Link the saved script to the article it was published from, both directions: the script
   // gets the article id/url (so a re-render knows an article already exists for it), and
   // /pylon/articles reads this same field back to offer a "Load script" button per article.
+  // Merged onto a fresh read (not written from the scriptObj read at the top of this function) so
+  // the concurrent Drive upload's driveVideoId isn't clobbered.
   if (scriptObj) {
-    scriptObj.pylonArticleId = article.id;
-    scriptObj.pylonArticleUrl = pylonArticleUrl(article);
-    try { fs.writeFileSync(scriptPath, JSON.stringify(scriptObj, null, 2)); } catch (_) {}
-    if (LIBRARY_SECRET) {
-      try { await libraryFetch('POST', null, { script: scriptObj, updated_by: WHOAMI }); }
-      catch (e) { console.warn('[pylon] Could not sync article link to shared script library:', e.message); }
-    }
+    const fields = { pylonArticleId: article.id, pylonArticleUrl: pylonArticleUrl(article) };
+    Object.assign(scriptObj, fields);
+    await patchSavedScript(name, fields, 'pylon');
   }
 
   // 1. Record in local manual links

@@ -94,19 +94,41 @@ async function getAccessToken() {
 }
 
 /**
- * Upload a local video file into the Hadrius Academy folder's subfolder for `module` (or the
- * explicit GOOGLE_DRIVE_FOLDER_ID override, or "Other" if the module isn't recognized), share it
- * "Anyone with the link" as a viewer, and return the shareable link. Simple (non-resumable)
- * multipart upload — fine for walkthrough videos, which run well under Drive's ~5GB ceiling for it.
+ * Upload a local video file to Drive, share it "Anyone with the link" as a viewer, and return the
+ * shareable link.
+ *
+ * Re-renders REPLACE the existing Drive file's content in place (a new revision of the same file)
+ * instead of creating a new file, so the file id and share link never change. That link is what's
+ * embedded in the Circle training modules — keeping it stable is what makes an updated render show
+ * up in Circle automatically. The existing file is found by `existingId` (the driveVideoId saved on
+ * the script) first, then by exact filename in the module folder, for scripts whose saved id was
+ * lost. Only when neither finds a live file is a new one created, in the Hadrius Academy folder's
+ * subfolder for `module` (or the explicit GOOGLE_DRIVE_FOLDER_ID override, or "Other" if the module
+ * isn't recognized).
+ *
+ * Simple (non-resumable) multipart upload — fine for walkthrough videos, which run well under
+ * Drive's ~5GB ceiling for it.
  */
-export async function googleDriveUploadVideo(filePath, title, module) {
+export async function googleDriveUploadVideo(filePath, title, module, { existingId } = {}) {
   if (!googleDriveConfigured()) throw new Error('Google Drive is not configured (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN missing from .env)');
   const accessToken = await getAccessToken();
   const { folderId: overrideFolderId } = creds();
   const folderId = overrideFolderId || googleDriveFolderForModule(module);
-  const buf = fs.readFileSync(filePath);
-  const metadata = { name: `${title}.mp4`, parents: [folderId] };
+  const fileName = `${title}.mp4`;
 
+  let target = existingId ? await googleDriveGetLiveFile(existingId, accessToken) : null;
+  if (!target) target = await googleDriveFindByName(fileName, folderId, accessToken);
+
+  // supportsAllDrives is a no-op for a plain My Drive folder but required for a Shared Drive
+  // folder — cheap to always send.
+  const url = target
+    ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(target.id)}?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink';
+  // Replacing: leave the file's name/folder alone (the Drive API rejects `parents` on an update, and
+  // a rename or move isn't needed to keep the link working). Creating: name it and file it.
+  const metadata = target ? {} : { name: fileName, parents: [folderId] };
+
+  const buf = fs.readFileSync(filePath);
   const boundary = `hadrius-studio-${Date.now()}`;
   const preamble = Buffer.from(
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
@@ -115,18 +137,62 @@ export async function googleDriveUploadVideo(filePath, title, module) {
   const epilogue = Buffer.from(`\r\n--${boundary}--`);
   const body = Buffer.concat([preamble, buf, epilogue]);
 
-  // supportsAllDrives is a no-op for a plain My Drive folder but required if this ever points at a
-  // Shared Drive folder instead — cheap to always send.
-  const uploadResp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink', {
-    method: 'POST',
+  const uploadResp = await fetch(url, {
+    method: target ? 'PATCH' : 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
     body,
   });
   const file = await uploadResp.json();
-  if (!uploadResp.ok) throw new Error(`Google Drive upload failed: ${file.error?.message || uploadResp.status}`);
+  if (!uploadResp.ok) throw new Error(`Google Drive ${target ? 'update' : 'upload'} failed: ${file.error?.message || uploadResp.status}`);
 
+  // Re-assert link sharing on replace too, in case someone tightened it by hand — a restricted file
+  // would silently break every Circle embed pointing at it.
   await googleDriveShareAnyoneReader(file.id, accessToken);
-  return { id: file.id, url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view?usp=sharing` };
+  return {
+    id: file.id,
+    url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view?usp=sharing`,
+    replaced: !!target,
+  };
+}
+
+/** The file's metadata if it exists and isn't trashed, else null (deleted, trashed, or no access). */
+async function googleDriveGetLiveFile(fileId, accessToken) {
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id,trashed,webViewLink`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (resp.status === 404) return null;
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(`Google Drive lookup failed: ${data.error?.message || resp.status}`);
+  return data.trashed ? null : data;
+}
+
+/**
+ * The existing video with exactly this filename in `folderId`, or null. If a video was uploaded
+ * more than once (every render created a new file before this replaced in place), picks the OLDEST
+ * copy — the first link handed out is the one most likely already embedded in Circle — and warns so
+ * the duplicates can be cleaned up.
+ */
+async function googleDriveFindByName(fileName, folderId, accessToken) {
+  const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const q = `name = '${esc(fileName)}' and '${esc(folderId)}' in parents and trashed = false`;
+  const params = new URLSearchParams({
+    q,
+    fields: 'files(id,webViewLink,createdTime)',
+    orderBy: 'createdTime',
+    pageSize: '10',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
+  });
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(`Google Drive search failed: ${data.error?.message || resp.status}`);
+  const files = data.files || [];
+  if (files.length > 1) {
+    console.warn(`[gdrive] ${files.length} copies of "${fileName}" in folder ${folderId}; updating the oldest (${files[0].id}). Others: ${files.slice(1).map((f) => f.id).join(', ')}`);
+  }
+  return files[0] || null;
 }
 
 async function googleDriveShareAnyoneReader(fileId, accessToken) {
