@@ -196,6 +196,34 @@ for f in SEG_CACHE.iterdir():  # same LRU-ish pruning as the narration cache (hi
     except OSError:
         pass
 
+# Every segment scales its slide to exactly W×H. AI/recipe captures come from a pinned 1600×900
+# viewport, but a manual recording captures whatever size the person's own Chrome window was (the
+# side panel alone eats ~400px of width), and scaling a 1.4:1 screenshot to 16:9 stretched the whole
+# video sideways. Pad any off-ratio slide out to 16:9 first — with its own edge colour, so the bars
+# read as page margin — and shift its highlight box by the same offset.
+def fit_slide_to_frame(s):
+    src = out / 'slides' / s['file']
+    im = Image.open(src).convert('RGB'); sw, sh = im.size
+    target_ratio = W / H
+    if abs(sw / sh - target_ratio) < 0.01:
+        return
+    if sw / sh < target_ratio:
+        nw, nh = round(sh * target_ratio), sh
+    else:
+        nw, nh = sw, round(sw / target_ratio)
+    ox, oy = (nw - sw) // 2, (nh - sh) // 2
+    edge = im.crop((0, 0, 1, sh)) if ox else im.crop((0, 0, sw, 1))
+    fill = tuple(int(sum(c) / len(c)) for c in zip(*edge.getdata()))
+    canvas = Image.new('RGB', (nw, nh), fill)
+    canvas.paste(im, (ox, oy))
+    canvas.save(src)
+    if s.get('target'):
+        s['target'] = {**s['target'], 'x': s['target']['x'] + ox, 'y': s['target']['y'] + oy}
+    s['viewport'] = {'width': nw, 'height': nh}
+
+for s in slides:
+    fit_slide_to_frame(s)
+
 def segment_key(s):
     src = out / 'slides' / s['file']
     parts = [_SEG_CODE, hashlib.sha256(src.read_bytes()).hexdigest(), str(s['sdur']),
