@@ -23,3 +23,6 @@ assets/*.original.mp4
 assets/*.previous.mp4
 .claude/
 skills-lock.json
+
+# Agent scratch (plans, one-off scripts)
+.hermes/

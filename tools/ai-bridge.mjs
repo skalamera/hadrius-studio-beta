@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
+import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
 import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus } from './gdrive.mjs';
 
@@ -1471,6 +1471,23 @@ async function findCoverageInfo(scriptName) {
   } catch { return { title: null, sourceFile: null, module: null }; }
 }
 
+/**
+ * Which module a rendered script belongs to, for its Drive folder and Pylon collection: the
+ * script's own module (set when it was recorded from a planned workflow), else the coverage
+ * table's record for it, else inferred from the app pages the recording visited — which is what
+ * sorts manual recordings (no module of their own) instead of dumping them in "Other".
+ * `inferred` is true when the answer came from the URLs, so callers can persist it onto the script.
+ */
+async function resolveScriptModule(name, scriptObj, coverageModule) {
+  const own = canonicalModule(scriptObj?.module);
+  if (own) return { module: own, inferred: false };
+  const cov = canonicalModule(coverageModule !== undefined ? coverageModule : (await findCoverageInfo(name)).module);
+  if (cov) return { module: cov, inferred: false };
+  const guess = inferModuleFromScript(scriptObj);
+  if (guess) return { module: guess, inferred: true };
+  return { module: scriptObj?.module || coverageModule || null, inferred: false };
+}
+
 async function runGeminiKbArticle(title, narratedSlides, sourceFile) {
   const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
   if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
@@ -1565,11 +1582,11 @@ async function startDriveUpload(name, videoPath) {
   if (fs.existsSync(scriptPath)) {
     try { scriptObj = JSON.parse(fs.readFileSync(scriptPath, 'utf8')); } catch (_) {}
   }
-  // Same module resolution publishRenderToPylon uses: the script's own module field first, falling
-  // back to the shared coverage table's record for this script name.
-  const module = scriptObj?.module || (await findCoverageInfo(name)).module;
+  // Same module resolution publishRenderToPylon uses (resolveScriptModule): the script's own module,
+  // then the coverage table, then inferred from the pages the recording visited.
+  const { module, inferred } = await resolveScriptModule(name, scriptObj);
   const drive = await googleDriveUploadVideo(videoPath, title, module, { existingId: scriptObj?.driveVideoId });
-  await patchSavedScript(name, { driveVideoId: drive.id, driveVideoUrl: drive.url }, 'gdrive');
+  await patchSavedScript(name, { driveVideoId: drive.id, driveVideoUrl: drive.url, ...(inferred ? { module } : {}) }, 'gdrive');
   return drive;
 }
 
@@ -1589,7 +1606,7 @@ async function publishRenderToPylon(name, outDir) {
   }
   const rawTitle = scriptObj?.title || scriptObj?.name || coverageTitle || name;
   const title = formatHumanTitle(rawTitle);
-  const module = scriptObj?.module || coverageModule;
+  const { module, inferred: moduleInferred } = await resolveScriptModule(name, scriptObj, coverageModule);
   const sourceFile = scriptObj?.sourceFiles?.[0] || coverageSource;
   const narratedSlides = slides.filter((s) => (s.narration || s.caption || '').trim()).map((s) => ({ slide: s.slide, text: (s.narration || s.caption).trim() }));
   if (!narratedSlides.length) throw new Error('no narrated slides to write from');
@@ -1664,7 +1681,7 @@ async function publishRenderToPylon(name, outDir) {
   // Merged onto a fresh read (not written from the scriptObj read at the top of this function) so
   // the concurrent Drive upload's driveVideoId isn't clobbered.
   if (scriptObj) {
-    const fields = { pylonArticleId: article.id, pylonArticleUrl: pylonArticleUrl(article) };
+    const fields = { pylonArticleId: article.id, pylonArticleUrl: pylonArticleUrl(article), ...(moduleInferred ? { module } : {}) };
     Object.assign(scriptObj, fields);
     await patchSavedScript(name, fields, 'pylon');
   }

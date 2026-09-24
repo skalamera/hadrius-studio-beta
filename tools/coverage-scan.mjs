@@ -27,6 +27,46 @@ export function canonicalModule(label) {
   return ALLOWED_MODULES.find((a) => a.toLowerCase() === l) || null;
 }
 
+// First path segment of an app.hadrius.com URL -> the module that page belongs to. Includes the
+// legacy routes still reachable in the app (firm_oversight_v2 = Testing program's tests/findings,
+// employees/employee/finra = People oversight's directory, employee view and U4 filings). Shared pages
+// that belong to no one module (account, settings, templates) are deliberately absent so they
+// don't cast a vote.
+const ROUTE_MODULES = {
+  'testing-program': 'Testing program',
+  firm_oversight_v2: 'Testing program',
+  'people-oversight': 'People oversight',
+  employees: 'People oversight',
+  employee: 'People oversight',
+  finra: 'People oversight',
+  branches: 'Branches',
+  'branch-exams': 'Branches',
+  communications: 'Communications',
+  marketing: 'Marketing',
+  'account-surveillance': 'Account surveillance',
+};
+
+/**
+ * Best-guess module for a recorded script from the app pages it actually visited: the start URL
+ * plus every step's URL each vote for their route's module, and the most-visited module wins (ties
+ * go to whichever was visited first, i.e. where the walkthrough started). Returns null when no URL
+ * maps to a module. Manual recordings carry no module of their own, so without this their video
+ * landed in Drive's "Other" folder and their article in Pylon's "Other" collection.
+ */
+export function inferModuleFromScript(script) {
+  const urls = [script?.environment?.startUrl, ...(script?.steps || []).map((s) => s?.url)].filter(Boolean);
+  const votes = new Map();
+  for (const u of urls) {
+    let seg;
+    try { seg = new URL(u).pathname.split('/').filter(Boolean)[0]; } catch { continue; }
+    const mod = ROUTE_MODULES[seg];
+    if (mod) votes.set(mod, (votes.get(mod) || 0) + 1); // Map keeps first-seen order for the tiebreak
+  }
+  let best = null;
+  for (const [mod, n] of votes) if (!best || n > votes.get(best)) best = mod;
+  return best;
+}
+
 // Which Claude does what. Planning (reading source, deciding a workflow's path) gets the stronger
 // budget; the per-turn browser decision runs ~30 times per job and favours speed. Override per
 // machine with KBS_PLAN_MODEL / KBS_DECISION_MODEL in .env.
