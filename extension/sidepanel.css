@@ -371,3 +371,7 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .drive-processing{color:#b45309!important}
 .drive-processing .link-icon-badge{background:#d97706;animation:drive-pulse 1.6s ease-in-out infinite}
 @keyframes drive-pulse{50%{opacity:.45}}
+
+/* "📂 Load script" modal on the Record tab (cards/sections reuse the .saved-* styles) */
+.load-script-search-row{flex-shrink:0;padding:10px 12px 0}
+.load-script-search-row input{font-size:12px;padding:8px 10px}

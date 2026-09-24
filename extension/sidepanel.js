@@ -1733,6 +1733,7 @@ function updateRecordingButtons() {
   $('#stopBtn').hidden = !isRec;
   $('#cancelRecordBtn').hidden = !isRec;
   $('#clearBtn').hidden = isRec;
+  $('#loadScriptBtn').hidden = isRec;
   updateRecordingBanner();
   updateRenderButtons();
 }
@@ -2367,10 +2368,100 @@ function formatHumanTitle(str) {
   return t.replace(/\s+/g, ' ').trim();
 }
 
+// ---- "📂 Load script" on the Record tab: every script in the shared library, grouped by module ----
+// Library items carry no module field, so group by the app page the script starts on — the same
+// route heuristic the renderer uses for the title card's module badge.
+let libraryScripts = [];
+const openLoadScriptModules = new Set();
+function scriptModuleFromUrl(url) {
+  const p = String(url || '').toLowerCase();
+  if (p.includes('/testing-program')) return 'Testing program';
+  if (p.includes('/people-oversight') || p.includes('/employee')) return 'People oversight';
+  if (p.includes('/branch') || p.includes('/finra')) return 'Branches';
+  if (p.includes('/communications') || p.includes('/cases') || p.includes('/archive')) return 'Communications';
+  if (p.includes('/marketing')) return 'Marketing';
+  if (p.includes('/account-surveillance') || p.includes('/trade')) return 'Account surveillance';
+  return 'Other';
+}
+async function openLoadScriptModal() {
+  $('#loadScriptModal').hidden = false;
+  $('#loadScriptSearch').value = '';
+  $('#loadScriptList').innerHTML = '<p class="muted" style="padding:16px;text-align:center">Loading shared scripts…</p>';
+  setTimeout(() => $('#loadScriptSearch').focus(), 50);
+  const r = await send({ type: 'PANEL_LIBRARY_LIST' });
+  if (!r?.ok) {
+    $('#loadScriptList').innerHTML = `<p class="muted" style="padding:16px;text-align:center;color:var(--red)">${esc(r?.error || 'Could not load the shared script library.')}</p>`;
+    return;
+  }
+  libraryScripts = (r.items || []).map((it) => ({ ...it, module: it.module || scriptModuleFromUrl(it.start_url), displayTitle: it.title || formatHumanTitle(it.name) }));
+  $('#loadScriptCount').textContent = libraryScripts.length;
+  renderLoadScriptList();
+}
+function closeLoadScriptModal() { $('#loadScriptModal').hidden = true; }
+function renderLoadScriptList() {
+  const listEl = $('#loadScriptList');
+  const q = $('#loadScriptSearch').value.trim().toLowerCase();
+  const items = libraryScripts
+    .filter((s) => !q || `${s.displayTitle} ${s.name} ${s.module} ${s.updated_by || ''}`.toLowerCase().includes(q))
+    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+  listEl.innerHTML = '';
+  if (!items.length) {
+    listEl.innerHTML = `<p class="muted" style="padding:16px;text-align:center">${q ? `No scripts match "${esc(q)}".` : 'No shared scripts yet.'}</p>`;
+    return;
+  }
+  const byModule = new Map();
+  for (const s of items) {
+    if (!byModule.has(s.module)) byModule.set(s.module, []);
+    byModule.get(s.module).push(s);
+  }
+  const order = (m) => { const i = WORKFLOW_MODULE_ORDER.indexOf(m); return i === -1 ? 99 : i; };
+  for (const mod of [...byModule.keys()].sort((a, b) => order(a) - order(b) || a.localeCompare(b))) {
+    const scripts = byModule.get(mod);
+    const isOpen = !!q || openLoadScriptModules.has(mod); // searching shows every match
+    const section = document.createElement('section');
+    section.className = 'saved-module-section';
+    section.innerHTML = `
+      <div class="saved-module-header${isOpen ? '' : ' collapsed'}">
+        <span class="saved-caret">${isOpen ? '▾' : '▸'}</span>
+        <img class="module-icon" src="${moduleIconPath(mod)}" alt="" />
+        <span class="saved-module-title">${esc(mod)}</span>
+        <span class="saved-module-count">${scripts.length}</span>
+      </div>
+      <div class="saved-module-items" ${isOpen ? '' : 'hidden'}></div>`;
+    section.querySelector('.saved-module-header').onclick = () => {
+      if (openLoadScriptModules.has(mod)) openLoadScriptModules.delete(mod); else openLoadScriptModules.add(mod);
+      renderLoadScriptList();
+    };
+    const body = section.querySelector('.saved-module-items');
+    for (const s of scripts) {
+      const when = s.updated_at ? new Date(s.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+      const card = document.createElement('div');
+      card.className = 'saved-script-card';
+      card.innerHTML = `
+        <div class="saved-script-top">
+          <div class="saved-script-title">${esc(s.displayTitle)}</div>
+          ${s.mp4_ready ? '<span class="mp4-badge">🎬 MP4 ready</span>' : ''}
+        </div>
+        <div class="saved-script-meta">
+          <span>${s.step_count ?? '?'} step${s.step_count === 1 ? '' : 's'}</span>
+          ${when ? `<span>· ${esc(when)}</span>` : ''}
+          ${s.updated_by && s.updated_by !== 'local' ? `<span>· by ${esc(s.updated_by)}</span>` : ''}
+          <button class="btn-open-script" type="button" style="margin-left:auto">Load</button>
+        </div>`;
+      card.querySelector('.btn-open-script').onclick = async () => {
+        if (await openScript(s.name)) closeLoadScriptModal();
+      };
+      body.appendChild(card);
+    }
+    listEl.appendChild(section);
+  }
+}
+
+/** Load a library script into the editor. Resolves true once loaded (false if cancelled or it failed). */
 async function openScript(name) {
-  if (state.steps.length && !confirm(`Replace the current steps in the editor with "${name}"?`)) return;
+  if (state.steps.length && !confirm(`Replace the current steps in the editor with "${name}"?`)) return false;
   const r = await send({ type: 'PANEL_LIBRARY_GET', name });
-  if (!r?.ok || !r.item?.script) return alert(r?.error || 'Could not load script.');
+  if (!r?.ok || !r.item?.script) { alert(r?.error || 'Could not load script.'); return false; }
   const script = r.item.script;
   await send({ type: 'PANEL_LOAD_SCRIPT', script });
   await loadState();
@@ -2391,6 +2482,7 @@ async function openScript(name) {
     }
   }
   switchView('recording');
+  return true;
 }
 
 $('#search').oninput=renderModules;
@@ -2513,6 +2605,10 @@ $('#bannerStopBtn').onclick = stopAndNarrate;
 $('#cancelRecordBtn').onclick = cancelRecording;
 $('#bannerCancelBtn').onclick = cancelRecording;
 $('#clearBtn').onclick = async () => { if (confirm('Clear this recording?')) { await resetRecordingSession(); } };
+$('#loadScriptBtn').onclick = openLoadScriptModal;
+$('#closeLoadScriptModalBtn').onclick = closeLoadScriptModal;
+$('#loadScriptModal').onclick = (e) => { if (e.target.id === 'loadScriptModal') closeLoadScriptModal(); };
+$('#loadScriptSearch').oninput = renderLoadScriptList;
 $('#scriptName').onchange = (e) => send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: e.target.value } });
 $('#renderBtn').onclick = () => renderVideo('video');
 $('#renderBothBtn').onclick = () => renderVideo('both');

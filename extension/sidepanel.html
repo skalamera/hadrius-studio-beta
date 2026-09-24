@@ -80,6 +80,7 @@
         <button id="recordBtn" class="secondary" type="button" title="Describe the workflow — AI drafts a grounded, editable step-by-step plan for you to review before recording">✨ AI Plan &amp; Record</button>
         <button id="stopBtn" class="danger" type="button" hidden>■ Stop & draft narration</button>
         <button id="cancelRecordBtn" class="secondary" type="button" hidden>✕ Cancel recording</button>
+        <button id="loadScriptBtn" class="secondary" type="button" title="Open any script from the shared library into the editor">📂 Load script</button>
         <button id="clearBtn" class="secondary" type="button">Clear</button>
       </div>
     </section>
@@ -158,6 +159,22 @@
   </section>
 
   <!-- View & Enhance Plan Modal -->
+  <!-- Load a script from the shared library into the Record tab editor -->
+  <div id="loadScriptModal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 class="plan-card-title">Load a shared script <span id="loadScriptCount" class="badge"></span></h3>
+        </div>
+        <button id="closeLoadScriptModalBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
+      </div>
+      <div class="load-script-search-row">
+        <input id="loadScriptSearch" type="search" placeholder="Search by title, module, or who recorded it…">
+      </div>
+      <div id="loadScriptList" class="saved-scripts-list"></div>
+    </div>
+  </div>
+
   <div id="viewPlanModal" class="modal-backdrop" hidden>
     <div class="modal-card view-plan-modal-card">
       <div class="modal-header">
