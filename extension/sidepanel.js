@@ -569,8 +569,9 @@ function renderPylonArticles() {
         const loadBtnHtml = article.linkedScript
           ? `<button type="button" class="pylon-load-script-btn" title="Load this walkthrough's script into the editor">📂 Load script</button>`
           : '';
+        const driveId = driveIdFromUrl(article.driveVideoUrl);
         const driveLinkHtml = article.driveVideoUrl
-          ? `<a href="#" class="drive-article-link" target="_blank" rel="noopener noreferrer" title="Open the video in Google Drive"><span class="link-icon-badge badge-google">G</span> Drive</a>`
+          ? `<a href="#" class="drive-article-link" target="_blank" rel="noopener noreferrer" title="Open the video in Google Drive" ${driveId ? `data-drive-id="${esc(driveId)}"` : ''} data-ready-label="Drive" data-processing-label="Drive · processing…" data-ready-title="Open the video in Google Drive"><span class="link-icon-badge badge-google">G</span> <span class="drive-link-label">Drive</span></a>`
           : '';
         item.innerHTML = `
           <a href="#" class="pylon-article-title"><img class="pylon-article-badge" src="icons/status/pylon-connected.svg" alt="Pylon">${esc(cleanTitle)}</a>
@@ -593,10 +594,53 @@ function renderPylonArticles() {
     listEl.appendChild(section);
   }
 
+  refreshDriveProcessing();
+
   if (scrollTarget && prevScrollTop > 0 && !$('#pylonArticlesView').hidden) {
     requestAnimationFrame(() => {
       scrollTarget.scrollTop = prevScrollTop;
     });
+  }
+}
+
+// ---- "Drive is still processing" indicators ----
+// Drive transcodes every uploaded (or replaced) video before its link will play; until then the link
+// opens to "It's taking longer than expected to process this video", which reads like a broken
+// upload. Every Drive link carries data-drive-id; this asks the bridge which are still processing,
+// relabels those, and re-checks every 20s until they're all playable. Playable answers are kept, so
+// only pending videos are ever re-asked.
+const driveStatus = {}; // fileId -> true (playable) | false (processing) | null (couldn't check)
+let drivePollTimer = null;
+function driveIdFromUrl(url) {
+  return String(url || '').match(/\/file\/d\/([\w-]+)/)?.[1] || null;
+}
+function paintDriveLinks() {
+  document.querySelectorAll('[data-drive-id]').forEach((el) => {
+    const pending = driveStatus[el.dataset.driveId] === false;
+    el.classList.toggle('drive-processing', pending);
+    const label = el.querySelector('.drive-link-label');
+    if (label) label.textContent = pending ? el.dataset.processingLabel : el.dataset.readyLabel;
+    el.title = pending
+      ? 'Google Drive is still processing this video. Until it finishes (usually a few minutes, sometimes 20+), the link shows "taking longer than expected to process". This updates by itself.'
+      : (el.dataset.readyTitle || '');
+  });
+}
+async function refreshDriveProcessing() {
+  clearTimeout(drivePollTimer);
+  drivePollTimer = null;
+  const ids = [...new Set([...document.querySelectorAll('[data-drive-id]')].map((el) => el.dataset.driveId))]
+    .filter((id) => driveStatus[id] !== true);
+  if (ids.length) {
+    try {
+      const r = await api(`/drive/status?ids=${encodeURIComponent(ids.join(','))}`);
+      Object.assign(driveStatus, r.status || {});
+    } catch (_) { /* bridge unreachable — leave labels as they were, retry on the next poll */ }
+  }
+  paintDriveLinks();
+  // Keep polling while something is still processing, or the bridge didn't answer (undefined). A
+  // null means Drive can't be checked at all here (e.g. no Drive credentials) — polling won't fix that.
+  if (ids.some((id) => driveStatus[id] === false || driveStatus[id] === undefined)) {
+    drivePollTimer = setTimeout(refreshDriveProcessing, 20000);
   }
 }
 
@@ -2222,6 +2266,14 @@ async function checkRender() {
   if (drive?.status === 'done' && drive.url) {
     $('#driveVideoLink').href = drive.url;
     $('#driveVideoLink').hidden = false;
+    // A fresh upload (or in-place replace) always needs Drive to process it again, so start this
+    // link out as "still processing" rather than trusting a playable state cached from before.
+    const driveId = driveIdFromUrl(drive.url);
+    if (driveId) {
+      $('#driveVideoLink').dataset.driveId = driveId;
+      driveStatus[driveId] = false;
+      refreshDriveProcessing();
+    }
   } else {
     $('#driveVideoLink').hidden = true;
   }
@@ -2276,6 +2328,7 @@ async function resetRecordingSession() {
   $('#renderLinks').hidden = true;
   $('#pylonArticleLink').hidden = true;
   $('#driveVideoLink').hidden = true;
+  delete $('#driveVideoLink').dataset.driveId;
   $('#renderStatus').classList.remove('ready', 'error');
   $('#renderStatusSpinner').hidden = true;
   $('#renderStatus').textContent = '';

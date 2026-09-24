@@ -148,11 +148,47 @@ export async function googleDriveUploadVideo(filePath, title, module, { existing
   // Re-assert link sharing on replace too, in case someone tightened it by hand — a restricted file
   // would silently break every Circle embed pointing at it.
   await googleDriveShareAnyoneReader(file.id, accessToken);
+  processedIds.delete(file.id); // new content — Drive has to process it again before it plays
   return {
     id: file.id,
     url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view?usp=sharing`,
     replaced: !!target,
   };
+}
+
+// Drive transcodes a video after every upload — including an in-place replace — and until that's
+// done its share link shows "It's taking longer than expected to process this video". That can take
+// anywhere from under a minute to 20+ when Drive is busy. videoMediaMetadata only appears once the
+// video is actually playable, so it's the signal. A processed id stays processed until this bridge
+// uploads new content to it (the upload above clears it), so only pending videos cost an API call.
+const processedIds = new Set();
+
+/** { [fileId]: true (playable) | false (still processing) | null (couldn't check) } */
+export async function googleDriveProcessingStatus(ids) {
+  const out = {};
+  const pending = [...new Set(ids)].filter((id) => {
+    if (processedIds.has(id)) { out[id] = true; return false; }
+    return true;
+  });
+  if (!pending.length) return out;
+  const accessToken = await getAccessToken();
+  await Promise.all(pending.map(async (id) => {
+    try {
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?supportsAllDrives=true&fields=videoMediaMetadata`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!r.ok) { out[id] = null; return; }
+      const f = await r.json();
+      out[id] = !!f.videoMediaMetadata;
+      if (out[id]) processedIds.add(id);
+    } catch { out[id] = null; }
+  }));
+  return out;
+}
+
+/** Drive file id from a share link like https://drive.google.com/file/d/<id>/view?... */
+export function googleDriveIdFromUrl(url) {
+  return String(url || '').match(/\/file\/d\/([\w-]+)/)?.[1] || null;
 }
 
 /** The file's metadata if it exists and isn't trashed, else null (deleted, trashed, or no access). */

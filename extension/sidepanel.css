@@ -365,3 +365,9 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .preview-voice-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:-2px}
 .preview-voice-btn{font-size:11px;padding:5px 10px}
 .preview-voice-status{font-size:10.5px;color:var(--muted)}
+
+/* Drive link while Drive is still transcoding the upload — amber + a slow pulse on the badge, so it
+   reads as "not yet" rather than broken. Still clickable. */
+.drive-processing{color:#b45309!important}
+.drive-processing .link-icon-badge{background:#d97706;animation:drive-pulse 1.6s ease-in-out infinite}
+@keyframes drive-pulse{50%{opacity:.45}}

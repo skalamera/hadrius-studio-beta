@@ -12,7 +12,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
-import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive } from './gdrive.mjs';
+import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus } from './gdrive.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1845,6 +1845,19 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, url: `http://127.0.0.1:${PORT}/preview/audio/${path.basename(out.path)}`, provider: out.provider, cached: !!out.cached });
     } catch (e) {
       return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+    }
+  }
+
+  // ---- whether Drive has finished processing uploaded videos (the panel polls this for its
+  // "Drive processing…" indicators until each link is actually playable) ----
+  if (req.method === 'GET' && u.pathname === '/drive/status') {
+    const ids = String(u.searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter((s) => /^[\w-]+$/.test(s)).slice(0, 200);
+    if (!ids.length) return sendJson(res, 200, { ok: true, status: {} });
+    if (!googleDriveConfigured()) return sendJson(res, 200, { ok: true, status: Object.fromEntries(ids.map((id) => [id, null])) });
+    try {
+      return sendJson(res, 200, { ok: true, status: await googleDriveProcessingStatus(ids) });
+    } catch (e) {
+      return sendJson(res, 502, { ok: false, error: String(e?.message || e) });
     }
   }
 
