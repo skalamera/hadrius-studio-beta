@@ -356,3 +356,12 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 @media(max-width:340px){.wordmark{width:118px}}
 
 .status-icon{width:15px;height:15px;flex-shrink:0;object-fit:contain}
+
+/* Per-step preview: the caption drawn over the screenshot the way the video burns it in (dark bar,
+   bottom-center), updating as you type — plus the "hear this line" row under the narration box. */
+.thumb-wrap{position:relative;line-height:0}
+.thumb-wrap .thumb{margin:0}
+.thumb-caption{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);max-width:88%;background:rgba(15,15,20,.8);color:#fff;font-size:10.5px;font-weight:500;line-height:1.35;padding:5px 10px;border-radius:7px;text-align:center;pointer-events:none;white-space:normal}
+.preview-voice-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:-2px}
+.preview-voice-btn{font-size:11px;padding:5px 10px}
+.preview-voice-status{font-size:10.5px;color:var(--muted)}

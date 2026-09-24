@@ -1827,6 +1827,36 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 404, { ok: false, error: 'slide not found' });
   }
 
+  // ---- per-step narration preview: voices one line through renderer/tts.py, the same provider
+  // chain and cache the render uses — so a previewed line costs nothing at the next render ----
+  if (req.method === 'POST' && u.pathname === '/preview/narration') {
+    try {
+      const { text } = await readJsonBody(req);
+      const line = String(text || '').trim();
+      if (!line) return sendJson(res, 400, { ok: false, error: 'no narration text to preview' });
+      const venvPython = path.join(REPO_ROOT, '.venv', 'bin', 'python');
+      const python = fs.existsSync(venvPython) ? venvPython : 'python3';
+      const out = await new Promise((resolve, reject) => {
+        execFile(python, [path.join(REPO_ROOT, 'renderer', 'tts.py'), line], { cwd: REPO_ROOT, timeout: 150000 }, (err, stdout, stderr) => {
+          if (err) return reject(new Error(String(stderr || err.message).trim().split('\n').pop()));
+          try { resolve(JSON.parse(stdout.trim().split('\n').pop())); } catch { reject(new Error('tts.py returned no result')); }
+        });
+      });
+      return sendJson(res, 200, { ok: true, url: `http://127.0.0.1:${PORT}/preview/audio/${path.basename(out.path)}`, provider: out.provider, cached: !!out.cached });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+    }
+  }
+
+  const previewAudioMatch = req.method === 'GET' && u.pathname.match(/^\/preview\/audio\/([\w-]+\.mp3)$/);
+  if (previewAudioMatch) {
+    const filePath = path.join(REPO_ROOT, 'out', '_cache', 'tts', previewAudioMatch[1]);
+    if (!fs.existsSync(filePath)) return sendJson(res, 404, { ok: false, error: 'audio not found' });
+    // Content-addressed filename, so the bytes behind a URL never change — safe to cache hard.
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': fs.statSync(filePath).size, 'Cache-Control': 'public, max-age=31536000, immutable' });
+    return fs.createReadStream(filePath).pipe(res);
+  }
+
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({

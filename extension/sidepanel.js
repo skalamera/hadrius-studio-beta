@@ -1918,7 +1918,40 @@ function describe(step) {
 
 let openStepIndex = null;
 
+// One preview plays at a time; clicking the playing step's button again stops it.
+let previewAudio = null, previewBtn = null;
+function stopPreview() {
+  if (previewAudio) { previewAudio.pause(); previewAudio = null; }
+  if (previewBtn) { previewBtn.textContent = '▶ Preview voice'; previewBtn = null; }
+}
+async function previewNarration(btn, statusEl, text) {
+  if (previewBtn === btn) return stopPreview();
+  stopPreview();
+  const line = String(text || '').trim();
+  if (!line) { statusEl.textContent = 'Add narration first.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  statusEl.textContent = '';
+  try {
+    const r = await api('/preview/narration', { method: 'POST', body: JSON.stringify({ text: line }) });
+    const audio = new Audio(r.url);
+    previewAudio = audio; previewBtn = btn;
+    btn.textContent = '■ Stop';
+    const voice = { vs: 'VoiceStudio', el: 'ElevenLabs', edge: 'edge-tts' }[r.provider] || r.provider;
+    statusEl.textContent = `${voice}${r.cached ? ' · cached' : ''} · reused by the next render`;
+    audio.onended = () => { if (previewAudio === audio) stopPreview(); };
+    await audio.play();
+  } catch (e) {
+    stopPreview();
+    btn.textContent = '▶ Preview voice';
+    statusEl.textContent = `Couldn't preview: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function renderSteps() {
+  stopPreview(); // the card holding the playing button is about to be rebuilt
   const root = $('#steps'); root.innerHTML = '';
   if (!state.steps.length) {
     root.innerHTML = '<div class="selected muted">Choose a workflow, click Record, or load a saved script to view and edit steps. Clicks, typing, navigation, and screenshots are captured live.</div>';
@@ -1954,11 +1987,15 @@ function renderSteps() {
       </div>
       <div class="detail" ${isOpen ? '' : 'hidden'}>
         ${step.route ? `<div class="step-route-badge">Route: ${esc(step.route)}</div>` : ''}
-        ${thumbUrl ? `<img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" />` : ''}
+        ${thumbUrl ? `<div class="thumb-wrap"><img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" /><div class="thumb-caption" ${(step.caption || step.narration) ? '' : 'hidden'}>${esc(step.caption || step.narration || '')}</div></div>` : ''}
         <label class="step-field-label">
           <span>Narration</span>
           <textarea class="narration" placeholder="What the voice says while this step happens">${esc(step.narration || '')}</textarea>
         </label>
+        <div class="preview-voice-row">
+          <button class="preview-voice-btn secondary" type="button" title="Hear this line in the render's voice. The audio is cached, so the next render reuses it instead of generating it again.">▶ Preview voice</button>
+          <span class="preview-voice-status"></span>
+        </div>
         <label class="step-field-label">
           <span>Caption</span>
           <input class="caption" value="${esc(step.caption || '')}" placeholder="Defaults to narration" />
@@ -1979,6 +2016,23 @@ function renderSteps() {
 
     card.querySelector('.narration').onchange = (e) => update({ narration: e.target.value });
     card.querySelector('.caption').onchange = (e) => update({ caption: e.target.value });
+
+    // Live caption overlay on the screenshot — same fallback the renderer uses (caption, else narration).
+    const capOverlay = card.querySelector('.thumb-caption');
+    const syncCaption = () => {
+      if (!capOverlay) return;
+      const text = card.querySelector('.caption').value.trim() || card.querySelector('.narration').value.trim();
+      capOverlay.textContent = text;
+      capOverlay.hidden = !text;
+    };
+    card.querySelector('.narration').addEventListener('input', syncCaption);
+    card.querySelector('.caption').addEventListener('input', syncCaption);
+
+    card.querySelector('.preview-voice-btn').onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      previewNarration(e.currentTarget, card.querySelector('.preview-voice-status'), card.querySelector('.narration').value);
+    };
 
     card.querySelector('.up').onclick = async (e) => {
       e.stopPropagation();

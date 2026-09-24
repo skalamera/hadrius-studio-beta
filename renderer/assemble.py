@@ -2,7 +2,7 @@
 Usage: .venv/bin/python renderer/assemble.py out/<name> [--music assets/music_bed.wav] [--voice en-US-AndrewNeural]
 """
 from __future__ import annotations
-import asyncio, json, os, subprocess, sys, textwrap, shutil, html, re
+import hashlib, json, os, subprocess, sys, textwrap, shutil, html, re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from PIL import Image, ImageDraw, ImageFont
@@ -110,101 +110,18 @@ XF = 0.8                  # dissolve length between slides
 FONT = '/System/Library/Fonts/Helvetica.ttc'
 tmp = out / '_build'; tmp.mkdir(exist_ok=True)
 
-# ---------- 1. narration (ElevenLabs when configured, edge-tts otherwise) ----------
-# The bridge loads .env into its own environment before spawning render.sh, but a render started
-# from a terminal has none of it — so read .env directly for anything the environment lacks.
-def env_from_dotenv(name):
-    if os.environ.get(name): return os.environ[name].strip()
-    try:
-        for line in (ROOT / '.env').read_text().splitlines():
-            line = line.strip()
-            if line.startswith(f'{name}='):
-                return line.split('=', 1)[1].strip().strip('"').strip("'")
-    except OSError:
-        pass
-    return ''
-
-VOICESTUDIO_URL = env_from_dotenv('VOICESTUDIO_URL') or 'http://127.0.0.1:3900'
-VOICESTUDIO_VOICE = args[args.index('--vs-voice') + 1] if '--vs-voice' in args else (env_from_dotenv('VOICESTUDIO_VOICE_ID') or '4bfebca6')
-
-def voicestudio_alive():
-    import urllib.request
-    try:
-        req = urllib.request.Request(f"{VOICESTUDIO_URL}/health")
-        with urllib.request.urlopen(req, timeout=0.8) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
-
-def voicestudio_tts(text, path):
-    import urllib.request
-    body = json.dumps({
-        'input': text,
-        'voice': VOICESTUDIO_VOICE,
-        'response_format': 'mp3',
-        'speed': 1.0,
-    }).encode()
-    req = urllib.request.Request(
-        f'{VOICESTUDIO_URL}/v1/audio/speech',
-        data=body, method='POST',
-        headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        path.write_bytes(resp.read())
-
-ELEVEN_KEY = env_from_dotenv('ELEVENLABS_API_KEY')
-ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'XrExE9yKIg1WjnnlVkGX'  # "Matilda"
-ELEVEN_MODEL = env_from_dotenv('ELEVENLABS_MODEL_ID') or 'eleven_multilingual_v2'
-
-def elevenlabs_tts(text, path):
-    import urllib.request
-    body = json.dumps({
-        'text': text,
-        'model_id': ELEVEN_MODEL,
-        'voice_settings': {'stability': 0.5, 'similarity_boost': 0.75, 'style': 0.0, 'use_speaker_boost': True},
-    }).encode()
-    req = urllib.request.Request(
-        f'https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE}?output_format=mp3_44100_128',
-        data=body, method='POST',
-        headers={'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg'})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        path.write_bytes(resp.read())
-
-async def tts():
-    vs_active = voicestudio_alive()
-    used_fallback = False
-    for s in slides:
-        if not s['narration']: s['audio'] = None; continue
-        # Provider tag in filename prevents reusing mismatched cached audio
-        tag = f'vs-{VOICESTUDIO_VOICE}' if vs_active else ('el' if ELEVEN_KEY else 'edge')
-        f = tmp / f"n{s['slide']:02d}-{tag}.mp3"
-        if not f.exists():
-            if vs_active:
-                try:
-                    voicestudio_tts(s['narration'], f)
-                except Exception as e:
-                    print(f"  ⚠ VoiceStudio failed for slide {s['slide']} ({e}) — falling back", file=sys.stderr)
-                    used_fallback = True
-            if not f.exists() and ELEVEN_KEY:
-                try:
-                    elevenlabs_tts(s['narration'], f)
-                except Exception as e:  # quota, network, bad voice id — keep the render going
-                    detail = getattr(e, 'read', lambda: b'')()
-                    print(f"  ⚠ ElevenLabs failed for slide {s['slide']} ({e}{(': ' + detail[:160].decode(errors='replace')) if detail else ''}) — falling back to edge-tts", file=sys.stderr)
-                    used_fallback = True
-            if not f.exists():
-                import edge_tts
-                f_edge = tmp / f"n{s['slide']:02d}-edge.mp3"
-                await edge_tts.Communicate(s['narration'], VOICE, rate=RATE, pitch=PITCH).save(str(f_edge))
-                f = f_edge
-        s['audio'] = str(f)
-    if vs_active:
-        provider = f'VoiceStudio ({VOICESTUDIO_VOICE})'
-    elif ELEVEN_KEY:
-        provider = f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})'
-    else:
-        provider = f'edge-tts ({VOICE})'
-    print(f"narration: {provider}{' — some slides fell back' if used_fallback else ''}")
-asyncio.run(tts())
+# ---------- 1. narration (VoiceStudio > ElevenLabs > edge-tts), cached by text ----------
+# renderer/tts.py owns the provider chain and a persistent cache outside out/<name>/ (which
+# render.sh wipes every time), so an edit re-voices only the lines that actually changed. The
+# panel's per-step preview writes into the same cache, so a previewed line is free at render time.
+import tts as narration
+narration.prune()
+narrator = narration.Narrator(
+    vs_voice=args[args.index('--vs-voice') + 1] if '--vs-voice' in args else None,
+    edge_voice=VOICE, edge_rate=RATE, edge_pitch=PITCH)
+for s in slides:
+    s['audio'] = str(narrator.speak(s['narration'])[0]) if s['narration'] else None
+print(narrator.describe())
 
 def dur(f):
     if not shutil.which('ffprobe'):
@@ -260,10 +177,53 @@ def highlight_png(target, sw, sh, path):
     d.polygon(tip, fill=(255, 255, 255, 255), outline=purple_solid + (255,), width=3)
     img.save(path)
 
-# ---------- 3. per-slide video segment ----------
+# ---------- 3. per-slide video segment (cached by everything that determines its pixels) ----------
+# Like narration, segments live in out/_cache/ so they survive render.sh's rm -rf of out/<name>/.
+# The key includes the drawing code itself, so a change to how captions/highlights look
+# invalidates every old segment on its own instead of silently reusing stale frames.
+import inspect
+SEG_CACHE = ROOT / 'out' / '_cache' / 'seg'; SEG_CACHE.mkdir(parents=True, exist_ok=True)
+SEG_ENCODE = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '19']
+# For files that get decoded and re-encoded again later (the stitched slide video, the title-card
+# crossfade): ultrafast is several times quicker, and the lower CRF keeps the extra generation
+# visually lossless — only the last encode in the chain uses the normal 'fast' settings.
+INTERMEDIATE_ENCODE = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '12']
+_SEG_CODE = hashlib.sha256((inspect.getsource(caption_png) + inspect.getsource(highlight_png)
+                            + FONT + json.dumps(SEG_ENCODE) + f'{W}x{H}@{FPS}').encode()).hexdigest()
+seg_hits = 0
+for f in SEG_CACHE.iterdir():  # same LRU-ish pruning as the narration cache (hits touch mtime)
+    try:
+        if f.stat().st_mtime < __import__('time').time() - narration.MAX_AGE_DAYS * 86400: f.unlink()
+    except OSError:
+        pass
+
+def segment_key(s):
+    src = out / 'slides' / s['file']
+    parts = [_SEG_CODE, hashlib.sha256(src.read_bytes()).hexdigest(), str(s['sdur']),
+             s.get('caption') or s.get('narration') or '',
+             json.dumps(s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None, sort_keys=True)]
+    return hashlib.sha256('\x00'.join(parts).encode()).hexdigest()[:32]
+
 def build_segment(s):
-    src = out / 'slides' / s['file']; seg = tmp / f"seg{s['slide']:02d}.mp4"
-    n = int(s['sdur'] * FPS)
+    global seg_hits
+    key = segment_key(s)
+    cached, cached_ann = SEG_CACHE / f'{key}.mp4', SEG_CACHE / f'{key}.ann.png'
+    seg = tmp / f"seg{s['slide']:02d}.mp4"
+    if cached.exists() and cached.stat().st_size > 0 and (not (NEEDS_DRAWN_HIGHLIGHT and s.get('target')) or cached_ann.exists()):
+        shutil.copyfile(cached, seg); os.utime(cached)
+        if cached_ann.exists():
+            ann = out / 'annotated'; ann.mkdir(exist_ok=True)
+            shutil.copyfile(cached_ann, ann / s['file']); os.utime(cached_ann)
+        seg_hits += 1
+        return seg
+    _render_segment(s, seg)
+    part = cached.with_suffix('.part'); shutil.copyfile(seg, part); part.replace(cached)
+    if (out / 'annotated' / s['file']).exists() and NEEDS_DRAWN_HIGHLIGHT and s.get('target'):
+        shutil.copyfile(out / 'annotated' / s['file'], cached_ann)
+    return seg
+
+def _render_segment(s, seg):
+    src = out / 'slides' / s['file']
     im = Image.open(src); sw, sh = im.size
     inputs = ['-loop', '1', '-i', str(src)]
     chain = [f"[0:v]scale={W}:{H}:flags=lanczos,fps={FPS}[v0]"]
@@ -289,10 +249,10 @@ def build_segment(s):
     chain.append(f"[v{stage}]format=yuv420p[v]")
     fc = ';'.join(chain)
     subprocess.run(['ffmpeg', '-y', *inputs, '-filter_complex', fc, '-map', '[v]', '-t', f"{s['sdur']}", '-r', str(FPS),
-                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', str(seg)], check=True, capture_output=True)
-    return seg
+                    *SEG_ENCODE, str(seg)], check=True, capture_output=True)
 
 segs = [build_segment(s) for s in slides]
+print(f"segments: {seg_hits} cached, {len(slides) - seg_hits} rendered")
 video = tmp / 'video.mp4'
 if len(segs) == 1:
     shutil.copy(segs[0], video)
@@ -304,7 +264,7 @@ else:
         out_lbl = f'[x{i}]' if i < len(segs) - 1 else '[v]'
         chain.append(f"{prev}[{i}:v]xfade=transition=fade:duration={XF}:offset={offset:.3f}{out_lbl}"); prev = out_lbl
     subprocess.run(['ffmpeg', '-y', *ins, '-filter_complex', ';'.join(chain), '-map', '[v]', '-r', str(FPS),
-                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p', str(video)], check=True, capture_output=True)
+                    *INTERMEDIATE_ENCODE, '-pix_fmt', 'yuv420p', str(video)], check=True, capture_output=True)
 total = sum(s['sdur'] for s in slides) - XF * (len(slides) - 1)
 
 # ---------- 4. audio: narration at slide start (zero-overlap by construction) + music bed ----------
@@ -325,26 +285,49 @@ subprocess.run(['ffmpeg', '-y', *inputs, '-filter_complex', ';'.join(filt), '-ma
                 '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', '-t', f'{total:.3f}', str(content_video)], check=True, capture_output=True)
 
 # ---------- 5. stitch intro + title card + content + outro clips ----------
+# Both cards are drawn frame by frame in Python (~10s title, ~15s support — the single biggest cost
+# of a re-render once narration and segments are cached), yet the support card is identical on
+# every video and the title card only changes with its title/module. Cache them like segments,
+# keyed on title_card.py's own source and the assets it reads so a design change still regenerates.
+_CARD_CODE = hashlib.sha256(
+    (Path(__file__).resolve().parent / 'title_card.py').read_bytes()
+    + ''.join(f'{p}:{p.stat().st_size}:{int(p.stat().st_mtime)}' for p in
+              [MUSIC, ROOT / 'assets' / 'title_bg.png', ROOT / 'assets' / 'fonts' / 'Satoshi-Bold.otf',
+               ROOT / 'assets' / 'fonts' / 'Satoshi-Medium.otf'] if p.exists()).encode()).hexdigest()
+
+def cached_card(dest, key_parts, make):
+    key = hashlib.sha256('\x00'.join([_CARD_CODE, *map(str, key_parts)]).encode()).hexdigest()[:32]
+    cached = SEG_CACHE / f'card-{key}.mp4'
+    if cached.exists() and cached.stat().st_size > 0:
+        shutil.copyfile(cached, dest); os.utime(cached)
+        return True
+    make()
+    if dest.exists():
+        part = cached.with_suffix('.part'); shutil.copyfile(dest, part); part.replace(cached)
+    return False
+
 title_clip = tmp / 'title_card.mp4'
 try:
     mod_name = MODULE_ARG or resolve_module(rep, ROOT, out)
-    generate_title_video(
-        rep.get('title') or rep['name'],
+    title_text = rep.get('title') or rep['name']
+    cached_card(title_clip, ['title', title_text, mod_name, SHOW_ACADEMY], lambda: generate_title_video(
+        title_text,
         title_clip,
         module=mod_name,
         music_path=MUSIC if MUSIC.exists() else None,
         show_academy=SHOW_ACADEMY
-    )
+    ))
 except Exception as e:
     print(f"warning: could not generate title card: {e}")
 
 support_clip = tmp / 'support_card.mp4'
 try:
-    generate_support_card_video(support_clip, music_path=MUSIC if MUSIC.exists() else None)
+    cached_card(support_clip, ['support'], lambda: generate_support_card_video(
+        support_clip, music_path=MUSIC if MUSIC.exists() else None))
 except Exception as e:
     print(f"warning: could not generate support card: {e}")
 
-def crossfade_pair(c1: Path, c2: Path, out_path: Path, xf_dur: float = 0.65) -> bool:
+def crossfade_pair(c1: Path, c2: Path, out_path: Path, xf_dur: float = 0.65, intermediate: bool = False) -> bool:
     if not (c1 and c1.exists() and c2 and c2.exists()):
         return False
     try:
@@ -358,7 +341,7 @@ def crossfade_pair(c1: Path, c2: Path, out_path: Path, xf_dur: float = 0.65) -> 
             f"[0:v][1:v]xfade=transition=fade:duration={xf_dur}:offset={offset:.3f}[v];"
             f"[0:a][1:a]acrossfade=d={xf_dur}[a]",
             '-map', '[v]', '-map', '[a]',
-            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p',
+            *(INTERMEDIATE_ENCODE if intermediate else ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']), '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
             str(out_path)
         ], check=True, capture_output=True)
@@ -371,7 +354,7 @@ def crossfade_pair(c1: Path, c2: Path, out_path: Path, xf_dur: float = 0.65) -> 
 lead_clip = None
 if INTRO and INTRO.exists() and title_clip.exists():
     intro_title_path = tmp / 'intro_title_crossfaded.mp4'
-    if crossfade_pair(INTRO, title_clip, intro_title_path, xf_dur=0.65):
+    if crossfade_pair(INTRO, title_clip, intro_title_path, xf_dur=0.65, intermediate=True):
         lead_clip = intro_title_path
     else:
         lead_clip = title_clip
@@ -384,7 +367,9 @@ elif INTRO and INTRO.exists():
 body_video = None
 if lead_clip and lead_clip.exists():
     body_path = tmp / 'body_crossfaded.mp4'
-    if crossfade_pair(lead_clip, content_video, body_path, xf_dur=0.65):
+    # Only an intermediate if something still gets crossfaded after it (support card / outro).
+    if crossfade_pair(lead_clip, content_video, body_path, xf_dur=0.65,
+                      intermediate=support_clip.exists() or bool(OUTRO and OUTRO.exists())):
         body_video = body_path
 
 # 3. Crossfade last slide of content into the support/"need help?" card
@@ -393,7 +378,7 @@ active_body = body_video or content_video
 support_included = False
 if support_clip.exists() and active_body and active_body.exists():
     support_path = tmp / 'body_with_support.mp4'
-    if crossfade_pair(active_body, support_clip, support_path, xf_dur=0.65):
+    if crossfade_pair(active_body, support_clip, support_path, xf_dur=0.65, intermediate=bool(OUTRO and OUTRO.exists())):
         active_body = support_path
         support_included = True
 
