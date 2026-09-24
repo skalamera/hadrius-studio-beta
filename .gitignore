@@ -12,9 +12,13 @@ __pycache__/
 .coverage-plans.json
 .test-browser-profile/
 scripts/
+# Runtime state the bridge rewrites constantly — tracking it made every teammate's `git pull`
+# collide with their local copy. update.sh sets these aside and restores them around each pull.
+data/workflows.json
 data/manual-links.json
 data/dismissed-workflows.json
 data/enhance-progress.json
+data/bulk_record_progress.json
 assets/*.original.mp4
 assets/*.previous.mp4
 .claude/

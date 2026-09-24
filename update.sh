@@ -61,6 +61,42 @@ echo "✓ Backup saved."
 # has no git history yet, convert it into a real clone of the repo first.
 if [[ -d .git ]]; then
   echo "Existing git repository detected — pulling latest changes..."
+
+  # Runtime data the bridge rewrites all day (workflow plans, done/dismissed marks, progress).
+  # These used to be tracked in git, so every pull collided with the local copy — and a failed
+  # stash pop left them mid-merge, which then made every later `git stash` die with "needs merge
+  # / could not write index". Set them aside before git runs and put them back after: local state
+  # wins, and the bridge re-syncs with the shared library anyway. A copy that's no longer valid
+  # JSON (conflict markers from an old failed merge) is dropped so the bridge rebuilds it instead.
+  RUNTIME_DATA=(data/workflows.json data/manual-links.json data/dismissed-workflows.json data/enhance-progress.json data/bulk_record_progress.json)
+  DATA_SAVE="$(mktemp -d)"
+  for f in "${RUNTIME_DATA[@]}"; do
+    if [[ -f "$f" ]]; then
+      if ! command -v python3 >/dev/null || python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$f" 2>/dev/null; then
+        mkdir -p "$DATA_SAVE/$(dirname "$f")" && cp "$f" "$DATA_SAVE/$f"
+      else
+        echo "⚠ $f was unreadable (left over from an earlier failed merge) — the bridge will rebuild it from the shared library."
+      fi
+    fi
+    if git ls-files --error-unmatch "$f" >/dev/null 2>&1 || git ls-files -u -- "$f" | grep -q .; then
+      git reset -q -- "$f" 2>/dev/null || true      # clears a stuck "needs merge" entry for it
+      git checkout -q -- "$f" 2>/dev/null || true   # and drops its local edits (saved above)
+    fi
+  done
+  # A merge left half-done (MERGE_HEAD) blocks every pull. The backup above covers anything it held.
+  if [[ -f .git/MERGE_HEAD ]]; then
+    echo "Abandoning an unfinished merge from an earlier update (your files are in $BACKUP)..."
+    git merge --abort 2>/dev/null || git reset -q --merge 2>/dev/null || true
+  fi
+  UNMERGED="$(git diff --name-only --diff-filter=U)"
+  if [[ -n "$UNMERGED" ]]; then
+    echo "These files are stuck mid-merge from an earlier update, so git can't pull:" >&2
+    echo "$UNMERGED" | sed 's/^/  /' >&2
+    echo "If you didn't edit them yourself, discard them and re-run:  git reset -q && git checkout -- <file>" >&2
+    echo "(Everything is also backed up in $BACKUP.)" >&2
+    exit 1
+  fi
+
   STASHED=0
   if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "Stashing local changes to tracked files before pulling..."
@@ -74,6 +110,10 @@ if [[ -d .git ]]; then
     echo "Restoring your local changes..."
     git stash pop || echo "⚠ Could not auto-restore local changes — run 'git stash list' and 'git stash pop' manually, or recover them from $BACKUP."
   fi
+  for f in "${RUNTIME_DATA[@]}"; do
+    [[ -f "$DATA_SAVE/$f" ]] && cp "$DATA_SAVE/$f" "$f"
+  done
+  rm -rf "$DATA_SAVE"
 else
   echo "This folder has no git history (likely installed from a zip) — converting it into a git clone in place..."
   git init -q
