@@ -2434,7 +2434,12 @@ function renderLoadScriptList() {
     };
     const body = section.querySelector('.saved-module-items');
     for (const s of scripts) {
-      const when = s.updated_at ? new Date(s.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+      const fmt = (iso) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      // "Added" is when it first entered the library; "updated" only shows if it's been re-saved since.
+      const edited = s.created_at && s.updated_at && Math.abs(Date.parse(s.updated_at) - Date.parse(s.created_at)) > 60000;
+      const when = s.created_at
+        ? `Added ${fmt(s.created_at)}${edited ? ` · updated ${fmt(s.updated_at)}` : ''}`
+        : (s.updated_at ? `Updated ${fmt(s.updated_at)}` : '');
       const card = document.createElement('div');
       card.className = 'saved-script-card';
       card.innerHTML = `
