@@ -2146,6 +2146,9 @@ function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,
 
 async function renderVideo(mode = 'video') {
   if (!state.steps.length) return alert('Record at least one step first.');
+  const script = toScript();
+  const title = $('#scriptName').value.trim() || script.name;
+  if (!(await confirmLibraryNameClash(script, title, 'Rendering'))) return;
   hideRenderReadyBanner();
   isRenderingActive = true;
   updateRenderButtons();
@@ -2158,7 +2161,7 @@ async function renderVideo(mode = 'video') {
   $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : 'Starting render…';
   updateFloatingBarVisibility();
 
-  const result = await send({ type: 'PANEL_RENDER', script: toScript(), mode });
+  const result = await send({ type: 'PANEL_RENDER', script, mode });
   if (!result?.ok) {
     isRenderingActive = false;
     updateRenderButtons();
@@ -2314,6 +2317,16 @@ async function checkRender() {
 // ---- "💾 Save script": push the editor's script to the shared library without rendering ----
 // Same slug rule as the bridge's safeName(), so the overwrite check looks up the name it'll be saved as.
 const librarySafeName = (n) => String(n || 'untitled').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled';
+// The library is keyed by name, so the same name on a DIFFERENT recording means a save (or the save
+// every render does) would silently replace someone else's script — and, via its carried-over links,
+// their Drive video and Pylon article — for the whole team. Re-saving the loaded one is fine.
+async function confirmLibraryNameClash(script, title, verb) {
+  const existing = await send({ type: 'PANEL_LIBRARY_GET', name: librarySafeName(script.name) });
+  const other = existing?.ok ? existing.item?.script : null;
+  if (!other || !other.recording?.id || other.recording.id === script.recording?.id) return true;
+  const by = existing.item.updated_by && existing.item.updated_by !== 'local' ? ` (by ${existing.item.updated_by})` : '';
+  return confirm(`A different script named "${title}" is already in the shared library${by}.\n\n${verb} will replace it for everyone. Continue?`);
+}
 async function saveScriptOnly() {
   const title = $('#scriptName').value.trim();
   if (!title) {
@@ -2327,14 +2340,7 @@ async function saveScriptOnly() {
   // re-save under the name it was loaded from instead of forking a copy or hitting that other script.
   const loadedTitle = (state.script?.title || formatHumanTitle(state.script?.name || '')).trim();
   if (state.script?.name && loadedTitle === title) script.name = state.script.name;
-  // The library is keyed by name, so the same name on a DIFFERENT recording means this save would
-  // silently replace someone else's script for the whole team. Re-saving the loaded one is fine.
-  const existing = await send({ type: 'PANEL_LIBRARY_GET', name: librarySafeName(script.name) });
-  const other = existing?.ok ? existing.item?.script : null;
-  if (other && other.recording?.id && other.recording.id !== script.recording?.id) {
-    const by = existing.item.updated_by && existing.item.updated_by !== 'local' ? ` (by ${existing.item.updated_by})` : '';
-    if (!confirm(`A different script named "${title}" is already in the shared library${by}.\n\nSaving will replace it for everyone. Continue?`)) return;
-  }
+  if (!(await confirmLibraryNameClash(script, title, 'Saving'))) return;
   isSavingScript = true;
   updateRenderButtons();
   $('#saveScriptBtn').textContent = 'Saving…';
