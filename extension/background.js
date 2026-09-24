@@ -22,7 +22,11 @@ async function restore() {
   const s = await chrome.storage.session.get('recording');
   state.recording = !!s.recording;
 }
-restore();
+// Chrome stops this service worker after ~30s idle and starts it again for the next event — with
+// `state` back to its empty defaults. Every listener awaits this before touching state: without that,
+// a panel click that woke the worker (e.g. moving a step) ran against steps: [], and its persist()
+// then saved that empty list over the real draft — wiping every step.
+const restored = restore();
 
 chrome.runtime.onInstalled.addListener(() => chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }));
 
@@ -119,6 +123,7 @@ async function captureStep(step, attempt = 0, settled = null) {
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
+    await restored;
     switch (msg.type) {
       case 'KB_STEP': {
         if (!state.recording) return reply({ ok: false });
@@ -151,7 +156,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'PANEL_STOP': await stopRecording(); return reply({ ok: true });
       case 'PANEL_UPDATE_STEP': {
         const i = state.steps.findIndex((s) => s.index === msg.index);
-        if (i >= 0) Object.assign(state.steps[i], msg.patch);
+        if (i < 0) return reply({ ok: false, error: 'step not found' }); // never persist a no-op
+        Object.assign(state.steps[i], msg.patch);
         await persist(); return reply({ ok: true });
       }
       case 'PANEL_DELETE_STEP': {
@@ -160,7 +166,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       case 'PANEL_MOVE_STEP': {
         const i = state.steps.findIndex((s) => s.index === msg.index); const j = i + msg.dir;
-        if (i >= 0 && j >= 0 && j < state.steps.length) { [state.steps[i], state.steps[j]] = [state.steps[j], state.steps[i]]; state.steps.forEach((s, k) => (s.index = k)); }
+        // Nothing to move (unknown step, or already at the edge): leave the stored draft alone rather
+        // than re-saving and re-broadcasting whatever is in memory.
+        if (i < 0 || j < 0 || j >= state.steps.length) return reply({ ok: false, error: 'step not found or already at the edge' });
+        [state.steps[i], state.steps[j]] = [state.steps[j], state.steps[i]]; state.steps.forEach((s, k) => (s.index = k));
         await persist(); broadcast({ type: 'KB_STEPS_UPDATED', steps: state.steps }); return reply({ ok: true });
       }
       case 'PANEL_UPDATE_SCRIPT': Object.assign(state.script, msg.patch); await persist(); return reply({ ok: true });
@@ -524,6 +533,7 @@ async function stopRecording() {
 
 // Re-arm content script after navigation within the recorded tab
 chrome.tabs.onUpdated.addListener(async (tabId, info) => {
+  await restored;
   if (state.recording && tabId === state.tabId && info.status === 'complete') {
     try { await chrome.tabs.sendMessage(tabId, { type: 'KB_START', fromIndex: state.steps.length }); } catch (_) {}
   }
