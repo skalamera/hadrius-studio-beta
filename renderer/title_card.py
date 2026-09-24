@@ -2,11 +2,10 @@
 """Generate a sleek 1080p typewriter title card for Hadrius Academy walkthroughs.
 
 Matches the Hadrius Academy cinematic logo reveal theme:
-- Deep obsidian canvas (#08070D)
-- Volumetric violet/amber ambient glow
+- Plain white canvas, matching the Hadrius Academy logo cards that open and close every video
 - Authentic Satoshi font
-- Hadrius brand colors (Luminous white, Hadrius Gold #F59E0B, Violet #7C6BF5)
-- Smooth typewriter letter-by-letter reveal with gold blinking cursor
+- Academy purple (#4B3CA9, sampled from the logo) for the title, badge and cursor; dark ink for body copy
+- Smooth typewriter letter-by-letter reveal with a purple blinking cursor
 - Module badge above title (Testing Program, Communications, Marketing, etc.)
 """
 
@@ -55,18 +54,15 @@ def format_module_badge(raw: str) -> str:
         return ''
     return '   '.join(' '.join(w.upper()) for w in words)
 
+BG_RGB = (255, 255, 255)
+PURPLE = (75, 60, 169, 255)       # the logo's purple
+INK = (28, 24, 48, 255)           # body copy on white
+ACCENT_LINE = (75, 60, 169, 110)  # thin rules either side of a badge
+SOFT_GLOW = (75, 60, 169, 45)     # faint bloom behind text; a strong glow looks muddy on white
+
 def get_base_background() -> Image.Image:
-    if BG_IMAGE_FILE.exists():
-        return Image.open(BG_IMAGE_FILE).convert('RGBA')
-    # Fallback procedural background
-    bg = Image.new('RGBA', (W, H), (8, 7, 13, 255))
-    draw = ImageDraw.Draw(bg)
-    cx, cy = W // 2, H // 2
-    for r in range(600, 0, -20):
-        p = 1.0 - (r / 600.0)
-        alpha = int(70 * (p ** 1.8))
-        draw.ellipse([cx - int(r * 1.6), cy - r, cx + int(r * 1.6), cy + r], fill=(97, 76, 225, alpha))
-    return bg
+    # White to match the logo cards (assets/title_bg.png was the old dark theme's backdrop).
+    return Image.new('RGBA', (W, H), (*BG_RGB, 255))
 
 def generate_title_video(
     title_text: str,
@@ -126,9 +122,9 @@ def generate_title_video(
 
     # Delicate gold accent lines
     line_w = 70
-    b_draw.line([(bx - line_w - 24, by + 14), (bx - 24, by + 14)], fill=(245, 158, 11, 200), width=2)
-    b_draw.line([(bx + bw + 24, by + 14), (bx + bw + line_w + 24, by + 14)], fill=(245, 158, 11, 200), width=2)
-    b_draw.text((bx, by), badge_text, font=badge_font, fill=(245, 158, 11, 240))
+    b_draw.line([(bx - line_w - 24, by + 14), (bx - 24, by + 14)], fill=ACCENT_LINE, width=2)
+    b_draw.line([(bx + bw + 24, by + 14), (bx + bw + line_w + 24, by + 14)], fill=ACCENT_LINE, width=2)
+    b_draw.text((bx, by), badge_text, font=badge_font, fill=PURPLE)
 
     # Optional: "HADRIUS ACADEMY" underneath title
     if show_academy and module:
@@ -138,7 +134,7 @@ def generate_title_video(
         aw = bbox_a[2] - bbox_a[0]
         ax = cx - aw // 2
         ay = ty + full_h + 55
-        b_draw.text((ax, ay), acad_text, font=sub_font, fill=(160, 155, 185, 170))
+        b_draw.text((ax, ay), acad_text, font=sub_font, fill=(120, 115, 145, 200))
 
     base_composite = Image.alpha_composite(base_bg, badge_layer)
 
@@ -174,13 +170,12 @@ def generate_title_video(
             text_layer = Image.new('RGBA', (W, H), (0, 0, 0, 0))
             t_draw = ImageDraw.Draw(text_layer)
             # Soft purple glow bloom shadow behind letters
-            t_draw.text((tx, ty), displayed_text, font=title_font, fill=(124, 107, 245, 175))
+            t_draw.text((tx, ty), displayed_text, font=title_font, fill=SOFT_GLOW)
             glow_text = text_layer.filter(ImageFilter.GaussianBlur(14))
             frame = Image.alpha_composite(frame, glow_text)
 
-            # Crisp white foreground text
             draw = ImageDraw.Draw(frame)
-            draw.text((tx, ty), displayed_text, font=title_font, fill=(255, 255, 255, 255))
+            draw.text((tx, ty), displayed_text, font=title_font, fill=PURPLE)
         else:
             draw = ImageDraw.Draw(frame)
 
@@ -188,7 +183,7 @@ def generate_title_video(
             cur_x = tx + tw + 6
             cur_y = ty + 6
             cur_h = max(36, full_h + 8)
-            draw.rectangle([cur_x, cur_y, cur_x + 5, cur_y + cur_h], fill=(245, 158, 11, 255))
+            draw.rectangle([cur_x, cur_y, cur_x + 5, cur_y + cur_h], fill=PURPLE)
 
         frame.convert('RGB').save(frames_dir / f"f_{f:04d}.png")
 
@@ -236,9 +231,6 @@ def generate_title_video(
 
 SUPPORT_DURATION_SEC = 5.6
 SUPPORT_TOTAL_FRAMES = int(SUPPORT_DURATION_SEC * FPS)
-GOLD = (245, 158, 11, 255)
-VIOLET_GLOW = (124, 107, 245, 175)
-WHITE = (255, 255, 255, 255)
 
 def generate_support_card_video(
     output_mp4: Path,
@@ -246,7 +238,7 @@ def generate_support_card_video(
     portal: str = 'support.hadrius.com',
     email: str = 'support@hadrius.com',
 ) -> Path:
-    """Closing 'need help?' card — same obsidian/violet/gold Hadrius Academy theme as the title
+    """Closing 'need help?' card — same white/purple Hadrius Academy theme as the title
     card, inserted after the last recorded step and crossfaded in/out exactly like every other
     segment boundary (assemble.py's crossfade_pair, transition=fade)."""
     output_mp4 = Path(output_mp4)
@@ -287,9 +279,9 @@ def generate_support_card_video(
     bw = bbox_b[2] - bbox_b[0]
     bx, by = cx - bw // 2, top
     line_w = 70
-    b_draw.line([(bx - line_w - 24, by + 14), (bx - 24, by + 14)], fill=(245, 158, 11, 200), width=2)
-    b_draw.line([(bx + bw + 24, by + 14), (bx + bw + line_w + 24, by + 14)], fill=(245, 158, 11, 200), width=2)
-    b_draw.text((bx, by), badge_text, font=badge_font, fill=GOLD)
+    b_draw.line([(bx - line_w - 24, by + 14), (bx - 24, by + 14)], fill=ACCENT_LINE, width=2)
+    b_draw.line([(bx + bw + 24, by + 14), (bx + bw + line_w + 24, by + 14)], fill=ACCENT_LINE, width=2)
+    b_draw.text((bx, by), badge_text, font=badge_font, fill=PURPLE)
     base_composite = Image.alpha_composite(base_bg, badge_layer)
 
     y = top + badge_h + 56
@@ -315,19 +307,17 @@ def generate_support_card_video(
         text_layer = Image.new('RGBA', (W, H), (0, 0, 0, 0))
         t_draw = ImageDraw.Draw(text_layer)
         for kind, text, x, ty, f in positions:
-            fill = GOLD if kind == 'link' else WHITE
-            glow = VIOLET_GLOW if kind == 'link' else (124, 107, 245, 110)
-            t_draw.text((x, ty), text, font=f, fill=glow)
+            t_draw.text((x, ty), text, font=f, fill=SOFT_GLOW)
         glow_text = text_layer.filter(ImageFilter.GaussianBlur(12))
         frame = Image.alpha_composite(frame, glow_text)
 
         draw = ImageDraw.Draw(frame)
         for kind, text, x, ty, f in positions:
-            draw.text((x, ty), text, font=f, fill=GOLD if kind == 'link' else WHITE)
+            draw.text((x, ty), text, font=f, fill=PURPLE if kind == 'link' else INK)
 
         if alpha < 1.0:
-            black = Image.new('RGB', (W, H), (8, 7, 13))
-            frame = Image.blend(black, frame.convert('RGB'), alpha)
+            blank = Image.new('RGB', (W, H), BG_RGB)
+            frame = Image.blend(blank, frame.convert('RGB'), alpha)
         else:
             frame = frame.convert('RGB')
         frame.save(frames_dir / f"f_{fnum:04d}.png")
