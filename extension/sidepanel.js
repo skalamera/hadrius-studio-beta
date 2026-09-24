@@ -1703,6 +1703,7 @@ async function recordNow() {
 }
 
 let isRenderingActive = false;
+let isSavingScript = false;
 
 function updateRenderButtons() {
   const hasSteps = (state.steps?.length || 0) > 0;
@@ -1710,6 +1711,7 @@ function updateRenderButtons() {
   $('#renderBtn').disabled = disableRender;
   $('#renderBothBtn').disabled = disableRender;
   $('#downloadBtn').disabled = !hasSteps;
+  $('#saveScriptBtn').disabled = !hasSteps || isSavingScript;
   if ($('#clearBtn')) $('#clearBtn').disabled = !hasSteps && !($('#scriptName').value || '').trim();
   updateFloatingBarVisibility();
 }
@@ -2309,6 +2311,46 @@ async function checkRender() {
   }
 }
 
+// ---- "💾 Save script": push the editor's script to the shared library without rendering ----
+// Same slug rule as the bridge's safeName(), so the overwrite check looks up the name it'll be saved as.
+const librarySafeName = (n) => String(n || 'untitled').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled';
+async function saveScriptOnly() {
+  const title = $('#scriptName').value.trim();
+  if (!title) {
+    alert('Give this walkthrough a name first (the field above "Record now") — scripts are saved under their name.');
+    $('#scriptName').focus();
+    return;
+  }
+  const script = toScript();
+  // toScript() names a script after its title, but a loaded script's library name can differ (the AI
+  // recorder saves "<title>-ai" to avoid clobbering an existing one). While the title is unchanged,
+  // re-save under the name it was loaded from instead of forking a copy or hitting that other script.
+  const loadedTitle = (state.script?.title || formatHumanTitle(state.script?.name || '')).trim();
+  if (state.script?.name && loadedTitle === title) script.name = state.script.name;
+  // The library is keyed by name, so the same name on a DIFFERENT recording means this save would
+  // silently replace someone else's script for the whole team. Re-saving the loaded one is fine.
+  const existing = await send({ type: 'PANEL_LIBRARY_GET', name: librarySafeName(script.name) });
+  const other = existing?.ok ? existing.item?.script : null;
+  if (other && other.recording?.id && other.recording.id !== script.recording?.id) {
+    const by = existing.item.updated_by && existing.item.updated_by !== 'local' ? ` (by ${existing.item.updated_by})` : '';
+    if (!confirm(`A different script named "${title}" is already in the shared library${by}.\n\nSaving will replace it for everyone. Continue?`)) return;
+  }
+  isSavingScript = true;
+  updateRenderButtons();
+  $('#saveScriptBtn').textContent = 'Saving…';
+  try {
+    const r = await send({ type: 'PANEL_LIBRARY_SAVE', script });
+    if (!r?.ok) throw new Error(r?.error || 'save failed');
+    toast(`✓ Saved "${title}" to the shared library`);
+  } catch (e) {
+    alert(`Couldn't save the script: ${e.message}`);
+  } finally {
+    isSavingScript = false;
+    $('#saveScriptBtn').textContent = '💾 Save script';
+    updateRenderButtons();
+  }
+}
+
 function exportScript(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(toScript(),null,2)],{type:'application/json'}));a.download=`${slug(toScript().name)||'walkthrough'}.script.json`;a.click();URL.revokeObjectURL(a.href);}
 
 async function resetRecordingSession() {
@@ -2623,6 +2665,7 @@ $('#cancelRecordBtn').onclick = cancelRecording;
 $('#bannerCancelBtn').onclick = cancelRecording;
 $('#clearBtn').onclick = async () => { if (confirm('Clear this recording?')) { await resetRecordingSession(); } };
 $('#loadScriptBtn').onclick = openLoadScriptModal;
+$('#saveScriptBtn').onclick = saveScriptOnly;
 $('#closeLoadScriptModalBtn').onclick = closeLoadScriptModal;
 $('#loadScriptModal').onclick = (e) => { if (e.target.id === 'loadScriptModal') closeLoadScriptModal(); };
 $('#loadScriptSearch').oninput = renderLoadScriptList;

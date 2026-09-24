@@ -358,6 +358,27 @@ async function backfillRecipeStartUrl(script) {
  * Save a script to the shared library and mirror it into scripts/ so render.sh / cron can use it
  * offline. Single place for that pairing — used by the /library route and the AI recorder.
  */
+// The panel's editor copy (toScript) has no idea a script was published — it never carries the
+// Pylon article / Drive video links written onto the saved script afterwards. Saving it (the Save
+// button, or the save every render does) replaced the stored script wholesale and dropped those
+// links: the Recorded tab lost its "Load script" / Drive links, and the next render couldn't find
+// the Drive file to update in place. Keep whatever the saved copy already had unless the incoming
+// script sets the field itself.
+const PUBLISH_LINK_FIELDS = ['pylonArticleId', 'pylonArticleUrl', 'driveVideoId', 'driveVideoUrl'];
+async function carryOverPublishLinks(script) {
+  if (PUBLISH_LINK_FIELDS.every((f) => script[f] !== undefined)) return;
+  let existing = null;
+  try {
+    const local = path.join(REPO_ROOT, 'scripts', `${script.name}.script.json`);
+    if (fs.existsSync(local)) existing = JSON.parse(fs.readFileSync(local, 'utf8'));
+  } catch (_) {}
+  if (!existing && LIBRARY_SECRET) existing = (await libraryGetByName(script.name))?.script || null;
+  if (!existing) return;
+  for (const f of PUBLISH_LINK_FIELDS) {
+    if (script[f] === undefined && existing[f] !== undefined) script[f] = existing[f];
+  }
+}
+
 async function saveScript(script, extra = {}) {
   // Capture the real display title BEFORE sanitizing name into a filename-safe slug — safeName()
   // turns any non-word character (including an apostrophe) into a hyphen, so "policy's" became the
@@ -365,6 +386,7 @@ async function saveScript(script, extra = {}) {
   // card, the Pylon article title) rendered it as "Policy S" instead of "Policy's".
   if (!script.title) script.title = script.name;
   script.name = safeName(script.name);
+  await carryOverPublishLinks(script);
   await backfillRecipeStartUrl(script);
   const out = await libraryFetch('POST', null, { ...extra, script, updated_by: WHOAMI });
   try { fs.mkdirSync(path.join(REPO_ROOT, 'scripts'), { recursive: true }); fs.writeFileSync(path.join(REPO_ROOT, 'scripts', `${out.item.name}.script.json`), JSON.stringify(script, null, 2)); } catch (_) {}

@@ -227,6 +227,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
           state.recordingId = sc.recording?.id || null;
           state.script = {
             name: sc.name || '',
+            title: sc.title || '', // lets Save keep the loaded library name (e.g. "…-ai") while the title is unchanged
             captionsFromNarration: !!sc.captionsFromNarration,
             createdAt: sc.createdAt || new Date().toISOString(),
             updatedAt: sc.updatedAt || sc.createdAt || new Date().toISOString(),
