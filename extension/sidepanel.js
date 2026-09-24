@@ -2446,10 +2446,22 @@ function renderLoadScriptList() {
           <span>${s.step_count ?? '?'} step${s.step_count === 1 ? '' : 's'}</span>
           ${when ? `<span>· ${esc(when)}</span>` : ''}
           ${s.updated_by && s.updated_by !== 'local' ? `<span>· by ${esc(s.updated_by)}</span>` : ''}
-          <button class="btn-open-script" type="button" style="margin-left:auto">Load</button>
+          <button class="btn-del-script" type="button" title="Delete this script from the shared library" style="margin-left:auto">🗑</button>
+          <button class="btn-open-script" type="button">Load</button>
         </div>`;
       card.querySelector('.btn-open-script').onclick = async () => {
         if (await openScript(s.name)) closeLoadScriptModal();
+      };
+      card.querySelector('.btn-del-script').onclick = async (e) => {
+        const btn = e.currentTarget;
+        if (!confirm(`Delete "${s.displayTitle}" from the shared script library?\n\nThis removes it for everyone on the team and can't be undone. Its Pylon article, Drive video and rendered MP4 are not deleted.`)) return;
+        btn.disabled = true;
+        const r = await send({ type: 'PANEL_LIBRARY_DELETE', name: s.name });
+        if (!r?.ok) { btn.disabled = false; alert(`Couldn't delete: ${r?.error || 'unknown error'}`); return; }
+        libraryScripts = libraryScripts.filter((x) => x.name !== s.name);
+        $('#loadScriptCount').textContent = libraryScripts.length;
+        renderLoadScriptList();
+        toast(`Deleted "${s.displayTitle}" from the shared library`);
       };
       body.appendChild(card);
     }

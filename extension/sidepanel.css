@@ -375,3 +375,5 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 /* "📂 Load script" modal on the Record tab (cards/sections reuse the .saved-* styles) */
 .load-script-search-row{flex-shrink:0;padding:10px 12px 0}
 .load-script-search-row input{font-size:12px;padding:8px 10px}
+.btn-del-script{background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;line-height:1}
+.btn-del-script:hover{background:#fee2e2;border-color:#fca5a5}
