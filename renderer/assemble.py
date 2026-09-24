@@ -87,8 +87,7 @@ def find_clip(arg_name, candidates):
     return None
 
 ROOT = Path(__file__).resolve().parent.parent
-# No intro or outro bumper clips by default: videos open on the title card and close on the support card.
-# Pass --intro <clip> or --outro <clip> explicitly to prepend/append branded bumpers.
+# Intro/outro default to the Hadrius Academy logo card (built below); --intro / --outro <clip> override.
 INTRO = Path(args[args.index('--intro') + 1]) if '--intro' in args else None
 OUTRO = Path(args[args.index('--outro') + 1]) if '--outro' in args else None
 rep = json.load(open(out / 'report.json'))
@@ -326,6 +325,33 @@ try:
         support_clip, music_path=MUSIC if MUSIC.exists() else None))
 except Exception as e:
     print(f"warning: could not generate support card: {e}")
+
+# Hadrius Academy logo card: opens every video (dissolving into the title card) and closes it (the
+# support card dissolves into it). Built once from assets/academy_logo.png and cached like the other
+# cards. An explicit --intro / --outro clip still takes precedence.
+LOGO_PNG = ROOT / 'assets' / 'academy_logo.png'
+LOGO_HOLD = 2.5
+logo_clip = tmp / 'logo_card.mp4'
+if LOGO_PNG.exists() and not (INTRO and OUTRO):
+    try:
+        st = LOGO_PNG.stat()
+        # The PNG's background is an uneven off-white (compression noise), which showed as a faint box
+        # on a white card; key it out so the logo sits on clean white.
+        logo_filter = (f"color=white:s={W}x{H}:r={FPS}:d={LOGO_HOLD}[bg];"
+                       f"[0:v]format=rgba,colorkey=0xfdfdfd:0.06:0.08,scale={int(W * 0.72)}:-2[lg];"
+                       f"[bg][lg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[v]")
+        cached_card(logo_clip, ['logo', st.st_size, int(st.st_mtime), logo_filter], lambda: subprocess.run([
+            'ffmpeg', '-y', '-loop', '1', '-framerate', str(FPS), '-i', str(LOGO_PNG),
+            '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+            '-filter_complex', logo_filter,
+            '-map', '[v]', '-map', '1:a', '-t', str(LOGO_HOLD),
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac', '-b:a', '192k', str(logo_clip)
+        ], check=True, capture_output=True))
+        if logo_clip.exists():
+            INTRO = INTRO or logo_clip
+            OUTRO = OUTRO or logo_clip
+    except Exception as e:
+        print(f"warning: could not generate logo card: {e}")
 
 def crossfade_pair(c1: Path, c2: Path, out_path: Path, xf_dur: float = 0.65, intermediate: bool = False) -> bool:
     if not (c1 and c1.exists() and c2 and c2.exists()):
