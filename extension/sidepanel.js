@@ -668,6 +668,28 @@ function repaintDriftDetails(scriptName) {
     if (badge && driftFlags[scriptName]) box.outerHTML = driftDetailsHtml(scriptName);
   }
 }
+// What a finished AI re-record did, in plain words — opened straight into the editor with its new plan.
+async function showRepairSummary(r) {
+  const title = r.title || formatHumanTitle(r.scriptName);
+  const prs = (r.prs || []).map((p) => `<a href="#" data-open-url="${esc(p.url)}">PR #${p.pr}</a>`).join(', ');
+  const changed = r.newSteps?.length
+    ? `Steps ${r.newSteps.join(', ')} are new or changed and got freshly written narration — read those first.`
+    : 'Every step lined up with the old recording, so all narration was kept.';
+  $('#repairSummaryBody').innerHTML = `
+    <p><strong>${esc(title)}</strong> was re-recorded by AI in Hadrius Academy against today's UI${prs ? ` (fixing ${prs})` : ''}.</p>
+    <ul>
+      <li><strong>${r.steps ?? '?'} steps</strong> (was ${r.oldSteps ?? '?'}). Narration kept on ${r.kept ?? 0}; newly written on ${r.rewritten ?? 0}.</li>
+      <li>${esc(changed)}</li>
+      <li>The shared script was saved over the old one${r.screenshotsToDrive ? ', and its new screenshots were uploaded to Drive' : ''}. The “May be outdated” flag is cleared.</li>
+      <li><strong>The video has not been rendered yet.</strong> ${r.hasDriveVideo ? 'Rendering updates the existing Drive video in place' : 'Rendering creates its first Drive video'}${r.hasPylonArticle ? ' and updates its existing Pylon article' : ' and a Pylon article'}.</li>
+    </ul>
+    <p class="muted">It's open in the editor now, with the plan it followed. Review it, then click Render.</p>`;
+  $('#repairSummaryOk').onclick = () => { $('#repairSummaryModal').hidden = true; };
+  // openScript asks before replacing unsaved steps already in the editor — the summary shows either way.
+  const opened = await openScript(r.scriptName);
+  if (!opened) $('#repairSummaryBody').lastElementChild.textContent = 'Load it from Load script to review it and its new plan, then click Render.';
+  $('#repairSummaryModal').hidden = false;
+}
 async function pollRepairJobs() {
   clearTimeout(repairPollTimer);
   const busy = Object.entries(repairJobs).filter(([, j]) => j.state === 'queued' || j.state === 'running');
@@ -678,10 +700,11 @@ async function pollRepairJobs() {
     } catch (_) { /* bridge restarting — try again next poll */ }
     const j = repairJobs[name];
     if (j.state === 'done') {
-      toast(`✓ Re-recorded "${formatHumanTitle(name)}" — load it to review, then Render`);
+      delete repairJobs[name];
       await loadDriftFlags();
       renderPylonArticles();
-      if (!$('#loadScriptModal').hidden) renderLoadScriptList();
+      if (!$('#loadScriptModal').hidden) closeLoadScriptModal();
+      showRepairSummary(j.result || { scriptName: name });
     } else repaintDriftDetails(name);
   }
   if (Object.values(repairJobs).some((j) => j.state === 'queued' || j.state === 'running')) repairPollTimer = setTimeout(pollRepairJobs, 4000);
@@ -689,7 +712,7 @@ async function pollRepairJobs() {
 // One delegated handler for every badge, wherever it's rendered.
 document.addEventListener('click', async (e) => {
   const link = e.target.closest('[data-open-url]');
-  if (link && link.closest('.drift-details')) { e.preventDefault(); chrome.tabs.create({ url: link.dataset.openUrl }); return; }
+  if (link && link.closest('.drift-details, #repairSummaryModal')) { e.preventDefault(); chrome.tabs.create({ url: link.dataset.openUrl }); return; }
   const badge = e.target.closest('.drift-badge');
   if (badge) {
     e.preventDefault(); e.stopPropagation();

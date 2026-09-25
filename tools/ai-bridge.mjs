@@ -746,9 +746,13 @@ async function runRepairJob(key, job, slot) {
   signal.throwIfAborted();
 
   const now = new Date().toISOString();
+  const { module } = await resolveScriptModule(name, { ...old, steps: fresh.steps, environment: fresh.environment });
   const updated = {
     ...old,
+    ...(module ? { module } : {}),
     steps: fresh.steps,
+    // The Record tab's checklist: the plan this re-record actually followed, not the old one.
+    workflowPlan: plan.steps.map((st) => st.instruction),
     recording: fresh.recording,
     environment: fresh.environment,
     updatedAt: now,
@@ -764,7 +768,16 @@ async function runRepairJob(key, job, slot) {
     await saveDriftFlags(doc);
   }
   const kept = pairs.filter(([i]) => old.steps[i].narration).length;
-  job.result = { scriptName: name, steps: fresh.steps.length, oldSteps: (old.steps || []).length, kept, rewritten: fresh.steps.length - kept };
+  const pairedNew = new Set(pairs.map(([, j]) => j));
+  job.result = {
+    scriptName: name, title: item.title, module: module || null,
+    steps: fresh.steps.length, oldSteps: (old.steps || []).length, kept, rewritten: fresh.steps.length - kept,
+    // 1-based numbers of the steps whose narration was newly written, for the review hint.
+    newSteps: fresh.steps.map((_, j) => j + 1).filter((n) => !pairedNew.has(n - 1)),
+    prs: flags.map((f) => ({ pr: f.pr, title: f.prTitle, url: f.prUrl })),
+    screenshotsToDrive: googleDriveConfigured(),
+    hasPylonArticle: !!old.pylonArticleId, hasDriveVideo: !!old.driveVideoId || !!old.driveVideoUrl,
+  };
   job.state = 'done';
   log(`Saved "${name}": ${fresh.steps.length} steps (was ${(old.steps || []).length}); kept narration on ${kept}, wrote ${fresh.steps.length - kept} new. Load it to review, then Render to update the video.`);
 }

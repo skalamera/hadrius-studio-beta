@@ -394,3 +394,9 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .drift-actions .muted{font-size:10px;line-height:1.35}
 .drift-repair-status{margin:6px 0 0;font-size:10px;color:#57534e;font-family:ui-monospace,Menlo,monospace}
 .drift-repair-status.failed{color:#b91c1c}
+.repair-summary-body{padding:4px 16px 0;font-size:12px;line-height:1.5}
+.repair-summary-body ul{margin:8px 0;padding-left:18px}
+.repair-summary-body li{margin:4px 0}
+.repair-summary-body a{color:var(--blue)}
+.repair-summary-actions{display:flex;justify-content:flex-end;padding:8px 16px 14px}
+.repair-summary-card{height:auto;max-height:88vh;overflow-y:auto}
