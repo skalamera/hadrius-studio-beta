@@ -23,9 +23,10 @@ import { attachFile } from './upload-fixtures.mjs';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browser-profile');
 export const STAGING_BASE = (process.env.KBS_STAGING_BASE || 'https://app.hadrius.com').replace(/\/$/, '');
-// Recordings run in the "Hadrius Sandbox" company (1048) in production — a sandbox tenant with
-// realistic data, chosen over staging after staging data gaps kept failing walkthroughs.
-export const RECORD_COMPANY_ID = process.env.KBS_COMPANY_ID || '1048';
+// Recordings run in the "Hadrius Academy" company (1150) in production — the tenant set aside for
+// training walkthroughs. (Before 2026-09-25 they ran in "Hadrius Sandbox", 1048; production was
+// chosen over staging after staging data gaps kept failing walkthroughs.)
+export const RECORD_COMPANY_ID = process.env.KBS_COMPANY_ID || '1150';
 const MAX_STEPS = 60; // a 6-step wizard with a couple of detours needs ~40; leave headroom so the model doesn't bail early
 const VIEWPORT = { width: 1600, height: 900 };
 const LOGIN_WAIT_MS = 10 * 60 * 1000; // how long to hold a window open for a manual Hadrius sign-in

@@ -678,13 +678,12 @@ async function narrateRecordedSteps(script, log) {
 
 // ---- "Re-record with AI" for a script a merged PR made outdated ----
 // The whole workflow is re-recorded (later steps depend on earlier ones having really happened), in
-// the Hadrius Academy company in prod, from a plan written against the CURRENT frontend code and told
+// the same Hadrius Academy company in prod as every AI recording, from a plan written against the CURRENT frontend code and told
 // exactly what the PRs removed. Then the new steps are lined up against the old ones: wherever a step
 // is still the same action on the same control, its existing narration and caption are kept; only
 // new or changed steps get freshly written narration. Every screenshot is new, so the video shows
 // today's UI. The script is saved under its own name, keeping its Drive/Pylon links, so the next
 // render updates the published video and article in place. It is NOT rendered automatically.
-const REPAIR_COMPANY_ID = process.env.KBS_REPAIR_COMPANY_ID || '1150'; // "Hadrius Academy"
 
 function startRouteOf(script) {
   const raw = script.environment?.startUrl || script.steps?.find((s) => s.url)?.url || '';
@@ -733,8 +732,8 @@ async function runRepairJob(key, job, slot) {
   const plan = await planFromCodebase(item, { signal, failure, previous });
   if (plan.exists === false) throw new Error(`the planner says this workflow no longer exists as recorded: ${plan.summary || 'no detail'}`);
   signal.throwIfAborted();
-  log(`Re-recording in Hadrius Academy (company ${REPAIR_COMPANY_ID}) in prod…`);
-  const { script: fresh } = await runAiRecord(item, { onLog: log, signal, profileDir: slotProfileDir(slot), plan, companyId: REPAIR_COMPANY_ID });
+  log('Re-recording in Hadrius Academy in prod…');
+  const { script: fresh } = await runAiRecord(item, { onLog: log, signal, profileDir: slotProfileDir(slot), plan });
   signal.throwIfAborted();
 
   fresh.name = old.name;
@@ -753,7 +752,7 @@ async function runRepairJob(key, job, slot) {
     recording: fresh.recording,
     environment: fresh.environment,
     updatedAt: now,
-    repairedFrom: { recordingId: old.recording?.id || null, at: now, prs: flags.map((f) => f.pr), companyId: REPAIR_COMPANY_ID },
+    repairedFrom: { recordingId: old.recording?.id || null, at: now, prs: flags.map((f) => f.pr) },
   };
   await saveScript(updated);
 
@@ -808,7 +807,7 @@ function pumpAiQueue() {
               name: desired,
               captionsFromNarration: false,
               createdAt: new Date().toISOString(),
-              environment: { startUrl: `https://app.hadrius.com${job.item.start_route || ''}?company_id=${process.env.KBS_COMPANY_ID || '1048'}` },
+              environment: { startUrl: `https://app.hadrius.com${job.item.start_route || ''}?company_id=${process.env.KBS_COMPANY_ID || '1150'}` },
               steps: [],
             });
           }
