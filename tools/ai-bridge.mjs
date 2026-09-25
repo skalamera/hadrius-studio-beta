@@ -656,6 +656,120 @@ function aiJobView(j, { full = false } = {}) {
 // rotation makes two profiles sharing one login invalidate each other.
 const aiSlots = Array.from({ length: AI_RECORD_CONCURRENCY }, (_, i) => i + 1);
 
+/** Write narration onto an AI-recorded script's steps with the same writer "Draft with AI" uses. */
+async function narrateRecordedSteps(script, log) {
+  log('Writing narration…');
+  try {
+    let lines = null;
+    try {
+      lines = JSON.parse((await runClaude(buildPrompt(script.steps, script.name), buildPromptPlain(script.steps, script.name))).match(/\[[\s\S]*\]/)?.[0] || '[]');
+    } catch (claudeErr) {
+      log(`  (Claude narration failed, falling back to gemini-3.8-flash…)`);
+      lines = await runGemini(script.steps, script.name);
+    }
+    if (Array.isArray(lines)) {
+      lines = sanitizeNarrationLines(lines);
+      script.steps.forEach((s, i) => { const l = String(lines[i] || '').trim(); if (l) s.narration = l; });
+    }
+  } catch (e) {
+    log(`  (narration skipped — ${String(e?.message || e).slice(0, 100)}; use ✨ Draft with AI in the editor)`);
+  }
+}
+
+// ---- "Re-record with AI" for a script a merged PR made outdated ----
+// The whole workflow is re-recorded (later steps depend on earlier ones having really happened), in
+// the Hadrius Academy company in prod, from a plan written against the CURRENT frontend code and told
+// exactly what the PRs removed. Then the new steps are lined up against the old ones: wherever a step
+// is still the same action on the same control, its existing narration and caption are kept; only
+// new or changed steps get freshly written narration. Every screenshot is new, so the video shows
+// today's UI. The script is saved under its own name, keeping its Drive/Pylon links, so the next
+// render updates the published video and article in place. It is NOT rendered automatically.
+const REPAIR_COMPANY_ID = process.env.KBS_REPAIR_COMPANY_ID || '1150'; // "Hadrius Academy"
+
+function startRouteOf(script) {
+  const raw = script.environment?.startUrl || script.steps?.find((s) => s.url)?.url || '';
+  try {
+    const u = new URL(raw);
+    u.searchParams.delete('company_id');
+    return u.pathname + (u.searchParams.toString() ? `?${u.searchParams}` : '');
+  } catch { return script.steps?.find((s) => s.route)?.route || '/'; }
+}
+
+const stepKey = (s) => `${s?.action || ''}|${String(s?.target?.name || s?.target?.text || s?.target?.label || s?.target?.placeholder || s?.value || '').trim().toLowerCase()}`;
+
+/** Longest-common-subsequence pairing of old and new steps by action + control: [[oldIdx, newIdx]]. */
+function alignSteps(oldSteps, newSteps) {
+  const a = oldSteps.map(stepKey), b = newSteps.map(stepKey);
+  const same = (i, j) => a[i] === b[j] && !a[i].endsWith('|'); // a step with no control never "matches"
+  const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) {
+    dp[i][j] = same(i, j) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  }
+  const pairs = [];
+  for (let i = 0, j = 0; i < a.length && j < b.length;) {
+    if (same(i, j)) { pairs.push([i, j]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
+  }
+  return pairs;
+}
+
+async function runRepairJob(key, job, slot) {
+  const { signal } = job.controller;
+  const log = (m) => aiLog(key, m);
+  const { name } = job.item;
+  const old = (await libraryGetByName(name))?.script;
+  if (!old) throw new Error(`"${name}" isn't in the shared library`);
+  const flags = (await loadDriftFlags()).scripts[name]?.flags || [];
+  const item = { title: old.title || formatHumanTitle(old.name), description: old.description || '', start_route: startRouteOf(old) };
+  const failure = (flags.length
+    ? 'This walkthrough was recorded before the app changed. Merged frontend PRs removed UI it used:\n'
+      + flags.map((f) => `- PR #${f.pr} "${f.prTitle}": ` + f.items.map((it) => `step ${it.step} used the ${it.kind === 'route' ? 'page' : 'label'} "${it.value}", which no longer exists`).join('; ')).join('\n')
+    : 'This walkthrough is being re-recorded against the current UI.')
+    + '\nPlan against the CURRENT code. Where an old step\'s control is gone, find what replaced it; keep the rest of the workflow the same.';
+  const previous = (old.steps || []).map((s, i) => `${i + 1}. ${s.action} ${s.target?.name || s.target?.text || s.value || s.route || ''}${s.narration ? ` — "${s.narration}"` : ''}`).join('\n');
+
+  const { runAiRecord, planFromCodebase, slotProfileDir } = await loadAiRecord();
+  log('Planning from the current frontend code…');
+  const plan = await planFromCodebase(item, { signal, failure, previous });
+  if (plan.exists === false) throw new Error(`the planner says this workflow no longer exists as recorded: ${plan.summary || 'no detail'}`);
+  signal.throwIfAborted();
+  log(`Re-recording in Hadrius Academy (company ${REPAIR_COMPANY_ID}) in prod…`);
+  const { script: fresh } = await runAiRecord(item, { onLog: log, signal, profileDir: slotProfileDir(slot), plan, companyId: REPAIR_COMPANY_ID });
+  signal.throwIfAborted();
+
+  fresh.name = old.name;
+  await narrateRecordedSteps(fresh, log);
+  const pairs = alignSteps(old.steps || [], fresh.steps);
+  for (const [i, j] of pairs) {
+    if (old.steps[i].narration) fresh.steps[j].narration = old.steps[i].narration;
+    if (old.steps[i].caption) fresh.steps[j].caption = old.steps[i].caption;
+  }
+  signal.throwIfAborted();
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...old,
+    steps: fresh.steps,
+    recording: fresh.recording,
+    environment: fresh.environment,
+    updatedAt: now,
+    repairedFrom: { recordingId: old.recording?.id || null, at: now, prs: flags.map((f) => f.pr), companyId: REPAIR_COMPANY_ID },
+  };
+  await saveScript(updated);
+
+  const doc = await loadDriftFlags();
+  if (doc.scripts[name]) {
+    delete doc.scripts[name];
+    (doc.dismissed ||= []).push({ name, pr: null, by: `${WHOAMI} (AI re-record)`, at: now });
+    doc.dismissed = doc.dismissed.slice(-200);
+    await saveDriftFlags(doc);
+  }
+  const kept = pairs.filter(([i]) => old.steps[i].narration).length;
+  job.result = { scriptName: name, steps: fresh.steps.length, oldSteps: (old.steps || []).length, kept, rewritten: fresh.steps.length - kept };
+  job.state = 'done';
+  log(`Saved "${name}": ${fresh.steps.length} steps (was ${(old.steps || []).length}); kept narration on ${kept}, wrote ${fresh.steps.length - kept} new. Load it to review, then Render to update the video.`);
+}
+
 function pumpAiQueue() {
   evictAiJobs();
   while (aiActive < AI_RECORD_CONCURRENCY && aiQueue.length && aiSlots.length) {
@@ -667,8 +781,9 @@ function pumpAiQueue() {
     job.state = 'running'; job.startedAt = new Date().toISOString();
     (async () => {
       const { signal } = job.controller;
-      const recipe = findDoneRecipe(job.item?.key);
+      const recipe = job.kind === 'repair' ? null : findDoneRecipe(job.item?.key);
       try {
+        if (job.kind === 'repair') { await runRepairJob(key, job, slot); return; }
         if (recipe) {
           // This workflow already has a hand-written Phase 1 recipe — the same one render.sh
           // prefers over any recorded script. AI-driven exploration would just record a replay
@@ -716,22 +831,7 @@ function pumpAiQueue() {
         // Narration: the recorder leaves steps un-narrated (the agent's per-turn reasoning is kept
         // in step.aiReason for debugging only). Write real, codebase-grounded narration with the same
         // writer "Draft with AI" uses, so AI-recorded scripts read like the hand-recorded ones.
-        aiLog(key, 'Writing narration…');
-        try {
-          let lines = null;
-          try {
-            lines = JSON.parse((await runClaude(buildPrompt(script.steps, script.name), buildPromptPlain(script.steps, script.name))).match(/\[[\s\S]*\]/)?.[0] || '[]');
-          } catch (claudeErr) {
-            aiLog(key, `  (Claude narration failed, falling back to gemini-3.8-flash…)`);
-            lines = await runGemini(script.steps, script.name);
-          }
-          if (Array.isArray(lines)) {
-            lines = sanitizeNarrationLines(lines);
-            script.steps.forEach((s, i) => { const l = String(lines[i] || '').trim(); if (l) s.narration = l; });
-          }
-        } catch (e) {
-          aiLog(key, `  (narration skipped — ${String(e?.message || e).slice(0, 100)}; use ✨ Draft with AI in the editor)`);
-        }
+        await narrateRecordedSteps(script, (m) => aiLog(key, m));
         signal.throwIfAborted();
         // Never silently overwrite a script someone recorded by hand under the same name.
         const desired = safeName(script.name);
@@ -3046,6 +3146,25 @@ const server = http.createServer(async (req, res) => {
   if (u.pathname === '/drift' && req.method === 'GET') {
     try { return sendJson(res, 200, { ok: true, watching: !!PR_WATCH_USER, ...(await loadDriftFlags()) }); }
     catch (e) { return sendJson(res, 400, { ok: false, error: String(e?.message || e) }); }
+  }
+  if (u.pathname === '/drift/repair') {
+    try {
+      if (req.method === 'POST') {
+        const { name } = await readJsonBody(req);
+        if (!name) throw new Error('missing name');
+        const key = `repair:${name}`;
+        const existing = aiJobs.get(key);
+        if (!existing || !aiBusy(existing)) {
+          await requireClaudeAuth();
+          aiJobs.set(key, { kind: 'repair', state: 'queued', startedAt: null, finishedAt: null, log: [`Queued AI re-record of "${name}"…`], error: null, result: null, item: { name }, controller: new AbortController() });
+          aiQueue.push(key);
+          pumpAiQueue();
+        }
+        return sendJson(res, 202, { ok: true, job: aiJobView(aiJobs.get(key)) });
+      }
+      const job = aiJobs.get(`repair:${u.searchParams.get('name') || ''}`);
+      return sendJson(res, 200, { ok: true, job: job ? aiJobView(job) : null });
+    } catch (e) { return sendJson(res, 400, { ok: false, error: String(e?.message || e) }); }
   }
   if (u.pathname === '/drift/dismiss' && req.method === 'POST') {
     try {

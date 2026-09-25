@@ -848,13 +848,13 @@ function describeOutcome(before, after) {
  * first use, in which case the operator is asked to sign in once in the visible window.
  * Throws Error('cancelled') if `signal` aborts at any point — including mid-action or mid-model-call.
  */
-export async function runAiRecord(item, { onLog = () => {}, signal, profileDir = slotProfileDir(1), stagingBase = STAGING_BASE, plan = null, onPlan = null } = {}) {
+export async function runAiRecord(item, { onLog = () => {}, signal, profileDir = slotProfileDir(1), stagingBase = STAGING_BASE, plan = null, onPlan = null, companyId = RECORD_COMPANY_ID } = {}) {
   // Pin the tenant explicitly. Without ?company_id the agent lands on whatever company its own
   // staging session happens to default to — which is how a run ended up driving company 1
   // (Hadrius) and failing on a case it had no membership on. Staging is a nightly clone of real
   // production data for EVERY tenant, so an unpinned run can also record a stranger's real data.
   const startUrl = stagingBase.replace(/\/$/, '') + item.start_route
-    + (item.start_route.includes('?') ? '&' : '?') + `company_id=${RECORD_COMPANY_ID}`;
+    + (item.start_route.includes('?') ? '&' : '?') + `company_id=${companyId}`;
   const throwIfCancelled = () => { if (signal?.aborted) throw new Error('cancelled'); };
   const firstUse = !fs.existsSync(profileDir);
   fs.mkdirSync(profileDir, { recursive: true });

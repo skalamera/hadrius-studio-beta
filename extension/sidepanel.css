@@ -388,3 +388,9 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .drift-dismiss{font-size:10px;padding:2px 8px;border:1px solid #d6d3d1;background:#fff;border-radius:4px;cursor:pointer}
 .drift-details p{margin:6px 0 0}
 .pylon-article-item:has(.drift-details){flex-wrap:wrap}
+.drift-actions{display:flex;align-items:flex-start;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #fde68a}
+.drift-repair{flex-shrink:0;font-size:11px;font-weight:600;padding:3px 10px;border:1px solid #4b3ca9;background:#4b3ca9;color:#fff;border-radius:4px;cursor:pointer}
+.drift-repair:disabled{opacity:.6;cursor:default}
+.drift-actions .muted{font-size:10px;line-height:1.35}
+.drift-repair-status{margin:6px 0 0;font-size:10px;color:#57534e;font-family:ui-monospace,Menlo,monospace}
+.drift-repair-status.failed{color:#b91c1c}

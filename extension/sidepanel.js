@@ -647,7 +647,44 @@ function driftDetailsHtml(scriptName) {
       <ul>${f.items.map((it) => `<li>Step ${it.step}: ${it.kind === 'route' ? 'page' : ''} “${esc(it.value)}” no longer exists in the app <span class="muted">(${esc(it.file.split('/').pop())})</span></li>`).join('')}</ul>
       <button type="button" class="drift-dismiss" data-drift-script="${esc(scriptName)}" data-drift-pr="${f.pr}">Dismiss</button>
     </div>`).join('');
-  return `<div class="drift-details">${flags}<p class="muted">Re-record or edit the affected steps, then dismiss.</p></div>`;
+  const job = repairJobs[scriptName];
+  const busy = job && (job.state === 'queued' || job.state === 'running');
+  const status = job ? `<p class="drift-repair-status${job.state === 'failed' ? ' failed' : ''}">${esc(
+    job.state === 'failed' ? `AI re-record failed: ${job.error || 'unknown error'}` : (job.log?.[job.log.length - 1] || 'Starting…'))}</p>` : '';
+  return `<div class="drift-details">${flags}
+    <div class="drift-actions">
+      <button type="button" class="drift-repair" data-drift-script="${esc(scriptName)}" ${busy ? 'disabled' : ''}>${busy ? 'Re-recording…' : '🤖 Re-record with AI'}</button>
+      <span class="muted">Redoes the workflow in Hadrius Academy (prod) against today's UI, keeps narration on unchanged steps, and saves over this script. Review, then Render.</span>
+    </div>${status}</div>`;
+}
+
+// AI re-record jobs by script name, polled while any is in flight.
+const repairJobs = {};
+let repairPollTimer = null;
+function repaintDriftDetails(scriptName) {
+  for (const box of document.querySelectorAll('.drift-details')) {
+    const host = box.closest('.pylon-article-item, .saved-script-card');
+    const badge = host?.querySelector(`.drift-badge[data-drift-script="${CSS.escape(scriptName)}"]`);
+    if (badge && driftFlags[scriptName]) box.outerHTML = driftDetailsHtml(scriptName);
+  }
+}
+async function pollRepairJobs() {
+  clearTimeout(repairPollTimer);
+  const busy = Object.entries(repairJobs).filter(([, j]) => j.state === 'queued' || j.state === 'running');
+  for (const [name] of busy) {
+    try {
+      const r = await api(`/drift/repair?name=${encodeURIComponent(name)}`);
+      if (r.job) repairJobs[name] = r.job;
+    } catch (_) { /* bridge restarting — try again next poll */ }
+    const j = repairJobs[name];
+    if (j.state === 'done') {
+      toast(`✓ Re-recorded "${formatHumanTitle(name)}" — load it to review, then Render`);
+      await loadDriftFlags();
+      renderPylonArticles();
+      if (!$('#loadScriptModal').hidden) renderLoadScriptList();
+    } else repaintDriftDetails(name);
+  }
+  if (Object.values(repairJobs).some((j) => j.state === 'queued' || j.state === 'running')) repairPollTimer = setTimeout(pollRepairJobs, 4000);
 }
 // One delegated handler for every badge, wherever it's rendered.
 document.addEventListener('click', async (e) => {
@@ -660,6 +697,20 @@ document.addEventListener('click', async (e) => {
     const open = host?.querySelector('.drift-details');
     if (open) open.remove();
     else if (host) host.insertAdjacentHTML('beforeend', driftDetailsHtml(badge.dataset.driftScript));
+    return;
+  }
+  const repair = e.target.closest('.drift-repair');
+  if (repair) {
+    e.preventDefault(); e.stopPropagation();
+    const name = repair.dataset.driftScript;
+    if (!confirm(`Re-record "${formatHumanTitle(name)}" with AI?\n\nThe AI recorder will redo this workflow in the Hadrius Academy company in prod (creating real records there), then save the result over the shared script. The published video only changes when you Render it.`)) return;
+    repair.disabled = true; repair.textContent = 'Starting…';
+    try {
+      const r = await api('/drift/repair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      repairJobs[name] = r.job || { state: 'queued', log: [] };
+      repaintDriftDetails(name);
+      pollRepairJobs();
+    } catch (err) { repair.disabled = false; repair.textContent = '🤖 Re-record with AI'; alert(`Couldn't start the AI re-record: ${err.message}`); }
     return;
   }
   const dismiss = e.target.closest('.drift-dismiss');
