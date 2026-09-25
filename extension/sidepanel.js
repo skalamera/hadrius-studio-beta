@@ -243,6 +243,7 @@ async function refreshAll() {
     $('#syncStatus').textContent = `Workflow plans loaded · Pylon unavailable: ${pylonResult.reason?.message || 'bridge error'}`;
   }
   renderModules();
+  await loadDriftFlags();
   renderPylonArticles();
 }
 
@@ -576,6 +577,7 @@ function renderPylonArticles() {
         item.innerHTML = `
           <a href="#" class="pylon-article-title"><img class="pylon-article-badge" src="icons/status/pylon-connected.svg" alt="Pylon">${esc(cleanTitle)}</a>
           <span class="badge ${statusClass}">${statusLabel}</span>
+          ${driftBadgeHtml(article.linkedScript)}
           ${driveLinkHtml}
           ${loadBtnHtml}
         `;
@@ -625,6 +627,54 @@ function paintDriveLinks() {
       : (el.dataset.readyTitle || '');
   });
 }
+// ---- PR drift flags: merged frontend PRs that removed a label or route a recording depends on ----
+// Shared for everyone (one library record the bridge's PR watcher writes); anyone can dismiss one.
+let driftFlags = {};
+async function loadDriftFlags() {
+  try { driftFlags = (await api('/drift')).scripts || {}; } catch (_) { /* keep the last copy */ }
+}
+function driftBadgeHtml(scriptName) {
+  const entry = scriptName && driftFlags[scriptName];
+  if (!entry?.flags?.length) return '';
+  const n = entry.flags.length;
+  return `<button type="button" class="drift-badge" data-drift-script="${esc(scriptName)}" title="${n} merged PR${n === 1 ? '' : 's'} changed something this video shows — click for details">⚠ May be outdated</button>`;
+}
+function driftDetailsHtml(scriptName) {
+  const entry = driftFlags[scriptName];
+  const flags = entry.flags.map((f) => `
+    <div class="drift-flag">
+      <div><a href="#" data-open-url="${esc(f.prUrl)}">PR #${f.pr}</a> ${esc(f.prTitle)}${f.author ? ` <span class="muted">· ${esc(f.author)}</span>` : ''}</div>
+      <ul>${f.items.map((it) => `<li>Step ${it.step}: ${it.kind === 'route' ? 'page' : ''} “${esc(it.value)}” no longer exists in the app <span class="muted">(${esc(it.file.split('/').pop())})</span></li>`).join('')}</ul>
+      <button type="button" class="drift-dismiss" data-drift-script="${esc(scriptName)}" data-drift-pr="${f.pr}">Dismiss</button>
+    </div>`).join('');
+  return `<div class="drift-details">${flags}<p class="muted">Re-record or edit the affected steps, then dismiss.</p></div>`;
+}
+// One delegated handler for every badge, wherever it's rendered.
+document.addEventListener('click', async (e) => {
+  const link = e.target.closest('[data-open-url]');
+  if (link && link.closest('.drift-details')) { e.preventDefault(); chrome.tabs.create({ url: link.dataset.openUrl }); return; }
+  const badge = e.target.closest('.drift-badge');
+  if (badge) {
+    e.preventDefault(); e.stopPropagation();
+    const host = badge.closest('.pylon-article-item, .saved-script-card');
+    const open = host?.querySelector('.drift-details');
+    if (open) open.remove();
+    else if (host) host.insertAdjacentHTML('beforeend', driftDetailsHtml(badge.dataset.driftScript));
+    return;
+  }
+  const dismiss = e.target.closest('.drift-dismiss');
+  if (dismiss) {
+    e.preventDefault(); e.stopPropagation();
+    dismiss.disabled = true; dismiss.textContent = 'Dismissing…';
+    try {
+      await api('/drift/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: dismiss.dataset.driftScript, pr: Number(dismiss.dataset.driftPr) }) });
+      await loadDriftFlags();
+      renderPylonArticles();
+      if (!$('#loadScriptModal').hidden) renderLoadScriptList();
+    } catch (err) { dismiss.disabled = false; dismiss.textContent = 'Dismiss'; alert(`Couldn't dismiss: ${err.message}`); }
+  }
+});
+
 async function refreshDriveProcessing() {
   clearTimeout(drivePollTimer);
   drivePollTimer = null;
@@ -2436,7 +2486,7 @@ async function openLoadScriptModal() {
   $('#loadScriptSearch').value = '';
   $('#loadScriptList').innerHTML = '<p class="muted" style="padding:16px;text-align:center">Loading shared scripts…</p>';
   setTimeout(() => $('#loadScriptSearch').focus(), 50);
-  const r = await send({ type: 'PANEL_LIBRARY_LIST' });
+  const [r] = await Promise.all([send({ type: 'PANEL_LIBRARY_LIST' }), loadDriftFlags()]);
   if (!r?.ok) {
     $('#loadScriptList').innerHTML = `<p class="muted" style="padding:16px;text-align:center;color:var(--red)">${esc(r?.error || 'Could not load the shared script library.')}</p>`;
     return;
@@ -2494,6 +2544,7 @@ function renderLoadScriptList() {
         <div class="saved-script-top">
           <div class="saved-script-title">${esc(s.displayTitle)}</div>
           ${s.mp4_ready ? '<span class="mp4-badge">🎬 MP4 ready</span>' : ''}
+          ${driftBadgeHtml(s.name)}
         </div>
         <div class="saved-script-meta">
           <span>${s.step_count ?? '?'} step${s.step_count === 1 ? '' : 's'}</span>

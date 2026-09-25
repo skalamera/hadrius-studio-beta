@@ -12,6 +12,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
+import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
 import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording } from './gdrive.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
@@ -22,7 +23,7 @@ const PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browse
 // Only the keys the bridge itself uses are imported. ~/.hermes/.env in particular is shared with
 // other tools and carries ANTHROPIC_API_KEY etc.; if those reached process.env they would be
 // inherited by every `claude` we spawn and override the operator's `claude login` session.
-const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GOOGLE_DRIVE_FOLDER_ID']);
+const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GOOGLE_DRIVE_FOLDER_ID', 'PR_WATCH_USER']);
 let LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
 let GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 
@@ -420,6 +421,57 @@ function backfillRecordingUploads() {
   for (const n of names) {
     try { queueRecordingUpload(JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))); } catch (_) {}
   }
+}
+
+// ---- PR drift flags (tools/pr-watch.mjs) ----
+// All flags live in one reserved library record, so every coworker's panel gets them in a single
+// fetch without a backend change. Only the machine with PR_WATCH_USER set polls GitHub; everyone
+// reads the record, and anyone can dismiss a flag.
+const DRIFT_DOC_NAME = '_studio-drift-flags';
+const PR_WATCH_USER = (process.env.PR_WATCH_USER || '').trim();
+const PR_WATCH_INTERVAL_MS = 10 * 60 * 1000;
+
+async function loadDriftFlags() {
+  const doc = (await libraryGetByName(DRIFT_DOC_NAME))?.script?.drift;
+  return doc && doc.scripts ? doc : { scripts: {} };
+}
+async function saveDriftFlags(doc) {
+  await libraryFetch('POST', null, {
+    script: { name: DRIFT_DOC_NAME, title: 'Studio drift flags (internal)', steps: [], drift: { ...doc, updatedAt: new Date().toISOString() } },
+    updated_by: WHOAMI,
+  });
+}
+
+const prWatchScriptCache = new Map(); // name -> { updated_at, script }
+async function loadAllLibraryScripts() {
+  const list = (await libraryFetch('GET'))?.items || [];
+  const out = [];
+  for (const item of list) {
+    if (!item.name || item.name.startsWith(DRIFT_DOC_NAME)) continue;
+    const cached = prWatchScriptCache.get(item.name);
+    if (cached && cached.updated_at === item.updated_at) { out.push(cached.script); continue; }
+    const full = await libraryGetByName(item.name);
+    if (!full?.script) continue;
+    prWatchScriptCache.set(item.name, { updated_at: item.updated_at, script: full.script });
+    out.push(full.script);
+  }
+  return out;
+}
+
+let prWatchRunning = false;
+async function prWatchTick() {
+  if (prWatchRunning || !LIBRARY_SECRET) return;
+  prWatchRunning = true;
+  try {
+    const r = await runPrWatch({
+      user: PR_WATCH_USER,
+      statePath: path.join(REPO_ROOT, 'out', '_pr-watch-state.json'),
+      mirrorDir: path.join(REPO_ROOT, 'out', '_frontend-mirror'),
+      loadScripts: loadAllLibraryScripts, loadFlags: loadDriftFlags, saveFlags: saveDriftFlags,
+    });
+    if (r.prs) console.log(`[pr-watch] checked ${r.prs} merged PR(s) in ${FRONTEND_REPO}; ${r.flagged} new flag(s)`);
+  } catch (e) { console.warn(`[pr-watch] ${String(e?.message || e)}`); }
+  finally { prWatchRunning = false; }
 }
 
 async function saveScript(script, extra = {}) {
@@ -2798,6 +2850,7 @@ const server = http.createServer(async (req, res) => {
         const merged = [];
         for (const r of remoteItems) {
           const sName = r.name;
+          if (sName.startsWith(DRIFT_DOC_NAME)) continue; // internal record, not a walkthrough
           seenNames.add(sName.toLowerCase());
           const mName = safeName(sName);
           const mp4Path = path.join(REPO_ROOT, 'out', mName, `${mName}.mp4`);
@@ -2987,6 +3040,28 @@ const server = http.createServer(async (req, res) => {
   // ---- is the `claude` CLI signed in on this machine? (?fresh=1 bypasses the 60s cache) ----
   if (req.method === 'GET' && u.pathname === '/auth') {
     return sendJson(res, 200, { ok: true, ...(await checkClaudeAuth({ maxAgeMs: u.searchParams.has('fresh') ? 0 : 60000 })) });
+  }
+
+  // ---- PR drift flags: GET the shared record, POST /drift/dismiss { name, pr? } to clear ----
+  if (u.pathname === '/drift' && req.method === 'GET') {
+    try { return sendJson(res, 200, { ok: true, watching: !!PR_WATCH_USER, ...(await loadDriftFlags()) }); }
+    catch (e) { return sendJson(res, 400, { ok: false, error: String(e?.message || e) }); }
+  }
+  if (u.pathname === '/drift/dismiss' && req.method === 'POST') {
+    try {
+      const { name, pr } = await readJsonBody(req);
+      if (!name) throw new Error('missing name');
+      const doc = await loadDriftFlags();
+      const entry = doc.scripts[name];
+      if (entry) {
+        entry.flags = pr ? entry.flags.filter((f) => f.pr !== pr) : [];
+        if (!entry.flags.length) delete doc.scripts[name];
+        (doc.dismissed ||= []).push({ name, pr: pr || null, by: WHOAMI, at: new Date().toISOString() });
+        doc.dismissed = doc.dismissed.slice(-200);
+        await saveDriftFlags(doc);
+      }
+      return sendJson(res, 200, { ok: true });
+    } catch (e) { return sendJson(res, 400, { ok: false, error: String(e?.message || e) }); }
   }
 
   // ---- trigger / query Vercel health check ----
@@ -3508,4 +3583,9 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('Uses your logged-in `claude` CLI session (run `claude auth status` to check).');
   console.log('Keep this running while using "Draft with AI" in the side panel. Ctrl+C to stop.');
   if (googleDriveConfigured()) setTimeout(backfillRecordingUploads, 5000);
+  if (PR_WATCH_USER) {
+    console.log(`[pr-watch] watching ${FRONTEND_REPO} for merged PRs as ${PR_WATCH_USER}, every ${PR_WATCH_INTERVAL_MS / 60000} min`);
+    setTimeout(prWatchTick, 15000);
+    setInterval(prWatchTick, PR_WATCH_INTERVAL_MS);
+  }
 });
