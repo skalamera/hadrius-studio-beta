@@ -242,3 +242,117 @@ async function googleDriveShareAnyoneReader(fileId, accessToken) {
     throw new Error(`Google Drive sharing failed: ${data.error?.message || resp.status}`);
   }
 }
+
+// ---- Recording screenshots ----
+// A saved script carries its narration and captions, but the slides it renders from are PNGs the
+// extension captured onto the recorder's own disk (out/_recordings/<recordingId>/). Mirroring them
+// into Hadrius Academy/_recordings/<recordingId>/ is what lets a coworker load anyone's shared script
+// and render it on their own machine. Files are named by the step's captureId (step_<id>.png), so a
+// name already in the folder is the same capture — only missing names are uploaded.
+const RECORDINGS_FOLDER_NAME = '_recordings';
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const folderIdCache = new Map(); // `${parentId}/${name}` -> folder id
+
+async function driveJson(url, init, what) {
+  const resp = await fetch(url, init);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(`Google Drive ${what} failed: ${data.error?.message || resp.status}`);
+  return data;
+}
+
+async function findChildFolder(name, parentId, accessToken, { create }) {
+  const key = `${parentId}/${name}`;
+  if (folderIdCache.has(key)) return folderIdCache.get(key);
+  const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const params = new URLSearchParams({
+    q: `name = '${esc(name)}' and '${esc(parentId)}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`,
+    fields: 'files(id)', orderBy: 'createdTime', pageSize: '1',
+    supportsAllDrives: 'true', includeItemsFromAllDrives: 'true',
+  });
+  const found = (await driveJson(`https://www.googleapis.com/drive/v3/files?${params}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }, 'folder search')).files?.[0];
+  let id = found?.id || null;
+  if (!id && create) {
+    id = (await driveJson('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
+    }, 'folder create')).id;
+  }
+  if (id) folderIdCache.set(key, id);
+  return id;
+}
+
+async function recordingFolder(recordingId, accessToken, { create }) {
+  const root = await findChildFolder(RECORDINGS_FOLDER_NAME, HADRIUS_ACADEMY_FOLDER_ID, accessToken, { create });
+  return root ? findChildFolder(recordingId, root, accessToken, { create }) : null;
+}
+
+async function listFolderFiles(folderId, accessToken) {
+  const files = new Map();
+  let pageToken;
+  do {
+    const params = new URLSearchParams({
+      q: `'${folderId}' in parents and trashed = false`, fields: 'nextPageToken,files(id,name)',
+      pageSize: '1000', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true',
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const data = await driveJson(`https://www.googleapis.com/drive/v3/files?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }, 'folder listing');
+    for (const f of data.files || []) if (!files.has(f.name)) files.set(f.name, f.id);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return files;
+}
+
+/** Upload whichever of `fileNames` exist in `localDir` but not yet in Drive. Returns the count sent. */
+export async function googleDriveUploadRecording(recordingId, localDir, fileNames) {
+  if (!googleDriveConfigured()) return 0;
+  const present = fileNames.filter((n) => fs.existsSync(path.join(localDir, n)));
+  if (!present.length) return 0;
+  const accessToken = await getAccessToken();
+  const folderId = await recordingFolder(recordingId, accessToken, { create: true });
+  const remote = await listFolderFiles(folderId, accessToken);
+  let sent = 0;
+  for (const name of present) {
+    if (remote.has(name)) continue;
+    const boundary = `hadrius-studio-${Date.now()}`;
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [folderId] })}\r\n--${boundary}\r\nContent-Type: image/png\r\n\r\n`),
+      fs.readFileSync(path.join(localDir, name)),
+      Buffer.from(`\r\n--${boundary}--`),
+    ]);
+    await driveJson('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+      body,
+    }, `upload of ${name}`);
+    sent++;
+  }
+  return sent;
+}
+
+/** Download whichever of `fileNames` are missing from `localDir` but present in Drive. Returns the count fetched. */
+export async function googleDriveDownloadRecording(recordingId, localDir, fileNames) {
+  if (!googleDriveConfigured()) return 0;
+  const missing = fileNames.filter((n) => !fs.existsSync(path.join(localDir, n)));
+  if (!missing.length) return 0;
+  const accessToken = await getAccessToken();
+  const folderId = await recordingFolder(recordingId, accessToken, { create: false });
+  if (!folderId) return 0;
+  const remote = await listFolderFiles(folderId, accessToken);
+  fs.mkdirSync(localDir, { recursive: true });
+  let got = 0;
+  for (const name of missing) {
+    const id = remote.get(name);
+    if (!id) continue;
+    const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!resp.ok) throw new Error(`Google Drive download of ${name} failed: ${resp.status}`);
+    const dest = path.join(localDir, name);
+    fs.writeFileSync(`${dest}.part`, Buffer.from(await resp.arrayBuffer()));
+    fs.renameSync(`${dest}.part`, dest);
+    got++;
+  }
+  return got;
+}

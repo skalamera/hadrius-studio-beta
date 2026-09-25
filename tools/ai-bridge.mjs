@@ -12,7 +12,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
-import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus } from './gdrive.mjs';
+import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording } from './gdrive.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -379,6 +379,49 @@ async function carryOverPublishLinks(script) {
   }
 }
 
+// ---- recording screenshots, shared through Drive (tools/gdrive.mjs) ----
+// The library carries a script's narration and captions, but its slides live only on the disk of
+// whoever recorded it. Every save mirrors them to Drive, and a render on any other machine pulls the
+// missing ones down first — so anyone can render anyone's shared script.
+const recordingIdOf = (script) => String(script?.recording?.id || '').replace(/[^\w-]+/g, '');
+const recordingDirOf = (id) => path.join(REPO_ROOT, 'out', '_recordings', id);
+const recordingFilesOf = (script) => [...new Set((script?.steps || [])
+  .filter((st) => st?.capture !== false && st?.media?.pre).map((st) => path.basename(st.media.pre)))];
+
+// One upload at a time: they're background work, and two saves of the same new recording racing to
+// create its Drive folder would each make one.
+let recordingUploadChain = Promise.resolve();
+function queueRecordingUpload(script) {
+  const id = recordingIdOf(script);
+  const files = recordingFilesOf(script);
+  if (!id || !files.length || !googleDriveConfigured() || !fs.existsSync(recordingDirOf(id))) return recordingUploadChain;
+  recordingUploadChain = recordingUploadChain.then(async () => {
+    try {
+      const sent = await googleDriveUploadRecording(id, recordingDirOf(id), files);
+      if (sent) console.log(`[recordings] uploaded ${sent} screenshot(s) for "${script.name}" to Drive`);
+    } catch (e) { console.warn(`[recordings] Drive upload for "${script.name}" failed: ${String(e?.message || e)}`); }
+  });
+  return recordingUploadChain;
+}
+
+/** Pull any of the script's screenshots this machine doesn't have. Returns how many came down. */
+async function fetchRecordingFromDrive(script) {
+  const id = recordingIdOf(script);
+  if (!id || !googleDriveConfigured()) return 0;
+  return googleDriveDownloadRecording(id, recordingDirOf(id), recordingFilesOf(script));
+}
+
+// Scripts saved before this existed only have their screenshots on the recorder's machine; push
+// every local one up once at startup (already-uploaded files are skipped by name, so it's cheap).
+function backfillRecordingUploads() {
+  const dir = path.join(REPO_ROOT, 'scripts');
+  let names = [];
+  try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.script.json')); } catch { return; }
+  for (const n of names) {
+    try { queueRecordingUpload(JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))); } catch (_) {}
+  }
+}
+
 async function saveScript(script, extra = {}) {
   // Capture the real display title BEFORE sanitizing name into a filename-safe slug — safeName()
   // turns any non-word character (including an apostrophe) into a hyphen, so "policy's" became the
@@ -390,6 +433,7 @@ async function saveScript(script, extra = {}) {
   await backfillRecipeStartUrl(script);
   const out = await libraryFetch('POST', null, { ...extra, script, updated_by: WHOAMI });
   try { fs.mkdirSync(path.join(REPO_ROOT, 'scripts'), { recursive: true }); fs.writeFileSync(path.join(REPO_ROOT, 'scripts', `${out.item.name}.script.json`), JSON.stringify(script, null, 2)); } catch (_) {}
+  queueRecordingUpload(script);
   return out;
 }
 
@@ -1859,6 +1903,10 @@ const server = http.createServer(async (req, res) => {
     const recordingId = getCaptureMatch[1].replace(/[^\w-]+/g, '');
     const filename = path.basename(getCaptureMatch[2]);
     const filePath = path.join(REPO_ROOT, 'out', '_recordings', recordingId, filename);
+    // A loaded coworker's script: fetch the screenshot from Drive the first time the editor asks.
+    if (!fs.existsSync(filePath) && recordingId && googleDriveConfigured()) {
+      try { await googleDriveDownloadRecording(recordingId, path.dirname(filePath), [filename]); } catch (_) {}
+    }
     if (fs.existsSync(filePath)) {
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
       return fs.createReadStream(filePath).pipe(res);
@@ -3246,6 +3294,11 @@ const server = http.createServer(async (req, res) => {
         if (!recordingId) throw new Error('script has no live recording id — make a new recording before rendering');
         const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
         fs.mkdirSync(recordingDir, { recursive: true });
+        // Someone else's recording: its screenshots are in Drive, not on this machine.
+        try {
+          const got = await fetchRecordingFromDrive(script);
+          if (got) console.log(`[recordings] downloaded ${got} screenshot(s) for "${name}" from Drive`);
+        } catch (e) { console.warn(`[recordings] Drive download for "${name}" failed: ${String(e?.message || e)}`); }
 
         // If slides are missing from recordingDir, check if they exist in out/<name>/slides
         const priorOutSlides = path.join(REPO_ROOT, 'out', name, 'slides');
@@ -3454,4 +3507,5 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`KB Studio AI bridge listening on http://127.0.0.1:${PORT}`);
   console.log('Uses your logged-in `claude` CLI session (run `claude auth status` to check).');
   console.log('Keep this running while using "Draft with AI" in the side panel. Ctrl+C to stop.');
+  if (googleDriveConfigured()) setTimeout(backfillRecordingUploads, 5000);
 });
