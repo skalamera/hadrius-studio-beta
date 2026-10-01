@@ -88,8 +88,8 @@ def find_clip(arg_name, candidates):
 
 ROOT = Path(__file__).resolve().parent.parent
 # Intro/outro default to the Hadrius Academy logo card (built below); --intro / --outro <clip> override.
-INTRO = Path(args[args.index('--intro') + 1]) if '--intro' in args else None
-OUTRO = Path(args[args.index('--outro') + 1]) if '--outro' in args else None
+INTRO = Path(args[args.index('--intro') + 1]) if '--intro' in args else ((out / 'intro.mp4') if (out / 'intro.mp4').exists() else None)
+OUTRO = Path(args[args.index('--outro') + 1]) if '--outro' in args else ((out / 'outro.mp4') if (out / 'outro.mp4').exists() else None)
 rep = json.load(open(out / 'report.json'))
 slides = rep['slides']
 # Only renderer/from-recording.mjs needs a drawn-on highlight: it renders straight from screenshots
@@ -119,7 +119,8 @@ narrator = narration.Narrator(
     vs_voice=args[args.index('--vs-voice') + 1] if '--vs-voice' in args else None,
     edge_voice=VOICE, edge_rate=RATE, edge_pitch=PITCH)
 for s in slides:
-    s['audio'] = str(narrator.speak(s['narration'])[0]) if s['narration'] else None
+    text_to_speak = re.sub(r'\bHadrius\b', 'Heydrius', s['narration']) if s.get('narration') else ''
+    s['audio'] = str(narrator.speak(text_to_speak)[0]) if text_to_speak else None
 print(narrator.describe())
 
 def dur(f):
@@ -133,34 +134,45 @@ for s in slides:
 
 # ---------- 2. caption cards ----------
 font = ImageFont.truetype(FONT, 40)
-def caption_png(text, path):
-    lines = textwrap.wrap(text, 78); lh, px, py = 50, 34, 20
+def caption_png(text, path, pos='center'):
+    wrap_width = 42 if pos == 'left' else 78
+    lines = textwrap.wrap(text, wrap_width); lh, px, py = 50, 34, 20
     tw = max(font.getlength(l) for l in lines); bw, bh = int(tw + 2 * px), int(len(lines) * lh + 2 * py)
-    img = Image.new('RGBA', (W, bh + 16), (0, 0, 0, 0)); d = ImageDraw.Draw(img); x0 = (W - bw) // 2
+    img = Image.new('RGBA', (W, bh + 16), (0, 0, 0, 0)); d = ImageDraw.Draw(img)
+    if pos == 'left':
+        x0 = 250
+    elif pos == 'right':
+        x0 = W - bw - 40
+    else:
+        x0 = (W - bw) // 2
     d.rounded_rectangle([x0, 8, x0 + bw, 8 + bh], radius=18, fill=(15, 15, 20, 205))
     y = 8 + py
     for l in lines:
-        d.text(((W - font.getlength(l)) / 2, y), l, font=font, fill='white'); y += lh
+        tx = x0 + (bw - font.getlength(l)) / 2
+        d.text((tx, y), l, font=font, fill='white'); y += lh
     img.save(path)
 
 # Full-frame transparent overlay: a purple pulsing-style glow + outline around the target, plus the
 # white/purple pointer glyph — styled in Hadrius brand purple (#4c3dab / #5b46d6).
-def highlight_png(target, sw, sh, path):
-    sx, sy = W / sw, H / sh
+def highlight_png(target, sw, sh, path, size=None, k=1.0):
+    # size/k: draw onto a larger canvas (camera mode renders from a supersampled frame); k scales strokes.
+    ow, oh = size or (W, H)
+    sx, sy = ow / sw, oh / sh
     x, y = target['x'] * sx, target['y'] * sy
     w, h = target['width'] * sx, target['height'] * sy
-    pad = 6
-    img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    pad = 6 * k
+    img = Image.new('RGBA', (ow, oh), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     purple_glow = (91, 70, 214)
     purple_solid = (76, 61, 171)
     for glow_width, alpha in ((20, 55), (12, 100), (6, 160)):  # soft purple glow, wide+faint to narrow+strong
+        glow_width *= k
         o = glow_width / 2
-        d.rounded_rectangle([x - pad - o, y - pad - o, x + w + pad + o, y + h + pad + o], radius=9, outline=purple_glow + (alpha,), width=int(glow_width))
-    d.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad], radius=8, outline=purple_solid + (255,), width=4)
+        d.rounded_rectangle([x - pad - o, y - pad - o, x + w + pad + o, y + h + pad + o], radius=9 * k, outline=purple_glow + (alpha,), width=int(glow_width))
+    d.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad], radius=8 * k, outline=purple_solid + (255,), width=int(4 * k))
     # pointer glyph, anchored just outside the highlight's bottom-right corner, scaled up for visibility
-    px, py = x + w + pad + 8, y + h + pad + 8
-    scale = 1.85  # larger pointer glyph
+    px, py = x + w + pad + 8 * k, y + h + pad + 8 * k
+    scale = 1.85 * k  # larger pointer glyph
     tip = [
         (px, py),
         (px, py + 16.5 * scale),
@@ -171,10 +183,96 @@ def highlight_png(target, sw, sh, path):
         (px + 9.5 * scale, py + 11.9 * scale),
     ]
     # subtle drop shadow so pointer pops against any background
-    shadow_tip = [(p[0] + 2, p[1] + 2) for p in tip]
+    shadow_tip = [(p[0] + 2 * k, p[1] + 2 * k) for p in tip]
     d.polygon(shadow_tip, fill=(0, 0, 0, 80))
-    d.polygon(tip, fill=(255, 255, 255, 255), outline=purple_solid + (255,), width=3)
+    d.polygon(tip, fill=(255, 255, 255, 255), outline=purple_solid + (255,), width=max(1, int(3 * k)))
     img.save(path)
+
+# ---------- camera mode (report "camera": true): eased push-ins / pans onto each slide's target ----------
+# A view is (cx, cy, z) in slide pixels: centre point and zoom (view width = slide width / z).
+# Each slide eases from its start view to its end view over CAM_MOVE seconds, then keeps a slow drift so
+# the frame never sits dead still; the highlight fades in once the camera arrives. A slide showing the
+# same screenshot as the one before starts from that slide's end view, so the move reads as one camera.
+CAM_MOVE, CAM_DRIFT, CAM_ZMAX, CAM_SS = 2.2, 0.035, 1.9, 2  # CAM_SS: supersample factor of the source canvas
+CAPTION_SAFE = 0.74  # keep the target above the caption band (fraction of frame height)
+
+def cam_clamp(v, sw, sh):
+    cx, cy, z = v; z = max(1.0, z); vw, vh = sw / z, sh / z
+    return (min(max(cx, vw / 2), sw - vw / 2), min(max(cy, vh / 2), sh - vh / 2), z)
+
+def cam_fit(t, sw, sh):
+    """End view that frames the target with margin (above the caption band when captions are on)."""
+    if not t:
+        return (sw / 2, sh / 2, 1.0)
+    safe = 1.0 if (rep.get('no_captions') or '--no-captions' in args) else CAPTION_SAFE
+    tw, th = t['width'] * 1.25 + 60, t['height'] * 1.25 + 60
+    z = min(CAM_ZMAX, sw / tw, (sh * (safe - 0.06)) / th)
+    z = max(1.0, z); vh = sh / z
+    cx = t['x'] + t['width'] / 2
+    cy = t['y'] + t['height'] / 2 + vh * (0.5 - safe / 2)  # centre the target in the usable band
+    return cam_clamp((cx, cy, z), sw, sh)
+
+def cam_views(slides_):
+    prev_end, prev_src = None, None
+    for s in slides_:
+        src = (out / 'slides' / s['file']).read_bytes()
+        sw, sh = (s.get('viewport') or {}).get('width', 1600), (s.get('viewport') or {}).get('height', 900)
+        c = s.get('camera') or {}
+        end = cam_clamp(tuple(c['to']), sw, sh) if 'to' in c else cam_fit(s.get('target'), sw, sh)
+        if 'from' in c:
+            start = cam_clamp(tuple(c['from']), sw, sh)
+        elif prev_end and src == prev_src:
+            start = prev_end
+        else:  # fresh screen: open a touch wide of the end view, from the page centre
+            start = cam_clamp(((sw / 2 + end[0]) / 2, (sh / 2 + end[1]) / 2, max(1.0, end[2] * 0.82)), sw, sh)
+        s['_cam'] = (start, end, (sw, sh))
+        prev_end, prev_src = end, src
+
+def render_camera_segment(s, seg, cap_png):
+    src = out / 'slides' / s['file']
+    (start, end, (sw, sh)) = s['_cam']
+    CW, CH = W * CAM_SS, H * CAM_SS
+    base = Image.open(src).convert('RGB').resize((CW, CH), Image.LANCZOS)
+    hl = None
+    if NEEDS_DRAWN_HIGHLIGHT and s.get('target'):
+        hp = tmp / f"hl{s['slide']:02d}.png"
+        highlight_png(s['target'], sw, sh, hp, size=(CW, CH), k=CW / W / max(end[2], 1.0) * 1.0)
+        hl = Image.open(hp).convert('RGBA')
+        ann = out / 'annotated'; ann.mkdir(exist_ok=True)
+        still = base.copy(); still.paste(hl, (0, 0), hl); still.resize((W, H), Image.LANCZOS).save(ann / s['file'])
+    cap = Image.open(cap_png).convert('RGBA') if cap_png else None
+    fx, fy = CW / sw, CH / sh
+    n = int(round(s['sdur'] * FPS))
+    proc = subprocess.Popen(['ffmpeg', '-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}',
+                             '-r', str(FPS), '-i', '-', '-pix_fmt', 'yuv420p', *SEG_ENCODE, str(seg)], stdin=subprocess.PIPE)
+    ease = lambda u: 0.5 - 0.5 * __import__('math').cos(__import__('math').pi * min(max(u, 0.0), 1.0))
+    for i in range(n):
+        tt = i / FPS
+        u = ease(tt / CAM_MOVE)
+        cx = start[0] + (end[0] - start[0]) * u
+        cy = start[1] + (end[1] - start[1]) * u
+        z = start[2] + (end[2] - start[2]) * u
+        z *= 1 + CAM_DRIFT * max(0.0, tt - CAM_MOVE) / max(0.1, s['sdur'] - CAM_MOVE)  # slow push after arrival
+        cx, cy, z = cam_clamp((cx, cy, z), sw, sh)
+        vw, vh = sw / z, sh / z
+        box = ((cx - vw / 2) * fx, (cy - vh / 2) * fy, (cx + vw / 2) * fx, (cy + vh / 2) * fy)
+        frame = base.resize((W, H), Image.BICUBIC, box=box)
+        if hl is not None:
+            a = min(max((tt - CAM_MOVE * 0.75) / 0.45, 0.0), 1.0)
+            if a > 0:
+                layer = hl.resize((W, H), Image.BICUBIC, box=box)
+                if a < 1:
+                    r, g, b, al = layer.split(); layer.putalpha(al.point(lambda p: int(p * a)))
+                frame.paste(layer, (0, 0), layer)
+        if cap is not None:
+            frame.paste(cap, (0, H - cap.height - 56), cap)
+        proc.stdin.write(frame.tobytes())
+    proc.stdin.close()
+    if proc.wait() != 0:
+        raise RuntimeError(f'camera segment encode failed for slide {s["slide"]}')
+    return seg
+
+CAMERA = bool(rep.get('camera')) or '--camera' in args
 
 # ---------- 3. per-slide video segment (cached by everything that determines its pixels) ----------
 # Like narration, segments live in out/_cache/ so they survive render.sh's rm -rf of out/<name>/.
@@ -203,9 +301,17 @@ for f in SEG_CACHE.iterdir():  # same LRU-ish pruning as the narration cache (hi
 # read as page margin — and shift its highlight box by the same offset.
 def fit_slide_to_frame(s):
     src = out / 'slides' / s['file']
+    if str(src).endswith('.mp4'):
+        return
     im = Image.open(src).convert('RGB'); sw, sh = im.size
     target_ratio = W / H
+    vp = s.get('viewport') or {}
+    vpw = vp.get('width', sw)
     if abs(sw / sh - target_ratio) < 0.01:
+        if vpw < sw and s.get('target') and not s.get('_target_shifted'):
+            ox = (sw - vpw) // 2
+            s['target'] = {**s['target'], 'x': s['target']['x'] + ox}
+            s['_target_shifted'] = True
         return
     if sw / sh < target_ratio:
         nw, nh = round(sh * target_ratio), sh
@@ -217,18 +323,26 @@ def fit_slide_to_frame(s):
     canvas = Image.new('RGB', (nw, nh), fill)
     canvas.paste(im, (ox, oy))
     canvas.save(src)
-    if s.get('target'):
+    if s.get('target') and not s.get('_target_shifted'):
         s['target'] = {**s['target'], 'x': s['target']['x'] + ox, 'y': s['target']['y'] + oy}
+        s['_target_shifted'] = True
     s['viewport'] = {'width': nw, 'height': nh}
 
 for s in slides:
     fit_slide_to_frame(s)
+if CAMERA:
+    cam_views(slides)  # after padding, so views use the final slide size and shifted targets
 
 def segment_key(s):
     src = out / 'slides' / s['file']
+    pos = s.get('caption_pos') or rep.get('caption_pos') or ('left' if '--caption-left' in args else 'center')
+    show_cap = not (rep.get('no_captions') or '--no-captions' in args)
     parts = [_SEG_CODE, hashlib.sha256(src.read_bytes()).hexdigest(), str(s['sdur']),
-             s.get('caption') or s.get('narration') or '',
+             (s.get('caption') or s.get('narration') or '') if show_cap else '', str(pos),
              json.dumps(s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None, sort_keys=True)]
+    if CAMERA:
+        parts += ['camera', inspect.getsource(render_camera_segment), inspect.getsource(cam_fit),
+                  json.dumps(s['_cam']), str((CAM_MOVE, CAM_DRIFT, CAM_ZMAX, CAM_SS, CAPTION_SAFE))]
     return hashlib.sha256('\x00'.join(parts).encode()).hexdigest()[:32]
 
 def build_segment(s):
@@ -251,12 +365,29 @@ def build_segment(s):
 
 def _render_segment(s, seg):
     src = out / 'slides' / s['file']
+    if str(src).endswith('.mp4'):
+        # Hold the clip's last frame (don't loop) when narration outlasts it, so a scroll never snaps back to the top.
+        subprocess.run(['ffmpeg', '-y', '-i', str(src),
+                        '-t', f"{s['sdur']}",
+                        '-vf', f"scale={W}:{H}:flags=lanczos,fps={FPS},tpad=stop_mode=clone:stop_duration={s['sdur']}",
+                        *SEG_ENCODE, str(seg)], check=True, capture_output=True)
+        return seg
     im = Image.open(src); sw, sh = im.size
+    if CAMERA:
+        cap = s.get('caption') or s.get('narration')
+        cp = None
+        if cap and not (rep.get('no_captions') or '--no-captions' in args):
+            pos = s.get('caption_pos') or rep.get('caption_pos') or ('left' if '--caption-left' in args else 'center')
+            cp = tmp / f"cap{s['slide']:02d}.png"; caption_png(cap, cp, pos=pos)
+        return render_camera_segment(s, seg, cp)
     inputs = ['-loop', '1', '-i', str(src)]
     chain = [f"[0:v]scale={W}:{H}:flags=lanczos,fps={FPS}[v0]"]
     stage = 0
-    if NEEDS_DRAWN_HIGHLIGHT and s.get('target'):
-        hp = tmp / f"hl{s['slide']:02d}.png"; highlight_png(s['target'], sw, sh, hp)
+    target = s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None
+    if target and (target.get('width', 0) > sw * 0.55 and target.get('height', 0) > sh * 0.3):
+        target = None
+    if target:
+        hp = tmp / f"hl{s['slide']:02d}.png"; highlight_png(target, sw, sh, hp)
         # Same frame the video shows (highlight + pointer, no caption bar), kept as a still so the
         # knowledge-base article's screenshots match the video instead of being the bare capture.
         ann = out / 'annotated'; ann.mkdir(exist_ok=True)
@@ -268,11 +399,19 @@ def _render_segment(s, seg):
         stage += 1
         chain.append(f"[v{stage - 1}][{stage}:v]overlay=0:0[v{stage}]")
     cap = s.get('caption') or s.get('narration')
-    if cap:
-        cp = tmp / f"cap{s['slide']:02d}.png"; caption_png(cap, cp)
+    if cap and not (rep.get('no_captions') or '--no-captions' in args):
+        pos = s.get('caption_pos') or rep.get('caption_pos') or ('left' if '--caption-left' in args else 'center')
+        cp = tmp / f"cap{s['slide']:02d}.png"; caption_png(cap, cp, pos=pos)
         inputs += ['-loop', '1', '-i', str(cp)]
         stage += 1
-        chain.append(f"[v{stage - 1}][{stage}:v]overlay=0:H-h-56:eof_action=repeat[v{stage}]")
+        target = s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None
+        target_bottom = False
+        if target and sh > 0:
+            target_bottom_y = (target['y'] + target.get('height', 0)) * (H / sh)
+            if target_bottom_y > H * 0.62:
+                target_bottom = True
+        cap_y = '56' if target_bottom else 'H-h-56'
+        chain.append(f"[v{stage - 1}][{stage}:v]overlay=0:{cap_y}:eof_action=repeat[v{stage}]")
     chain.append(f"[v{stage}]format=yuv420p[v]")
     fc = ';'.join(chain)
     subprocess.run(['ffmpeg', '-y', *inputs, '-filter_complex', fc, '-map', '[v]', '-t', f"{s['sdur']}", '-r', str(FPS),
@@ -334,25 +473,31 @@ def cached_card(dest, key_parts, make):
     return False
 
 title_clip = tmp / 'title_card.mp4'
-try:
-    mod_name = MODULE_ARG or resolve_module(rep, ROOT, out)
-    title_text = rep.get('title') or rep['name']
-    cached_card(title_clip, ['title', title_text, mod_name, SHOW_ACADEMY], lambda: generate_title_video(
-        title_text,
-        title_clip,
-        module=mod_name,
-        music_path=MUSIC if MUSIC.exists() else None,
-        show_academy=SHOW_ACADEMY
-    ))
-except Exception as e:
-    print(f"warning: could not generate title card: {e}")
+if rep.get('no_title') or '--no-title' in args:
+    if title_clip.exists(): title_clip.unlink()
+else:
+    try:
+        mod_name = MODULE_ARG or resolve_module(rep, ROOT, out)
+        title_text = rep.get('title') or rep['name']
+        cached_card(title_clip, ['title', title_text, mod_name, SHOW_ACADEMY], lambda: generate_title_video(
+            title_text,
+            title_clip,
+            module=mod_name,
+            music_path=MUSIC if MUSIC.exists() else None,
+            show_academy=SHOW_ACADEMY
+        ))
+    except Exception as e:
+        print(f"warning: could not generate title card: {e}")
 
 support_clip = tmp / 'support_card.mp4'
-try:
-    cached_card(support_clip, ['support'], lambda: generate_support_card_video(
-        support_clip, music_path=MUSIC if MUSIC.exists() else None))
-except Exception as e:
-    print(f"warning: could not generate support card: {e}")
+if rep.get('no_support') or '--no-support' in args:
+    if support_clip.exists(): support_clip.unlink()
+else:
+    try:
+        cached_card(support_clip, ['support'], lambda: generate_support_card_video(
+            support_clip, music_path=MUSIC if MUSIC.exists() else None))
+    except Exception as e:
+        print(f"warning: could not generate support card: {e}")
 
 # Hadrius Academy logo card: opens every video (dissolving into the title card) and closes it (the
 # support card dissolves into it). Built once from assets/academy_logo.png and cached like the other

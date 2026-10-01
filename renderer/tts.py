@@ -10,7 +10,7 @@ an unchanged one never calls the TTS provider again.
 CLI (used by the bridge):  python renderer/tts.py "<text>"  ->  prints {"path": ..., "provider": ...}
 """
 from __future__ import annotations
-import asyncio, hashlib, json, os, sys, time, urllib.request
+import asyncio, hashlib, json, os, re, sys, time, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -89,6 +89,28 @@ def _key(provider, text, extra=''):
     return hashlib.sha256(f'{provider}\x00{extra}\x00{text}'.encode()).hexdigest()[:32]
 
 
+def normalize_pronunciation(text: str) -> str:
+    """Normalize text for natural TTS pronunciation without affecting on-screen captions.
+
+    - Brand name: "Hadrius" -> "Heydrius"
+    - Homograph "lives": verbs ("where ... lives", "record lives") -> "livz" (/lɪvz/, short "i")
+      while protecting explicit plural nouns ("their lives", "daily lives", "saving lives").
+    """
+    if not text:
+        return ""
+    text = re.sub(r'\bHadrius\b', 'Heydrius', text)
+    noun_modifiers = r'(their|our|your|my|his|her|its|personal|private|daily|saving|save|saved|lost|human|nine)'
+    def replace_lives(m):
+        prefix = m.group(1)
+        word = m.group(2)
+        if re.search(r'\b' + noun_modifiers + r'\s*$', prefix, re.IGNORECASE):
+            return m.group(0)
+        return prefix + ('Livz' if word[0].isupper() else 'livz')
+    text = re.sub(r'(\b\w+\s+)(lives\b)', replace_lives, text, flags=re.IGNORECASE)
+    text = re.sub(r'^(lives\b)', lambda m: 'Livz' if m.group(1)[0].isupper() else 'livz', text, flags=re.IGNORECASE)
+    return text
+
+
 class Narrator:
     """One per render — probes VoiceStudio once, then synthesizes (or reuses) each line."""
 
@@ -117,6 +139,7 @@ class Narrator:
 
     def speak(self, text):
         """Path to an mp3 of `text`, generating it only if this provider has never said it before."""
+        text = normalize_pronunciation(text)
         chain = self.providers()
         # A cached line from the preferred provider always wins. A fallback provider's cached copy is
         # deliberately NOT reused here — otherwise one quota blip would lock a line into the fallback
