@@ -85,6 +85,15 @@
       </div>
     </section>
     <div id="narrationStatus" class="notice" hidden></div>
+    <section id="videoPreview" class="video-preview" hidden>
+      <div class="video-preview-head">
+        <span class="video-preview-title">Rendered video</span>
+        <span id="videoPreviewNow" class="video-preview-now"></span>
+        <button id="videoPreviewToggle" class="link-btn" type="button" title="Hide or show the video">Hide</button>
+      </div>
+      <video id="videoPreviewPlayer" controls preload="metadata"></video>
+      <div id="videoPreviewStale" class="video-preview-stale" hidden>Steps changed since this render. Re-render to see the edits.</div>
+    </section>
     <section id="steps" class="steps"></section>
   </main>
 
@@ -139,9 +148,21 @@
   <!-- Floating render/export bar — lives outside the tab <main>s so it stays visible and
        usable no matter which tab you're on while a render/export is running or ready. -->
   <section id="floatingRenderBar" class="footer-actions floating-render-bar" hidden>
+    <div class="render-options" id="renderOptions">
+      <div class="seg" role="radiogroup" aria-label="What to make">
+        <button type="button" class="seg-btn" data-out="video" role="radio">Video</button>
+        <button type="button" class="seg-btn" data-out="pylon" role="radio">Article</button>
+        <button type="button" class="seg-btn" data-out="both" role="radio">Both</button>
+      </div>
+      <label class="drive-switch" id="driveSwitchWrap" title="Upload the MP4 to the shared Google Drive folder">
+        <input type="checkbox" id="driveToggle" checked>
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+        Upload to Drive
+      </label>
+    </div>
+    <p id="renderNotice" class="render-notice" hidden></p>
     <div class="render-buttons">
-      <button id="renderBtn" class="primary" type="button" disabled>Render MP4</button>
-      <button id="renderBothBtn" class="secondary" type="button" disabled title="Render MP4 video and create a draft Pylon KB article">Render + Article</button>
+      <button id="renderBtn" class="primary" type="button" disabled>Render</button>
       <button id="saveScriptBtn" class="secondary" type="button" disabled title="Save this script to the shared library without rendering a video">💾 Save script</button>
       <button id="downloadBtn" class="secondary" type="button" disabled>Export script</button>
     </div>

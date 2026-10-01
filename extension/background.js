@@ -189,7 +189,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         catch (e) { return reply({ ok: false, error: String(e?.message || e) }); }
       }
       case 'PANEL_RENDER': {
-        try { return reply(await bridge('POST', '/render', { script: msg.script, mode: msg.mode || 'both' })); }
+        try { return reply(await bridge('POST', '/render', { script: msg.script, mode: msg.mode || 'both', drive: msg.drive !== false })); }
         catch (e) { return reply({ ok: false, error: String(e?.message || e) }); }
       }
       case 'PANEL_RENDER_STATUS': {

@@ -82,6 +82,7 @@ for (const step of script.steps) {
     step: step.index,
     phase: 'pre',
     file: outFile,
+    src: file, // the step's own screenshot name — lets the editor map a step to its spot in the video
     narration: step.narration || '',
     caption: (script.captionsFromNarration ? step.narration : step.caption) || step.narration || '',
     target,

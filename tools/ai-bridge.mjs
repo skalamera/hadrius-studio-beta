@@ -8,6 +8,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
@@ -2078,6 +2079,72 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 404, { ok: false, error: 'slide not found' });
   }
 
+  // ---- rendered-video preview for the step editor ----
+  // GET /publish-links/<name> -> { ok, drive: url|null, pylon: url|null } — what a render would overwrite.
+  // Local script first, then the shared library (a teammate may have published it).
+  const publishLinksMatch = req.method === 'GET' && u.pathname.match(/^\/publish-links\/([^/]+)$/);
+  if (publishLinksMatch) {
+    const pname = safeName(formatHumanTitle(decodeURIComponent(publishLinksMatch[1])));
+    let sc = null;
+    try { sc = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'scripts', `${pname}.script.json`), 'utf8')); } catch (_) {}
+    if (!sc?.driveVideoId && !sc?.pylonArticleId && LIBRARY_SECRET) {
+      try { sc = (await libraryFetch('GET', { name: pname }))?.item?.script || sc; } catch (_) {}
+    }
+    const drive = sc?.driveVideoUrl || (sc?.driveVideoId ? `https://drive.google.com/file/d/${sc.driveVideoId}/view` : null);
+    const pylon = sc?.pylonArticleUrl || (sc?.pylonArticleId ? pylonArticleUrl({ id: sc.pylonArticleId }) : null);
+    return sendJson(res, 200, { ok: true, drive, pylon });
+  }
+
+  // GET /video/<name>/timeline -> { ok, video: bool, duration, steps: [{ src, step, start, end, narration }] }
+  // GET /video/<name>.mp4      -> the rendered MP4 (Range-aware so <video> can seek)
+  const videoTimelineMatch = req.method === 'GET' && u.pathname.match(/^\/video\/([^/]+)\/timeline$/);
+  if (videoTimelineMatch) {
+    const vname = safeName(formatHumanTitle(decodeURIComponent(videoTimelineMatch[1])));
+    const outDir = path.join(REPO_ROOT, 'out', vname);
+    const mp4 = path.join(outDir, `${vname}.mp4`);
+    const asmPath = path.join(outDir, 'assembly.json');
+    if (!fs.existsSync(mp4) || !fs.existsSync(asmPath)) return sendJson(res, 200, { ok: true, video: false });
+    try {
+      const asm = JSON.parse(fs.readFileSync(asmPath, 'utf8'));
+      // Older renders predate content_offset: intro (2.5s) + title card crossfaded (0.65s each).
+      const off = typeof asm.content_offset === 'number' ? asm.content_offset
+        : (asm.intro ? 2.5 - 0.65 : 0) + (asm.title_card ? 4.2 - 0.65 : 0);
+      // Older reports lack slide.src; recover it from the recording's step order.
+      let srcByStep = {};
+      try {
+        const sc = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'scripts', `${vname}.script.json`), 'utf8'));
+        (sc.steps || []).forEach((st, i) => { if (st.media?.pre) srcByStep[i] = st.media.pre; });
+      } catch (_) {}
+      const steps = (asm.slides || []).map((s) => ({
+        src: s.src || srcByStep[s.step] || null,
+        step: s.step,
+        start: +(off + (s.start || 0)).toFixed(2),
+        end: +(off + (s.start || 0) + (s.sdur || 0)).toFixed(2),
+        narration: s.narration || '',
+      }));
+      const mtime = fs.statSync(mp4).mtimeMs;
+      return sendJson(res, 200, { ok: true, video: true, duration: asm.duration, mtime, steps });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+    }
+  }
+  const videoFileMatch = req.method === 'GET' && u.pathname.match(/^\/video\/([^/]+)\.mp4$/);
+  if (videoFileMatch) {
+    const vname = safeName(formatHumanTitle(decodeURIComponent(videoFileMatch[1])));
+    const mp4 = path.join(REPO_ROOT, 'out', vname, `${vname}.mp4`);
+    if (!fs.existsSync(mp4)) return sendJson(res, 404, { ok: false, error: 'no rendered video yet' });
+    const size = fs.statSync(mp4).size;
+    const range = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
+    if (range) {
+      const start = range[1] ? parseInt(range[1], 10) : 0;
+      const end = range[2] ? Math.min(parseInt(range[2], 10), size - 1) : size - 1;
+      res.writeHead(206, { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1, 'Cache-Control': 'no-cache' });
+      return fs.createReadStream(mp4, { start, end }).pipe(res);
+    }
+    res.writeHead(200, { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Content-Length': size, 'Cache-Control': 'no-cache' });
+    return fs.createReadStream(mp4).pipe(res);
+  }
+
   // ---- per-step narration preview: voices one line through renderer/tts.py, the same provider
   // chain and cache the render uses — so a previewed line costs nothing at the next render ----
   if (req.method === 'POST' && u.pathname === '/preview/narration') {
@@ -3394,7 +3461,7 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (c) => (body += c));
     req.on('end', async () => {
       try {
-        const { script, mode = 'both' } = JSON.parse(body);
+        const { script, mode = 'both', drive: uploadToDrive = true } = JSON.parse(body);
         if (!script || !Array.isArray(script.steps)) throw new Error('no script provided');
         // A recipe-backed script is deliberately steps: [] — render.sh dispatches it to its own
         // Phase 1 recipe (renderer/from-recipe.mjs), which never reads these steps or environment
@@ -3406,6 +3473,7 @@ const server = http.createServer(async (req, res) => {
         if (!script.environment.startUrl && recipe) await backfillRecipeStartUrl(script);
         if (!script.environment.startUrl && !recipe) throw new Error('script has no start URL — re-record so the first step captures the page it was on');
         if (render.running) throw new Error('a render is already running');
+        render.uploadToDrive = uploadToDrive !== false;
         const rawTitle = (script.title || script.name || 'Untitled walkthrough').trim();
         const humanTitle = formatHumanTitle(rawTitle);
         const name = safeName(humanTitle);
@@ -3496,7 +3564,12 @@ const server = http.createServer(async (req, res) => {
         // shared library at all, so the Coverage tab kept showing it as "missing" forever even
         // though a real, working, rendered script existed. saveScript() does both, same as Save.
         let renderSaveWarning = null;
-        try {
+        if (mode === 'preview') {
+          // A preview right after recording is a first draft for the editor's player only: keep it
+          // local (no shared-library push, no Drive upload, no Pylon article — see the close handler).
+          fs.mkdirSync(path.join(REPO_ROOT, 'scripts'), { recursive: true });
+          fs.writeFileSync(scriptPath, JSON.stringify(script, null, 2));
+        } else try {
           await saveScript(script);
         } catch (e) {
           renderSaveWarning = `couldn't push to the shared library (${String(e?.message || e).slice(0, 150)}) — rendering from the local copy only`;
@@ -3564,10 +3637,40 @@ const server = http.createServer(async (req, res) => {
         const prelude = [`Using ${renderable.length} slides captured during the live recording — no replay.`];
         if (renderSaveWarning) prelude.unshift(renderSaveWarning);
         const renderMode = mode || 'video';
+        const renderKey = renderKeyForScript(script);
+
+        // Unchanged since the last render (typically the automatic editor preview)? The MP4 on disk
+        // is already exactly what this render would produce — reuse it and go straight to publishing.
+        const existingMp4 = path.join(outDir, `${name}.mp4`);
+        let priorKey = null;
+        try { priorKey = JSON.parse(fs.readFileSync(path.join(outDir, 'render-key.json'), 'utf8')).key; } catch (_) {}
+        if (renderMode !== 'preview' && priorKey && priorKey === renderKey && fs.existsSync(existingMp4)) {
+          const reuseMsg = `No changes since the last render — reusing that video instead of rendering again.`;
+          Object.assign(render, {
+            running: false, name, mode: renderMode, renderKey, phase: 'done',
+            log: [...(renderSaveWarning ? [renderSaveWarning] : []), reuseMsg],
+            outDir, video: existingMp4,
+            interactive: fs.existsSync(path.join(outDir, 'interactive', 'index.html')) ? path.join(outDir, 'interactive', 'index.html') : null,
+            report: null, error: null, startedAt: Date.now(), finishedAt: Date.now(), pylon: null, drive: null, reused: true,
+          });
+          try {
+            const r = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+            render.report = { slides: r.slides?.length ?? 0, healed: r.healed?.length ?? 0, failed: r.failed ?? [], loginRequired: false, mutationsAllowed: false, source: r.source || null };
+          } catch (_) {}
+          try { fs.writeFileSync(path.join(outDir, 'render-key.json'), JSON.stringify({ key: renderKey, mode: renderMode })); } catch (_) {}
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, name, scriptPath, reused: true }));
+          console.log(`[render] "${name}": unchanged since last render — reusing out/${name}/${name}.mp4`);
+          publishFinishedRender(name, renderMode);
+          return;
+        }
+
         Object.assign(render, {
           running: true,
           name,
           mode: renderMode,
+          renderKey,
+          reused: false,
           phase: 'assembling',
           log: prelude,
           outDir,
@@ -3581,7 +3684,7 @@ const server = http.createServer(async (req, res) => {
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, name, scriptPath }));
-        startRender(scriptPath, name, render.log, renderMode);
+        startRender(scriptPath, name, render.log, renderMode, renderKey);
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
@@ -3631,8 +3734,54 @@ const server = http.createServer(async (req, res) => {
 // Render state — one at a time, polled by the side panel via /render/status.
 const render = { running: false, name: null, mode: 'both', phase: 'idle', log: [], outDir: null, video: null, interactive: null, report: null, error: null, startedAt: null, finishedAt: null, pylon: null };
 
-function startRender(scriptPath, name, prelude = [], mode = 'both') {
-  Object.assign(render, { running: true, name, mode, phase: 'replaying', log: [...prelude], outDir: path.join(REPO_ROOT, 'out', name), video: null, interactive: null, report: null, error: null, startedAt: render.startedAt || Date.now(), finishedAt: null, pylon: null });
+// Everything in a script that changes the rendered MP4: title, module, and each captured step's
+// screenshot, narration, caption and highlight box. Two renders with the same key produce the same
+// video, so a final render right after an unchanged preview can reuse it instead of re-rendering.
+function renderKeyForScript(script) {
+  const steps = (script.steps || []).filter((s) => s.capture !== false && s.media?.pre).map((s) => {
+    const g = s.target?.hint?.bbox ? s.target.hint : (s.target || {});
+    return [s.media.pre, (s.narration || '').trim(), (s.caption || '').trim(), g.bbox || null, g.viewport || null];
+  });
+  const payload = JSON.stringify([script.title || script.name, canonicalModule(script.module) || script.module || null,
+    !!script.captionsFromNarration, script.recording?.id || null, steps]);
+  return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 24);
+}
+
+// After a video exists in out/<name>/: upload to Drive and draft the Pylon article as the mode asks.
+// Shared by a fresh render's close handler and the "reuse the preview" fast path.
+function publishFinishedRender(name, mode) {
+  if (render.video && googleDriveConfigured() && mode !== 'preview' && mode !== 'pylon' && render.uploadToDrive !== false) {
+    const driveName = name, driveOutDir = render.outDir, driveVideoPath = render.video;
+    render.drive = { status: 'pending' };
+    startDriveUpload(driveName, driveVideoPath).then((drive) => {
+      if (render.outDir === driveOutDir) render.drive = { status: 'done', ...drive };
+      console.log(`Google Drive upload complete for "${driveName}": ${drive.url}`);
+    }).catch((e) => {
+      if (render.outDir === driveOutDir) render.drive = { status: 'failed', error: String(e?.message || e) };
+      console.warn(`Google Drive upload failed for "${driveName}": ${String(e?.message || e)}`);
+    });
+  } else if (render.video) {
+    render.drive = null;
+  }
+  if (mode === 'video' || mode === 'preview') {
+    render.pylon = null;
+    console.log(`Render complete for "${name}" (${mode === 'preview' ? 'editor preview, local only' : 'video only, skipping Pylon article'})`);
+  } else {
+    const pylonName = name, pylonOutDir = render.outDir;
+    render.pylon = { status: 'pending' };
+    publishRenderToPylon(pylonName, pylonOutDir).then((article) => {
+      const pylonUrl = article.url || (article.id ? `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/articles/${article.id}` : null);
+      if (render.outDir === pylonOutDir) render.pylon = { status: 'done', id: article.id, title: article.title, url: pylonUrl };
+      console.log(`Pylon KB article created for "${pylonName}": ${article.id}`);
+    }).catch((e) => {
+      if (render.outDir === pylonOutDir) render.pylon = { status: 'failed', error: String(e?.message || e) };
+      console.warn(`Pylon KB article failed for "${pylonName}": ${String(e?.message || e)}`);
+    });
+  }
+}
+
+function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = null) {
+  Object.assign(render, { running: true, name, mode, renderKey, phase: 'replaying', log: [...prelude], outDir: path.join(REPO_ROOT, 'out', name), video: null, interactive: null, report: null, error: null, startedAt: render.startedAt || Date.now(), finishedAt: null, pylon: null });
   const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.local/node/bin:${process.env.HOME}/.npm-global/bin:${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
   const onLine = (chunk) => {
     for (const raw of String(chunk).split('\n')) {
@@ -3665,34 +3814,8 @@ function startRender(scriptPath, name, prelude = [], mode = 'both') {
     }
     if (code === 0 && (render.video || (mode === 'pylon' && render.report?.slides))) {
       render.phase = 'done';
-      if (render.video && googleDriveConfigured()) {
-        const driveName = name, driveOutDir = render.outDir, driveVideoPath = render.video;
-        render.drive = { status: 'pending' };
-        startDriveUpload(driveName, driveVideoPath).then((drive) => {
-          if (render.outDir === driveOutDir) render.drive = { status: 'done', ...drive };
-          console.log(`Google Drive upload complete for "${driveName}": ${drive.url}`);
-        }).catch((e) => {
-          if (render.outDir === driveOutDir) render.drive = { status: 'failed', error: String(e?.message || e) };
-          console.warn(`Google Drive upload failed for "${driveName}": ${String(e?.message || e)}`);
-        });
-      } else if (render.video) {
-        render.drive = null;
-      }
-      if (mode === 'video') {
-        render.pylon = null;
-        console.log(`Render complete for "${name}" (video only, skipping Pylon article)`);
-      } else {
-        const pylonName = name, pylonOutDir = render.outDir;
-        render.pylon = { status: 'pending' };
-        publishRenderToPylon(pylonName, pylonOutDir).then((article) => {
-          const pylonUrl = article.url || (article.id ? `https://app.usepylon.com/kb/${PYLON_KNOWLEDGE_BASE_ID}/articles/${article.id}` : null);
-          if (render.outDir === pylonOutDir) render.pylon = { status: 'done', id: article.id, title: article.title, url: pylonUrl };
-          console.log(`Pylon KB article created for "${pylonName}": ${article.id}`);
-        }).catch((e) => {
-          if (render.outDir === pylonOutDir) render.pylon = { status: 'failed', error: String(e?.message || e) };
-          console.warn(`Pylon KB article failed for "${pylonName}": ${String(e?.message || e)}`);
-        });
-      }
+      try { if (render.video) fs.writeFileSync(path.join(render.outDir, 'render-key.json'), JSON.stringify({ key: render.renderKey || null, mode })); } catch (_) {}
+      publishFinishedRender(name, mode);
     } else {
       render.phase = 'failed';
       // A recipe attaches to a real, already-open browser tab over CDP rather than the renderer's

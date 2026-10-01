@@ -1833,7 +1833,8 @@ function updateRenderButtons() {
   const hasSteps = (state.steps?.length || 0) > 0;
   const disableRender = !hasSteps || isRenderingActive;
   $('#renderBtn').disabled = disableRender;
-  $('#renderBothBtn').disabled = disableRender;
+  document.querySelectorAll('#renderOptions .seg-btn, #driveToggle').forEach((el) => (el.disabled = isRenderingActive));
+  updateRenderOptions();
   $('#downloadBtn').disabled = !hasSteps;
   $('#saveScriptBtn').disabled = !hasSteps || isSavingScript;
   if ($('#clearBtn')) $('#clearBtn').disabled = !hasSteps && !($('#scriptName').value || '').trim();
@@ -1929,6 +1930,9 @@ async function loadState() {
   }
   $('#scriptName').value = state.script?.name || '';
   renderSteps();
+  loadVideoPreview().catch(() => {});
+  refreshPublishLinks().catch(() => {});
+  updateVideoPreviewStale();
 }
 
 async function detectEnvironment() {
@@ -2071,8 +2075,45 @@ async function stopAndNarrate() {
   if (result?.ok && Array.isArray(result.lines)) {
     for (let i=0;i<state.steps.length;i++) if (result.lines[i]) await send({type:'PANEL_UPDATE_STEP',index:state.steps[i].index,patch:{narration:result.lines[i],caption:result.lines[i]}});
     $('#narrationStatus').textContent = `Narration drafted automatically with ${result.model?.startsWith('gemini')?'Gemini fallback':'Claude'}. Review any line below before rendering.`;
+    await loadState();
+    startPreviewRender().catch(() => {});
+    return;
   } else $('#narrationStatus').textContent = `Narration could not be drafted: ${result?.error || 'unknown error'}. Your recording is saved.`;
   await loadState();
+}
+
+// ---- Automatic preview render: right after narration is drafted, render a local-only draft so the
+// editor's video player is ready by the time you start reviewing steps. Mode 'preview' skips the
+// shared-library save, Drive upload and Pylon article; the Render button still does those.
+let previewRenderTimer = null;
+async function startPreviewRender() {
+  if (!state.steps.length || isRenderingActive) return;
+  const box = $('#videoPreview');
+  const status = await send({ type: 'PANEL_RENDER_STATUS' });
+  if (status?.running) return; // someone else's render owns the renderer; the user can render later
+  const script = toScript();
+  const res = await send({ type: 'PANEL_RENDER', script, mode: 'preview' });
+  if (!res?.ok) return;
+  if (box) {
+    box.hidden = false;
+    box.classList.add('building');
+    $('#videoPreviewNow').textContent = 'Building a preview of your video…';
+  }
+  clearInterval(previewRenderTimer);
+  previewRenderTimer = setInterval(async () => {
+    const st = await send({ type: 'PANEL_RENDER_STATUS' });
+    if (!st?.ok || st.running) return;
+    clearInterval(previewRenderTimer);
+    box?.classList.remove('building');
+    if (st.error || st.mode !== 'preview') {
+      if (box && !videoPreview.timeline) box.hidden = true;
+      $('#videoPreviewNow').textContent = '';
+      return;
+    }
+    // Clear the "done" state so the main render controls don't show a stale "MP4 ready" for a preview.
+    send({ type: 'PANEL_RENDER_CLEAR' }).catch(() => {});
+    await loadVideoPreview(true);
+  }, 2000);
 }
 
 function describe(step) {
@@ -2121,6 +2162,112 @@ async function previewNarration(btn, statusEl, text) {
   }
 }
 
+// ---- Rendered-video preview: watch the last render while editing steps ----
+// Steps map to video time by their screenshot (step.media.pre ↔ slide.src), not by index, so
+// reordering or deleting a step doesn't point the player at the wrong moment.
+const videoPreview = { name: null, timeline: null, bySrc: {}, loadedFor: null, collapsed: false };
+
+function currentVideoName() {
+  const raw = (state.script?.name || $('#scriptName')?.value || '').trim();
+  return raw || null;
+}
+
+async function loadVideoPreview(force = false) {
+  const box = $('#videoPreview');
+  if (!box) return;
+  const name = currentVideoName();
+  if (!name || !state.steps.length) { box.hidden = true; videoPreview.timeline = null; videoPreview.bySrc = {}; return; }
+  if (!force && videoPreview.loadedFor === name) return;
+  videoPreview.loadedFor = name;
+  try {
+    const r = await api(`/video/${encodeURIComponent(name)}/timeline`);
+    if (!r.ok || !r.video) {
+      // Leave the box up while a preview render is still building it.
+      if (!box.classList.contains('building')) box.hidden = true;
+      videoPreview.timeline = null; videoPreview.bySrc = {}; renderSteps(); return;
+    }
+    videoPreview.name = name;
+    videoPreview.timeline = r;
+    videoPreview.bySrc = {};
+    for (const s of r.steps) if (s.src) videoPreview.bySrc[s.src] = s;
+    const player = $('#videoPreviewPlayer');
+    const src = `${BRIDGE}/video/${encodeURIComponent(name)}.mp4?v=${Math.round(r.mtime || Date.now())}`;
+    if (player.getAttribute('src') !== src) player.setAttribute('src', src);
+    box.hidden = false;
+    box.classList.toggle('collapsed', videoPreview.collapsed);
+    $('#videoPreviewToggle').textContent = videoPreview.collapsed ? 'Show' : 'Hide';
+    updateVideoPreviewStale();
+    renderSteps();
+  } catch (_) {
+    box.hidden = true;
+  }
+}
+
+// The render reflects the steps at render time; flag when the editor no longer matches it.
+function updateVideoPreviewStale() {
+  const el = $('#videoPreviewStale');
+  if (!el || !videoPreview.timeline) return;
+  const rendered = videoPreview.timeline.steps;
+  const current = state.steps.filter((s) => s.capture !== false && s.media?.pre);
+  const changed = rendered.length !== current.length || current.some((s, i) => {
+    const r = rendered[i];
+    return !r || r.src !== s.media.pre || (r.narration || '').trim() !== (s.narration || '').trim();
+  });
+  el.hidden = !changed;
+}
+
+function stepVideoSpan(step) {
+  return step?.media?.pre ? videoPreview.bySrc[step.media.pre] || null : null;
+}
+
+function fmtTime(t) {
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function playStepInVideo(step) {
+  const span = stepVideoSpan(step);
+  const player = $('#videoPreviewPlayer');
+  if (!span || !player) return;
+  if (videoPreview.collapsed) { videoPreview.collapsed = false; $('#videoPreview').classList.remove('collapsed'); $('#videoPreviewToggle').textContent = 'Hide'; }
+  // Land just past the dissolve into this slide (0.8s between slides, 0.65s out of the title card)
+  // so the first frame shown is the step itself, not the previous slide fading out.
+  player.currentTime = Math.min(span.start + 0.85, Math.max(span.start, span.end - 0.2));
+  player.play().catch(() => {});
+  $('#videoPreview').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// While the video plays, highlight the step on screen and show its number in the header.
+function syncPlayingStep() {
+  const player = $('#videoPreviewPlayer');
+  if (!player || !videoPreview.timeline) return;
+  const t = player.currentTime;
+  const cur = videoPreview.timeline.steps.find((s) => t >= s.start && t < s.end) || null;
+  const cards = [...document.querySelectorAll('#steps .step')];
+  let label = '';
+  state.steps.forEach((step, i) => {
+    const on = !!cur && step.media?.pre === cur.src;
+    cards[i]?.classList.toggle('playing', on);
+    if (on) label = `Step ${i + 1} · ${(step.narration || '').slice(0, 70)}`;
+  });
+  const total = videoPreview.timeline.steps;
+  if (!cur && total.length && t < total[0].start) label = 'Intro and title card';
+  else if (!cur && total.length && t >= total[total.length - 1].end) label = 'Support card and outro';
+  $('#videoPreviewNow').textContent = label;
+}
+
+(function bindVideoPreview() {
+  const player = $('#videoPreviewPlayer');
+  if (player) player.addEventListener('timeupdate', syncPlayingStep);
+  const toggle = $('#videoPreviewToggle');
+  if (toggle) toggle.onclick = () => {
+    videoPreview.collapsed = !videoPreview.collapsed;
+    $('#videoPreview').classList.toggle('collapsed', videoPreview.collapsed);
+    toggle.textContent = videoPreview.collapsed ? 'Show' : 'Hide';
+    if (videoPreview.collapsed) player?.pause();
+  };
+})();
+
 function renderSteps() {
   stopPreview(); // the card holding the playing button is about to be rebuilt
   const root = $('#steps'); root.innerHTML = '';
@@ -2144,11 +2291,14 @@ function renderSteps() {
       thumbUrl = `http://127.0.0.1:8787/capture/${recId}/slide/${step.media.pre}`;
     }
 
+    const vspan = stepVideoSpan(step);
+
     card.innerHTML = `
       <div class="row">
         <span class="idx">${i + 1}</span>
         <span class="action ${actionClass}">${esc(step.action)}</span>
         <span class="target" title="${esc(targetDesc)}">${esc(targetDesc)}</span>
+        ${vspan ? `<span class="video-time" title="Where this step plays in the rendered video">${fmtTime(vspan.start)}</span>` : ''}
         ${step.narration ? '<span class="step-narration-icon" title="Has narration">🗣</span>' : ''}
         <span class="tools">
           <button class="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -2158,6 +2308,7 @@ function renderSteps() {
       </div>
       <div class="detail" ${isOpen ? '' : 'hidden'}>
         ${step.route ? `<div class="step-route-badge">Route: ${esc(step.route)}</div>` : ''}
+        ${vspan ? `<button class="play-in-video secondary" type="button" title="Jump the rendered video to this step">▶ Play in video (${fmtTime(vspan.start)}–${fmtTime(vspan.end)})</button>` : ''}
         ${thumbUrl ? `<div class="thumb-wrap"><img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" /><div class="thumb-caption" ${(step.caption || step.narration) ? '' : 'hidden'}>${esc(step.caption || step.narration || '')}</div></div>` : ''}
         <label class="step-field-label">
           <span>Narration</span>
@@ -2185,8 +2336,10 @@ function renderSteps() {
       send({ type: 'PANEL_UPDATE_STEP', index: step.index, patch });
     };
 
-    card.querySelector('.narration').onchange = (e) => update({ narration: e.target.value });
+    card.querySelector('.narration').onchange = (e) => { update({ narration: e.target.value }); updateVideoPreviewStale(); };
     card.querySelector('.caption').onchange = (e) => update({ caption: e.target.value });
+    const playBtn = card.querySelector('.play-in-video');
+    if (playBtn) playBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); playStepInVideo(step); };
 
     // Live caption overlay on the screenshot — same fallback the renderer uses (caption, else narration).
     const capOverlay = card.querySelector('.thumb-caption');
@@ -2268,7 +2421,7 @@ function toScript() {
 }
 function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,hint:{bbox,viewport}};}
 
-async function renderVideo(mode = 'video') {
+async function renderVideo(mode = 'video', drive = true) {
   if (!state.steps.length) return alert('Record at least one step first.');
   const script = toScript();
   const title = $('#scriptName').value.trim() || script.name;
@@ -2282,10 +2435,10 @@ async function renderVideo(mode = 'video') {
   $('#driveVideoLink').hidden = true;
   $('#renderStatus').classList.remove('ready', 'error');
   $('#renderStatusSpinner').hidden = false;
-  $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : 'Starting render…';
+  $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : mode === 'pylon' ? 'Creating Pylon article…' : 'Starting render…';
   updateFloatingBarVisibility();
 
-  const result = await send({ type: 'PANEL_RENDER', script, mode });
+  const result = await send({ type: 'PANEL_RENDER', script, mode, drive });
   if (!result?.ok) {
     isRenderingActive = false;
     updateRenderButtons();
@@ -2321,6 +2474,13 @@ function showRenderReadyBanner({ title, detail, pylonUrl }) {
 
 async function checkRender() {
   const result = await send({ type: 'PANEL_RENDER_STATUS' });
+  // Automatic editor previews report through the video box (startPreviewRender), not the render bar.
+  if (result?.ok && result.mode === 'preview') {
+    clearInterval(renderTimer);
+    isRenderingActive = !!result.running;
+    updateRenderButtons();
+    return;
+  }
   if (!result?.ok || result.phase === 'idle') {
     $('#renderStatusRow').hidden = true;
     $('#renderLinks').hidden = true;
@@ -2379,7 +2539,7 @@ async function checkRender() {
     $('#renderStatus').classList.remove('ready', 'error');
     $('#renderStatusSpinner').hidden = false;
     const waitingOn = [pylonPending && 'Pylon KB article', drivePending && 'Google Drive upload'].filter(Boolean).join(' & ');
-    $('#renderStatus').textContent = `✓ MP4 ready · ${waitingOn}…`;
+    $('#renderStatus').textContent = `✓ MP4 ready${result.reused ? ' (reused the preview — no changes)' : ''} · ${waitingOn}…`;
     $('#renderLinks').hidden = false;
     $('#pylonArticleLink').hidden = true;
     $('#driveVideoLink').hidden = true;
@@ -2408,7 +2568,8 @@ async function checkRender() {
     $('#driveVideoLink').hidden = true;
   }
 
-  const driveNote = drive?.status === 'failed' ? ` (Drive upload failed: ${drive.error || 'error'})` : '';
+  const driveNote = (drive?.status === 'failed' ? ` (Drive upload failed: ${drive.error || 'error'})` : '')
+    + (result.reused ? ' · reused the preview, nothing changed' : '');
 
   if (mode === 'both' && pylon?.status === 'done') {
     $('#renderStatus').textContent = `✓ MP4 & Pylon article ready${driveNote}`;
@@ -2436,6 +2597,9 @@ async function checkRender() {
     $('#pylonArticleLink').hidden = true;
     showRenderReadyBanner({ title: '✓ Video ready', detail: `"${title}" finished rendering.${driveNote}` });
   }
+  // A finished render replaces the MP4 on disk: reload the editor's preview player onto it.
+  loadVideoPreview(true).catch(() => {});
+  publishLinks.name = null; refreshPublishLinks().catch(() => {});
 }
 
 // ---- "💾 Save script": push the editor's script to the shared library without rendering ----
@@ -2801,8 +2965,51 @@ $('#closeLoadScriptModalBtn').onclick = closeLoadScriptModal;
 $('#loadScriptModal').onclick = (e) => { if (e.target.id === 'loadScriptModal') closeLoadScriptModal(); };
 $('#loadScriptSearch').oninput = renderLoadScriptList;
 $('#scriptName').onchange = (e) => send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: e.target.value } });
-$('#renderBtn').onclick = () => renderVideo('video');
-$('#renderBothBtn').onclick = () => renderVideo('both');
+// ---- One Render button + choices: what to make (Video / Article / Both) and whether to upload ----
+// Choices persist across sessions. The note under them only appears when something will be replaced.
+var renderChoice = { out: 'both', drive: true };
+var publishLinks = { name: null, drive: null, pylon: null };
+chrome.storage.local.get(['renderChoice'], (r) => {
+  if (r?.renderChoice) Object.assign(renderChoice, r.renderChoice);
+  updateRenderOptions();
+});
+function saveRenderChoice() { chrome.storage.local.set({ renderChoice: { ...renderChoice } }); updateRenderOptions(); }
+document.querySelectorAll('#renderOptions .seg-btn').forEach((b) => (b.onclick = () => { renderChoice.out = b.dataset.out; saveRenderChoice(); }));
+$('#driveToggle').onchange = (e) => { renderChoice.drive = e.target.checked; saveRenderChoice(); };
+
+function updateRenderOptions() {
+  if (!renderChoice || !$('#renderOptions')) return;
+  const makesVideo = renderChoice.out !== 'pylon';
+  document.querySelectorAll('#renderOptions .seg-btn').forEach((b) => {
+    const on = b.dataset.out === renderChoice.out;
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
+  });
+  // Drive only applies when a video is being made.
+  $('#driveSwitchWrap').hidden = !makesVideo;
+  $('#driveToggle').checked = renderChoice.drive;
+  $('#renderBtn').textContent = { video: 'Render video', pylon: 'Create article', both: 'Render video + article' }[renderChoice.out];
+  const notes = [];
+  if (makesVideo && renderChoice.drive && publishLinks.drive)
+    notes.push(`This video is already on Drive. Uploading replaces <a href="${publishLinks.drive}" target="_blank" rel="noopener">the existing file</a>, and its link stays the same.`);
+  if (renderChoice.out !== 'video' && publishLinks.pylon)
+    notes.push(`This creates a new draft article. The <a href="${publishLinks.pylon}" target="_blank" rel="noopener">current one</a> is left as-is.`);
+  $('#renderNotice').innerHTML = notes.join('<br>');
+  $('#renderNotice').hidden = !notes.length;
+}
+async function refreshPublishLinks() {
+  const name = ($('#scriptName').value || '').trim();
+  if (!name) { Object.assign(publishLinks, { name: null, drive: null, pylon: null }); return updateRenderOptions(); }
+  if (publishLinks.name === name) return;
+  publishLinks.name = name;
+  try {
+    const r = await api(`/publish-links/${encodeURIComponent(name)}`);
+    if (publishLinks.name !== name) return;
+    publishLinks.drive = r?.drive || null; publishLinks.pylon = r?.pylon || null;
+  } catch (_) { publishLinks.drive = publishLinks.pylon = null; }
+  updateRenderOptions();
+}
+$('#scriptName').addEventListener('change', () => { publishLinks.name = null; refreshPublishLinks(); });
+$('#renderBtn').onclick = () => renderVideo(renderChoice.out, renderChoice.out !== 'pylon' && renderChoice.drive);
 $('#downloadBtn').onclick = exportScript;
 
 $('#viewFinderLink').onclick = async (e) => {

@@ -505,7 +505,7 @@ else:
 LOGO_PNG = ROOT / 'assets' / 'academy_logo.png'
 LOGO_HOLD = 2.5
 logo_clip = tmp / 'logo_card.mp4'
-if LOGO_PNG.exists() and not (INTRO and OUTRO):
+if LOGO_PNG.exists() and not (INTRO and OUTRO) and not (rep.get('no_logo') or '--no-logo' in args):
     try:
         st = LOGO_PNG.stat()
         # The PNG's background is an uneven off-white (compression noise), which showed as a faint box
@@ -664,5 +664,16 @@ function show(){{const s=S[i];img.src=s.file;cap.textContent=s.caption;cap.hidde
 if(s.target){{const t=s.target;hot.hidden=false;hot.style.left=(t.x/s.vw*100)+'%';hot.style.top=(t.y/s.vh*100)+'%';hot.style.width=(t.width/s.vw*100)+'%';hot.style.height=(t.height/s.vh*100)+'%';}}else hot.hidden=true;}}
 function go(d){{i=Math.max(0,Math.min(S.length-1,i+d));show();}}hot.onclick=()=>go(1);document.addEventListener('keydown',e=>{{if(e.key==='ArrowRight')go(1);if(e.key==='ArrowLeft')go(-1);}});show();</script>""")
 
-json.dump({'video': str(final), 'duration': round(full_duration, 2), 'slides': slides, 'intro': bool(INTRO), 'title_card': bool(title_clip.exists()), 'support_card': bool(support_clip.exists()), 'outro': bool(OUTRO)}, open(out / 'assembly.json', 'w'), indent=1)
+# Where slide content starts in the final file: the intro+title lead minus the crossfade into content
+# (or the full lead/intro when they were concatenated instead). The editor adds this to each slide's
+# content-relative `start` to seek the video to that step.
+try:
+    if lead_included and lead_clip and lead_clip.exists():
+        content_offset = max(0.0, dur(str(lead_clip)) - 0.65)
+    else:
+        content_offset = sum(dur(str(p)) for p in (INTRO, title_clip) if p and Path(p).exists())
+except Exception:
+    content_offset = 0.0
+
+json.dump({'video': str(final), 'duration': round(full_duration, 2), 'content_offset': round(content_offset, 3), 'slides': slides, 'intro': bool(INTRO), 'title_card': bool(title_clip.exists()), 'support_card': bool(support_clip.exists()), 'outro': bool(OUTRO)}, open(out / 'assembly.json', 'w'), indent=1)
 print(f"video {final} ({full_duration:.1f}s, {len(slides)} slides, intro={bool(INTRO)}, title_card={bool(title_clip.exists())}, outro={bool(OUTRO)}) · interactive {web/'index.html'}")
