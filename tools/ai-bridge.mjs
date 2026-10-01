@@ -3482,6 +3482,15 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        // Title card badge (the module name above the title) comes from script.module. Manual and
+        // AI recordings usually have none, so resolve it the same way the Drive/Pylon publish does
+        // (own module -> coverage table -> URL-route inference) and persist it before rendering;
+        // otherwise the card falls back to a generic "HADRIUS ACADEMY" badge.
+        try {
+          const { module: resolvedModule } = await resolveScriptModule(name, script);
+          if (resolvedModule && !canonicalModule(script.module)) script.module = resolvedModule;
+        } catch (e) { console.warn(`[render] module resolution for "${name}" failed: ${String(e?.message || e)}`); }
+
         // Render used to only write the local mirror file — a script rendered straight from a
         // "Record this" session (skipping the Editor's explicit ☁ Save button) never reached the
         // shared library at all, so the Coverage tab kept showing it as "missing" forever even
