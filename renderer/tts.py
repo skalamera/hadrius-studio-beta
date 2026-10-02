@@ -93,8 +93,10 @@ def normalize_pronunciation(text: str) -> str:
     """Normalize text for natural TTS pronunciation without affecting on-screen captions.
 
     - Brand name: "Hadrius" -> "Heydrius"
-    - Homograph "lives": verbs ("where ... lives", "record lives") -> "livz" (/lɪvz/, short "i")
+    - Homograph "lives": verbs ("where ... lives", "record lives") -> "livs" (/lɪvz/, short "i")
       while protecting explicit plural nouns ("their lives", "daily lives", "saving lives").
+      Note: we use "livs" instead of "livz" because VoiceStudio/OmniVoice decomposes trailing "-z"
+      into an extra possessive/contraction token ("lives is" / "lives's").
     """
     if not text:
         return ""
@@ -105,9 +107,9 @@ def normalize_pronunciation(text: str) -> str:
         word = m.group(2)
         if re.search(r'\b' + noun_modifiers + r'\s*$', prefix, re.IGNORECASE):
             return m.group(0)
-        return prefix + ('Livz' if word[0].isupper() else 'livz')
+        return prefix + ('Livs' if word[0].isupper() else 'livs')
     text = re.sub(r'(\b\w+\s+)(lives\b)', replace_lives, text, flags=re.IGNORECASE)
-    text = re.sub(r'^(lives\b)', lambda m: 'Livz' if m.group(1)[0].isupper() else 'livz', text, flags=re.IGNORECASE)
+    text = re.sub(r'^(lives\b)', lambda m: 'Livs' if m.group(1)[0].isupper() else 'livs', text, flags=re.IGNORECASE)
     return text
 
 
