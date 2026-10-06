@@ -3189,16 +3189,16 @@ if (camBtn) {
 }
 
 // The floating camera button is hidden by default. Alt+S still takes a UI screenshot;
-// Alt+Shift+S shows or hides the button (remembered across sessions).
+// Alt+Shift+C shows or hides the button (remembered across sessions).
 function applyCameraButtonPref(show) { document.body.classList.toggle('show-camera-btn', !!show); }
 chrome.storage.local.get(['showCameraBtn'], (r) => applyCameraButtonPref(r?.showCameraBtn));
 window.addEventListener('keydown', (e) => {
-  if (e.altKey && e.shiftKey && (e.key === 's' || e.key === 'S' || e.code === 'KeyS')) {
+  if (e.altKey && e.shiftKey && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC')) {
     e.preventDefault();
     const show = !document.body.classList.contains('show-camera-btn');
     applyCameraButtonPref(show);
     chrome.storage.local.set({ showCameraBtn: show });
-    if (typeof toast === 'function') toast(show ? 'Camera button on (Alt+Shift+S to hide)' : 'Camera button off (Alt+Shift+S to show)');
+    if (typeof toast === 'function') toast(show ? 'Camera button on (Alt+Shift+C to hide)' : 'Camera button off (Alt+Shift+C to show)');
     return;
   }
   if (e.altKey && (e.key === 's' || e.key === 'S' || e.code === 'KeyS')) {
