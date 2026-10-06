@@ -15,6 +15,7 @@ import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, ext
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
 import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
 import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording } from './gdrive.mjs';
+import { getAcademyLessons, recordAcademyVideoLink } from './academy-lessons.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1798,6 +1799,10 @@ async function startDriveUpload(name, videoPath) {
   const { module, inferred } = await resolveScriptModule(name, scriptObj);
   const drive = await googleDriveUploadVideo(videoPath, title, module, { existingId: scriptObj?.driveVideoId });
   await patchSavedScript(name, { driveVideoId: drive.id, driveVideoUrl: drive.url, ...(inferred ? { module } : {}) }, 'gdrive');
+  // Fill the lesson's link cell on the Academy curriculum sheet. Best-effort: never fails the upload.
+  recordAcademyVideoLink({ title: scriptObj?.title || title, module, url: drive.url })
+    .then((r) => console.log(`[academy-sheet] "${title}": ${r.status}${r.cell ? ` (${r.cell})` : ''}${r.current ? ` — cell already has ${r.current}` : ''}${r.where ? ` — ${r.where.join(', ')}` : ''}`))
+    .catch((e) => console.warn(`[academy-sheet] couldn't write the link for "${title}": ${String(e?.message || e)}`));
   return drive;
 }
 
@@ -2243,6 +2248,16 @@ const server = http.createServer(async (req, res) => {
       drive: { connected: drive.connected === true, detail: drive.detail, fixCommand: null },
       pylon: { connected: pylon.connected === true, detail: pylon.detail, fixCommand: null },
     });
+  }
+
+  // ---- To Record: Academy curriculum sheet (lesson titles + done state per module) ----
+  if (req.method === 'GET' && u.pathname === '/academy-lessons') {
+    try {
+      const data = await getAcademyLessons({ fresh: u.searchParams.get('fresh') === '1' });
+      return sendJson(res, 200, { ok: true, ...data });
+    } catch (e) {
+      return sendJson(res, 502, { ok: false, error: `Couldn't read the Academy sheet: ${String(e?.message || e)}` });
+    }
   }
 
   // ---- one-click update: runs update.sh detached so it survives setup.sh restarting this bridge ----

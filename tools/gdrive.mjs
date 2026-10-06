@@ -93,6 +93,32 @@ async function getAccessToken() {
   return cachedToken.accessToken;
 }
 
+/** Google Sheets API v4 call with the Drive OAuth token (the drive scope covers Sheets). */
+export async function googleSheetsApi(pathAndQuery, { method = 'GET', body } = {}) {
+  if (!googleDriveConfigured()) throw new Error('Google Drive is not configured');
+  const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${pathAndQuery}`, {
+    method,
+    headers: { Authorization: `Bearer ${await getAccessToken()}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(`Sheets API HTTP ${resp.status}: ${(data.error?.message || '').split('. ')[0]}`);
+  return data;
+}
+
+/** One tab of a Google Sheet as CSV text, read with the same Drive OAuth token (drive scope). */
+export async function googleSheetCsv(spreadsheetId, gid) {
+  if (!googleDriveConfigured()) throw new Error('Google Drive is not configured (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN missing from .env)');
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+  for (let attempt = 0; ; attempt++) {
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${await getAccessToken()}` } });
+    if (resp.ok) return resp.text();
+    // Google rate-limits rapid exports of several tabs (429); back off and retry a few times.
+    if (resp.status === 429 && attempt < 4) { await new Promise((r) => setTimeout(r, 3000 * (attempt + 1))); continue; }
+    throw new Error(`Sheet export failed for gid ${gid}: HTTP ${resp.status}`);
+  }
+}
+
 /**
  * Upload a local video file to Drive, share it "Anyone with the link" as a viewer, and return the
  * shareable link.

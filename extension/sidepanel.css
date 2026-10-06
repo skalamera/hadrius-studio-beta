@@ -448,3 +448,44 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .render-notice{margin:0;padding:7px 10px;border-radius:8px;background:#fff8e6;border:1px solid #f1dca4;color:#6b5312;font-size:11.5px;line-height:1.45}
 .render-notice a{color:inherit;font-weight:600}
 #renderBtn{flex:1 1 auto}
+
+/* ── To Record: Academy progress dashboard ── */
+.academy-dash{display:flex;flex-direction:column;gap:10px;margin:0 0 14px}
+.ad-hero{position:relative;overflow:hidden;border-radius:14px;padding:16px 16px 14px;color:#fff;background:radial-gradient(120% 140% at 100% 0%,#7c6be0 0%,#4c3dab 45%,#2e2478 100%);box-shadow:0 8px 24px -10px rgba(76,61,171,.55)}
+.ad-hero::after{content:'';position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.07)}
+.ad-hero-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;position:relative;z-index:1}
+.ad-eyebrow{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.75}
+.ad-hero-num{font-size:34px;font-weight:800;line-height:1.05;margin-top:4px;letter-spacing:-.02em}
+.ad-hero-num span{font-size:13px;font-weight:600;opacity:.8;letter-spacing:0}
+.ad-pct{font-size:24px;font-weight:800;text-align:right;line-height:1;letter-spacing:-.02em}
+.ad-pct span{display:block;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.7;margin-top:3px}
+.ad-bar{position:relative;z-index:1;height:8px;border-radius:99px;background:rgba(255,255,255,.18);margin-top:12px;overflow:hidden}
+.ad-bar span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#c4b5fd,#fff);box-shadow:0 0 12px rgba(255,255,255,.6);transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.ad-hero-foot{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;margin-top:9px;font-size:11px;opacity:.85}
+.ad-hero-foot a{color:#fff;font-weight:700;text-decoration:none;opacity:.9}
+.ad-hero-foot a:hover{opacity:1;text-decoration:underline}
+.ad-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.ad-card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:11px 11px 10px;border-radius:12px;background:#fff;border:1px solid var(--line);transition:transform .15s,box-shadow .15s,border-color .15s}
+.ad-card:hover{transform:translateY(-1px);border-color:var(--purple-border);box-shadow:0 6px 16px -8px rgba(76,61,171,.35)}
+.ad-card:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.ad-card-top{display:flex;align-items:center;gap:6px;min-width:0}
+.ad-card-top .module-icon{width:16px;height:16px}
+.ad-card-name{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ad-card-num{font-size:24px;font-weight:800;color:var(--purple);line-height:1;letter-spacing:-.02em;display:flex;align-items:baseline;gap:4px}
+.ad-card-unit{font-size:10.5px;font-weight:700;color:var(--muted);letter-spacing:0}
+.ad-mini{height:4px;border-radius:99px;background:#eef0f6;overflow:hidden}
+.ad-mini span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#7c6be0,#4c3dab)}
+.ad-card-sub{font-size:10px;color:var(--muted);font-weight:600}
+.ad-card.complete{background:linear-gradient(180deg,#f3fbf6,#fff)}
+.ad-card.complete .ad-card-num{color:#15803d}
+.ad-card.complete .ad-mini span{background:linear-gradient(90deg,#4ade80,#16a34a)}
+.ad-check{font-size:22px;line-height:1}
+.lesson-item .item-title{font-weight:700}
+.lesson-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;flex-wrap:wrap}
+.lesson-row .item-actions{margin:0;display:flex;gap:6px;flex-wrap:wrap}
+.lesson-meta{display:flex;gap:6px;flex-wrap:wrap}
+.lesson-item{padding:10px 12px}
+.lesson-level{font-size:10px;font-weight:700;color:var(--purple);background:var(--purple-soft);border:1px solid var(--purple-border);border-radius:99px;padding:1px 7px}
+.lesson-note{font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:99px;padding:1px 7px}
+.primary-lite{background:var(--purple);color:#fff;border:0;border-radius:7px;padding:6px 11px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.primary-lite:hover{background:var(--purple2)}

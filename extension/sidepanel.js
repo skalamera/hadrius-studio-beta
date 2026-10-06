@@ -4,6 +4,9 @@ const BRIDGE = 'http://127.0.0.1:8787';
 let state = { recording:false, steps:[], script:{}, recordingId:null };
 let catalog = { modules:[] };
 let pylon = { modules:{} };
+let academy = null;       // GET /academy-lessons: the curriculum sheet, source of the To Record tab
+let academyError = null;
+var lastSheetRefreshFor = null;
 let selected = null;
 let renderTimer = null;
 
@@ -200,8 +203,10 @@ async function dismissWorkflow(title, moduleName) {
   renderModules();
 }
 
-async function refreshAll() {
-  const [workflowResult, pylonResult] = await Promise.allSettled([api('/workflows'), api('/pylon/articles')]);
+async function refreshAll(fresh = false) {
+  const [workflowResult, pylonResult, academyResult] = await Promise.allSettled([api('/workflows'), api('/pylon/articles'), api(`/academy-lessons${fresh ? '?fresh=1' : ''}`)]);
+  if (academyResult.status === 'fulfilled') { academy = academyResult.value; academyError = null; }
+  else academyError = academyResult.reason?.message || 'bridge error';
   if (workflowResult.status === 'fulfilled') {
     catalog = workflowResult.value;
     if (Array.isArray(catalog.manualLinks)) {
@@ -290,7 +295,112 @@ const openPylonSections = new Set();
 const openModuleBodies = new Set();
 const openDoneSections = new Set();
 
+// ---- To Record = the Academy curriculum sheet's lessons that don't have a video link yet ----
+// Dashboard on top (remaining per module + overall % done), then the remaining lessons by module.
+// A lesson that matches an existing workflow plan (same module, same title) reuses that plan, so
+// View plan / Auto-record keep working for it; the rest can be recorded manually.
+const ACADEMY_SHORT = { 'Testing Program': 'Testing', 'People Oversight': 'People', 'Communications': 'Comms', 'Marketing Review': 'Marketing', 'Account Surveillance': 'Surveillance' };
+const ACADEMY_LEVEL_ORDER = ['getting started', 'beyond the basics', 'advanced functionality'];
+function academyPlanFor(moduleName, title) {
+  const group = (catalog.modules || []).find((g) => g.module.toLowerCase() === moduleName.toLowerCase());
+  const key = normalizeTitle(title);
+  return (group?.workflows || []).find((w) => normalizeTitle(w.title) === key) || null;
+}
+function renderAcademy() {
+  const dash = $('#academyDash');
+  const list = $('#modules');
+  const q = $('#search').value.trim().toLowerCase();
+  const scrollTarget = document.scrollingElement || document.documentElement || document.body;
+  const prevScrollTop = scrollTarget ? scrollTarget.scrollTop : 0;
+  $('#bulkActionsBar').hidden = true;
+  list.innerHTML = '';
+  if (!academy) {
+    dash.hidden = true;
+    $('#syncStatus').hidden = false;
+    $('#syncStatus').textContent = `Couldn't load the Academy lesson sheet: ${academyError}. Use ⟳ below to retry.`;
+    return;
+  }
+  const pct = academy.total ? Math.round((academy.done / academy.total) * 1000) / 10 : 0;
+  const badge = $('#toRecordCount');
+  if (badge) { badge.textContent = academy.remaining; badge.hidden = academy.remaining === 0; }
+  const synced = new Date(academy.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  $('#syncStatus').textContent = '';
+  $('#syncStatus').hidden = true;
+  const footer = $('#workflowsCountFooter');
+  if (footer) footer.textContent = `Academy lesson sheet · synced ${synced}`;
+
+  const cards = academy.modules.map((m) => {
+    const mp = m.total ? Math.round((m.done / m.total) * 100) : 0;
+    const complete = m.remaining === 0;
+    return `<button type="button" class="ad-card${complete ? ' complete' : ''}" data-mod="${esc(m.module.toLowerCase())}" title="${esc(`${m.tab}: ${m.done} of ${m.total} done`)}">
+      <div class="ad-card-top"><img class="module-icon" src="${moduleIconPath(m.module)}" alt=""><span class="ad-card-name">${esc(ACADEMY_SHORT[m.tab] || m.tab)}</span></div>
+      <div class="ad-card-num">${complete ? '<span class="ad-check">✓</span>' : m.remaining}<span class="ad-card-unit">${complete ? 'complete' : 'left'}</span></div>
+      <div class="ad-mini"><span style="width:${mp}%"></span></div>
+      <div class="ad-card-sub">${m.done}/${m.total} done</div>
+    </button>`;
+  }).join('');
+  dash.innerHTML = `
+    <div class="ad-hero">
+      <div class="ad-hero-row">
+        <div>
+          <div class="ad-eyebrow">Hadrius Academy videos</div>
+          <div class="ad-hero-num">${academy.remaining}<span> left to create</span></div>
+        </div>
+        <div class="ad-pct">${pct}%<span>done</span></div>
+      </div>
+      <div class="ad-bar"><span style="width:${pct}%"></span></div>
+      <div class="ad-hero-foot"><span>${academy.done} of ${academy.total} lessons have a video</span><a href="${esc(academy.sheetUrl)}" target="_blank" rel="noopener">Open sheet ↗</a></div>
+    </div>
+    <div class="ad-grid">${cards}</div>`;
+  dash.hidden = false;
+  dash.querySelectorAll('.ad-card').forEach((c) => (c.onclick = () => {
+    const sec = list.querySelector(`section.module[data-mod="${c.dataset.mod}"]`);
+    if (!sec) return toast('Every lesson in this module has a video ✓');
+    openModuleBodies.add(c.dataset.mod);
+    renderAcademy();
+    list.querySelector(`section.module[data-mod="${c.dataset.mod}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+
+  let shown = 0;
+  for (const m of academy.modules) {
+    const remaining = m.lessons.filter((l) => !l.link);
+    if (!remaining.length) continue;
+    const matching = remaining.filter((l) => !q || `${l.title} ${l.level}`.toLowerCase().includes(q));
+    if (q && !matching.length) continue;
+    const modKey = m.module.toLowerCase();
+    const isOpen = q ? true : openModuleBodies.has(modKey);
+    const section = document.createElement('section');
+    section.className = 'module'; section.dataset.mod = modKey;
+    section.innerHTML = `<div class="module-head"><span class="module-caret">${isOpen ? '▾' : '▸'}</span><img class="module-icon" src="${moduleIconPath(m.module)}" alt="" /><h2>${esc(m.tab)}</h2><span class="counts">${remaining.length} left</span></div><div class="module-body" ${isOpen ? '' : 'hidden'}></div>`;
+    const body = section.querySelector('.module-body');
+    matching.sort((a, b) => ACADEMY_LEVEL_ORDER.indexOf(a.level.toLowerCase()) - ACADEMY_LEVEL_ORDER.indexOf(b.level.toLowerCase()));
+    for (const lesson of matching) {
+      const plan = academyPlanFor(m.module, lesson.title);
+      const workflow = plan ? { ...plan, title: lesson.title } : { title: lesson.title, purpose: '', steps: [], sources: [] };
+      const blocker = plan ? autoRecordBlocker(plan) : 'no plan';
+      const item = document.createElement('div'); item.className = 'item lesson-item';
+      item.innerHTML = `<div class="item-title">${esc(lesson.title)}</div>
+        <div class="lesson-row"><div class="lesson-meta">${lesson.level ? `<span class="lesson-level">${esc(lesson.level)}</span>` : ''}${lesson.note ? `<span class="lesson-note">${esc(lesson.note)}</span>` : ''}</div>
+        <div class="item-actions"><button class="primary-lite choose" title="Start recording this lesson (title and module are filled in)">● Record</button>${!blocker ? '<button class="ai-beta aiRecord" title="Beta: drives your browser to perform and record this lesson from its verified plan">⚡ Auto-record <span class="beta-chip">Beta</span></button>' : ''}${plan ? '<button class="secondary plan">View plan</button>' : ''}</div></div>`;
+      item.querySelector('.choose').onclick = () => chooseWorkflow(m.module, workflow);
+      item.querySelector('.aiRecord')?.addEventListener('click', () => startAiBrowserRecording(m.module, workflow));
+      item.querySelector('.plan')?.addEventListener('click', () => openViewPlanModal(m.module, workflow));
+      body.appendChild(item);
+    }
+    section.querySelector('.module-head').onclick = () => {
+      body.hidden = !body.hidden;
+      section.querySelector('.module-caret').textContent = body.hidden ? '▸' : '▾';
+      if (body.hidden) openModuleBodies.delete(modKey); else openModuleBodies.add(modKey);
+    };
+    list.appendChild(section);
+    shown++;
+  }
+  if (!shown) list.innerHTML = `<div class="item muted">${q ? 'No remaining lessons match your search.' : 'Every lesson has a video. 🎉'}</div>`;
+  if (scrollTarget && prevScrollTop > 0) requestAnimationFrame(() => { scrollTarget.scrollTop = prevScrollTop; });
+}
+
 function renderModules() {
+  if (academy || academyError) return renderAcademy();
   const q = $('#search').value.trim().toLowerCase();
   const scrollTarget = document.scrollingElement || document.documentElement || document.body;
   const prevScrollTop = scrollTarget ? scrollTarget.scrollTop : 0;
@@ -2564,6 +2674,12 @@ async function checkRender() {
       driveStatus[driveId] = false;
       refreshDriveProcessing();
     }
+    // The bridge writes the link into the Academy sheet just after the upload; refresh To Record
+    // once (per upload) so the dashboard counts it as done.
+    if (lastSheetRefreshFor !== drive.url) {
+      lastSheetRefreshFor = drive.url;
+      setTimeout(() => refreshAll(true).catch(() => {}), 6000);
+    }
   } else {
     $('#driveVideoLink').hidden = true;
   }
@@ -3084,7 +3200,7 @@ $('#refreshWorkflowsBtn').onclick = async () => {
   const btn = $('#refreshWorkflowsBtn');
   btn.classList.add('refreshing');
   try {
-    await refreshAll();
+    await refreshAll(true);
   } finally {
     setTimeout(() => btn.classList.remove('refreshing'), 400);
   }
