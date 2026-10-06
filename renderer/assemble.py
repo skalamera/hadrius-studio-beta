@@ -478,6 +478,8 @@ if rep.get('no_title') or '--no-title' in args:
 else:
     try:
         mod_name = MODULE_ARG or resolve_module(rep, ROOT, out)
+        if mod_name and mod_name.strip().lower() == 'other':
+            mod_name = None  # "Other" (picked in the render bar) gets the generic HADRIUS ACADEMY badge
         title_text = rep.get('title') or rep['name']
         cached_card(title_clip, ['title', title_text, mod_name, SHOW_ACADEMY], lambda: generate_title_video(
             title_text,

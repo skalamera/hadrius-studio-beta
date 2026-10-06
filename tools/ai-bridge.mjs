@@ -1690,6 +1690,8 @@ async function findCoverageInfo(scriptName) {
 async function resolveScriptModule(name, scriptObj, coverageModule) {
   const own = canonicalModule(scriptObj?.module);
   if (own) return { module: own, inferred: false };
+  // "Other" is a deliberate pick from the render bar's module picker; don't re-infer over it.
+  if (String(scriptObj?.module || '').trim().toLowerCase() === 'other') return { module: 'Other', inferred: false };
   const cov = canonicalModule(coverageModule !== undefined ? coverageModule : (await findCoverageInfo(name)).module);
   if (cov) return { module: cov, inferred: false };
   const guess = inferModuleFromScript(scriptObj);
@@ -2079,6 +2081,28 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 404, { ok: false, error: 'slide not found' });
   }
 
+  // POST /resolve-module { script } -> { ok, module|null, source: 'script'|'coverage'|'inferred'|null, modules }
+  // What module a render would file this script under (title-card badge, Drive folder, Pylon
+  // collection), so the render bar can show it and let the user change it before rendering.
+  if (req.method === 'POST' && u.pathname === '/resolve-module') {
+    try {
+      const raw = await new Promise((ok, bad) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => ok(b)); req.on('error', bad); });
+      const { script: rs } = JSON.parse(raw || '{}');
+      const rname = safeName(formatHumanTitle(rs?.title || rs?.name || ''));
+      const ownRaw = String(rs?.module || '').trim();
+      const own = canonicalModule(ownRaw) || (ownRaw.toLowerCase() === 'other' ? 'Other' : null);
+      let module = own, source = own ? 'script' : null;
+      if (!module) {
+        const r = await resolveScriptModule(rname, { ...(rs || {}), module: '' });
+        module = canonicalModule(r.module) || null;
+        source = module ? (r.inferred ? 'inferred' : 'coverage') : null;
+      }
+      return sendJson(res, 200, { ok: true, module, source, modules: [...ALLOWED_MODULES, 'Other'] });
+    } catch (e) {
+      return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
+    }
+  }
+
   // ---- rendered-video preview for the step editor ----
   // GET /publish-links/<name> -> { ok, drive: url|null, pylon: url|null } — what a render would overwrite.
   // Local script first, then the shared library (a teammate may have published it).
@@ -2219,6 +2243,37 @@ const server = http.createServer(async (req, res) => {
       drive: { connected: drive.connected === true, detail: drive.detail, fixCommand: null },
       pylon: { connected: pylon.connected === true, detail: pylon.detail, fixCommand: null },
     });
+  }
+
+  // ---- one-click update: runs update.sh detached so it survives setup.sh restarting this bridge ----
+  // POST /update -> { ok, started }. GET /update/status -> { ok, running, exitCode, log }.
+  // State lives in out/_update/ (gitignored) because the bridge itself restarts mid-update.
+  if (u.pathname === '/update' || u.pathname === '/update/status') {
+    const dir = path.join(REPO_ROOT, 'out', '_update');
+    const logPath = path.join(dir, 'update.log'), exitPath = path.join(dir, 'exit-code'), pidPath = path.join(dir, 'pid');
+    const alive = () => { try { process.kill(parseInt(fs.readFileSync(pidPath, 'utf8'), 10), 0); return true; } catch (_) { return false; } };
+    if (req.method === 'GET' && u.pathname === '/update/status') {
+      const exitRaw = fs.existsSync(exitPath) ? fs.readFileSync(exitPath, 'utf8').trim() : '';
+      const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').split('\n').slice(-15).join('\n') : '';
+      return sendJson(res, 200, { ok: true, started: fs.existsSync(pidPath), running: !exitRaw && alive(), exitCode: exitRaw === '' ? null : parseInt(exitRaw, 10), log });
+    }
+    if (req.method === 'POST' && u.pathname === '/update') {
+      if (render.running) return sendJson(res, 409, { ok: false, error: 'A render is running. Update once it finishes.' });
+      if (fs.existsSync(pidPath) && !fs.existsSync(exitPath) && alive()) return sendJson(res, 200, { ok: true, started: false, alreadyRunning: true });
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.mkdirSync(dir, { recursive: true });
+      // detached = its own session, so launchd stopping the bridge (setup.sh reloads it) doesn't kill it.
+      const out = fs.openSync(logPath, 'a');
+      const child = spawn('/bin/bash', ['-c', 'bash update.sh; echo $? > "$1"', 'update', exitPath], {
+        cwd: REPO_ROOT, detached: true, stdio: ['ignore', out, out],
+        env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || '/usr/bin:/bin'}` },
+      });
+      fs.writeFileSync(pidPath, String(child.pid));
+      child.unref();
+      fs.closeSync(out);
+      console.log(`[update] started update.sh (pid ${child.pid}), log ${logPath}`);
+      return sendJson(res, 200, { ok: true, started: true });
+    }
   }
 
   // ---- app version + whether this install is behind origin/main, for the header's version line ----
@@ -3525,6 +3580,11 @@ const server = http.createServer(async (req, res) => {
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, name, scriptPath, fastPath: true }));
+
+          // Article-only: no re-render, so a module picked in the render bar has to reach the saved
+          // script here, or publishRenderToPylon files the article under the old one.
+          const pickedModule = canonicalModule(script.module) || (String(script.module || '').trim().toLowerCase() === 'other' ? 'Other' : null);
+          if (pickedModule) await patchSavedScript(name, { module: pickedModule }, 'render');
 
           (async () => {
             try {

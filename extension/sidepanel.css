@@ -10,8 +10,14 @@
 .brand-block{display:flex;flex-direction:column;gap:2px;justify-content:center}
 .brand-top-row{display:flex;align-items:center;gap:9px}
 .app-version-line{position:relative;font-size:9.5px;font-weight:600;color:var(--muted);letter-spacing:.02em;cursor:default;width:fit-content}
-.app-version-line.outdated{color:#b45309}
+.app-version-line.outdated{color:#b45309;cursor:pointer}
 .app-version-line.outdated::after{content:'update available';margin-left:5px;background:#fef3c7;color:#92400e;border-radius:99px;padding:1px 6px;font-weight:700}
+.app-version-line.outdated:hover::after{background:#fde68a}
+.app-version-line.updating::after,.app-version-line.updated::after,.app-version-line.update-failed::after{content:attr(data-pill);margin-left:5px;border-radius:99px;padding:1px 6px;font-weight:700}
+.app-version-line.updating::after{background:#ede9fe;color:#4c3dab}
+.app-version-line.updated{cursor:pointer}.app-version-line.updated::after{background:#dcfce7;color:#166534}
+.app-version-line.update-failed{cursor:pointer}.app-version-line.update-failed::after{background:#fee2e2;color:#991b1b}
+#appVersionTooltip{white-space:pre-line}
 .app-version-line:hover .tool-status-tooltip{display:block}
 .tool-status-tooltip.align-left{right:auto;left:0}
 .render-buttons{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -434,6 +440,11 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .drive-switch input:checked + .switch-track .switch-thumb{transform:translateX(13px)}
 .drive-switch input:focus-visible + .switch-track{outline:2px solid var(--purple,#6d4aff);outline-offset:2px}
 .drive-switch input:disabled + .switch-track{opacity:.55}
+.module-pick{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink,#17231e)}
+.module-pick select{flex:1;min-width:0;font:inherit;font-weight:600;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:var(--ink)}
+.module-pick select:focus{border-color:var(--purple);outline:none}
+.module-pick select.unset{border-color:#f1dca4;background:#fff8e6}
+.module-hint{font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap}
 .render-notice{margin:0;padding:7px 10px;border-radius:8px;background:#fff8e6;border:1px solid #f1dca4;color:#6b5312;font-size:11.5px;line-height:1.45}
 .render-notice a{color:inherit;font-weight:600}
 #renderBtn{flex:1 1 auto}

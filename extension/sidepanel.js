@@ -2395,7 +2395,7 @@ function toScript() {
     version: 1,
     name: humanTitle,
     title: humanTitle,
-    module: selected?.module || state.script?.module || '',
+    module: (typeof modulePick !== 'undefined' && modulePick.override) || selected?.module || state.script?.module || '',
     workflowPlan: selected?.steps || state.script?.workflowPlan || [],
     createdAt: state.script?.createdAt || now,
     updatedAt: now,
@@ -2995,8 +2995,56 @@ function updateRenderOptions() {
     notes.push(`This creates a new draft article. The <a href="${publishLinks.pylon}" target="_blank" rel="noopener">current one</a> is left as-is.`);
   $('#renderNotice').innerHTML = notes.join('<br>');
   $('#renderNotice').hidden = !notes.length;
+  updateModulePick();
 }
+// ---- Module picker: shows which module the render files this under (title-card badge, Drive
+// folder, Pylon collection) and lets the user change it. The pick is kept per recording.
+var modulePick = { override: null, forRec: null, resolved: null, source: null, modules: [], key: null };
+function currentRecId() { return state.recordingId || state.script?.recording?.id || null; }
+function updateModulePick() {
+  const sel = $('#moduleSelect');
+  if (!sel || !modulePick) return;
+  const hasSteps = (state.steps?.length || 0) > 0;
+  $('#modulePick').hidden = !hasSteps || !modulePick.modules.length;
+  if (modulePick.forRec !== currentRecId()) modulePick.override = null;
+  const value = modulePick.override || modulePick.resolved || '';
+  const opts = [...modulePick.modules];
+  if (value && !opts.includes(value)) opts.unshift(value);
+  sel.innerHTML = (value ? '' : '<option value="" selected disabled>Choose a module…</option>')
+    + opts.map((m) => `<option value="${esc(m)}"${m === value ? ' selected' : ''}>${esc(m)}</option>`).join('');
+  sel.classList.toggle('unset', !value);
+  sel.disabled = !!isRenderingActive;
+  $('#moduleHint').textContent = modulePick.override ? 'set by you'
+    : value ? ({ inferred: 'detected from pages', coverage: 'from coverage' }[modulePick.source] || '')
+    : 'not detected';
+}
+async function refreshModulePick() {
+  if (!(state.steps?.length)) return updateModulePick();
+  const script = toScript();
+  // Ask what the bridge would pick on its own, so choosing that value again clears the override.
+  script.module = selected?.module || state.script?.module || '';
+  if (modulePick.override && script.module === modulePick.override) script.module = '';
+  const key = JSON.stringify([currentRecId(), script.name, script.module, state.steps.length]);
+  if (modulePick.key === key) return updateModulePick();
+  modulePick.key = key;
+  try {
+    const r = await api('/resolve-module', { method: 'POST', body: JSON.stringify({ script }) });
+    if (modulePick.key !== key) return;
+    modulePick.resolved = r?.module || null; modulePick.source = r?.source || null;
+    modulePick.modules = r?.modules || modulePick.modules;
+  } catch (_) { modulePick.key = null; }
+  updateModulePick();
+}
+$('#moduleSelect').onchange = (e) => {
+  const m = e.target.value;
+  modulePick.override = m && m !== modulePick.resolved ? m : null;
+  modulePick.forRec = currentRecId();
+  send({ type: 'PANEL_UPDATE_SCRIPT', patch: { module: modulePick.override ? m : (state.script?.module || '') } }).catch(() => {});
+  updateModulePick();
+  try { updateVideoPreviewStale(); } catch (_) {}
+};
 async function refreshPublishLinks() {
+  refreshModulePick().catch(() => {});
   const name = ($('#scriptName').value || '').trim();
   if (!name) { Object.assign(publishLinks, { name: null, drive: null, pylon: null }); return updateRenderOptions(); }
   if (publishLinks.name === name) return;
@@ -3210,6 +3258,7 @@ async function refreshVersionStatus(fresh) {
   const textEl = $('#appVersionText');
   const tooltipEl = $('#appVersionTooltip');
   if (!lineEl || !textEl) return;
+  if (typeof updateRun !== 'undefined' && updateRun && (updateRun.active || updateRun.done)) return;
   try {
     const v = await api(`/version${fresh ? '?fresh=1' : ''}`);
     textEl.textContent = `v${v.version}`;
@@ -3218,10 +3267,7 @@ async function refreshVersionStatus(fresh) {
       const behind = v.commitsBehind ? `${v.commitsBehind} commit${v.commitsBehind === 1 ? '' : 's'} behind` : 'behind origin/main';
       const latest = v.latestVersion && v.latestVersion !== v.version ? ` (latest: v${v.latestVersion})` : '';
       tooltipEl.textContent = '';
-      tooltipEl.append(`${behind}${latest} — run this in the folder's terminal:\n`);
-      const code = document.createElement('code');
-      code.textContent = 'bash update.sh';
-      tooltipEl.append(code);
+      tooltipEl.append(`${behind}${latest}. Click to update now (runs update.sh in the background).`);
     } else {
       lineEl.classList.remove('outdated');
       tooltipEl.textContent = v.upToDate === null
@@ -3230,5 +3276,56 @@ async function refreshVersionStatus(fresh) {
     }
   } catch (_) { /* bridge unreachable — leave whatever was last shown */ }
 }
+
+// ---- One-click update: clicking the "update available" pill runs update.sh via the bridge. The
+// bridge restarts partway through (setup.sh reloads it), so polling tolerates it being down.
+var updateRun = { active: false, done: false };
+function setUpdatePill(text, cls) {
+  const lineEl = $('#appVersionLine');
+  lineEl.classList.remove('outdated', 'updating', 'updated', 'update-failed');
+  if (cls) lineEl.classList.add(cls);
+  lineEl.dataset.pill = text || '';
+}
+async function startUpdate() {
+  if (!confirm('Update Hadrius Studio now?\n\nThis runs update.sh in the background. The bridge restarts for a few seconds, and any unsaved edits in the panel should be saved first.')) return;
+  try {
+    await api('/update', { method: 'POST' });
+  } catch (e) { return alert(`Couldn't start the update: ${e.message}`); }
+  updateRun.active = true;
+  setUpdatePill('updating…', 'updating');
+  $('#appVersionTooltip').textContent = 'Running update.sh in the background…';
+  const started = Date.now();
+  const poll = async () => {
+    let st = null;
+    try { st = await api('/update/status'); } catch (_) { /* bridge restarting */ }
+    if (st?.log) $('#appVersionTooltip').textContent = st.log.split('\n').filter(Boolean).slice(-4).join('\n');
+    if (st && st.exitCode !== null && st.exitCode !== undefined) {
+      updateRun.active = false;
+      if (st.exitCode === 0) {
+        updateRun.done = true;
+        setUpdatePill('updated · click to reload', 'updated');
+        $('#appVersionTooltip').textContent = 'Update complete. Click to reload the extension and pick up the new version.';
+        refreshToolStatus(true);
+      } else {
+        setUpdatePill('update failed', 'update-failed');
+        $('#appVersionTooltip').textContent = `update.sh exited with code ${st.exitCode}. Last lines:\n${st.log.split('\n').filter(Boolean).slice(-6).join('\n')}\nFull log: out/_update/update.log`;
+      }
+      return;
+    }
+    if (Date.now() - started > 15 * 60000) {
+      updateRun.active = false;
+      setUpdatePill('update timed out', 'update-failed');
+      return;
+    }
+    setTimeout(poll, 3000);
+  };
+  setTimeout(poll, 2000);
+}
+$('#appVersionLine').addEventListener('click', () => {
+  const lineEl = $('#appVersionLine');
+  if (updateRun.done) return chrome.runtime.reload();
+  if (updateRun.active) return;
+  if (lineEl.classList.contains('outdated') || lineEl.classList.contains('update-failed')) startUpdate();
+});
 
 (async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta'){$('#bridgeDot').src='icons/status/bridge-connected.svg';$('#bridgeTooltip').textContent='Bridge: connected (port 8787).';}else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;$('#bridgeDot').src='icons/status/bridge-disconnected.svg';$('#bridgeTooltip').textContent=`${e.message} Run npm start from hadrius-studio-beta, or bash update.sh if it's not running as a service.`;}await initManualLinks();await loadState();await refreshAll();checkRender();refreshToolStatus(true);refreshVersionStatus(true);setInterval(()=>refreshToolStatus(false),45000);setInterval(()=>refreshVersionStatus(false),5*60000);})();
