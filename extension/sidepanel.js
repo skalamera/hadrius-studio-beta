@@ -382,7 +382,7 @@ function renderAcademy() {
       item.innerHTML = `<div class="item-title">${esc(lesson.title)}</div>
         <div class="lesson-row"><div class="lesson-meta">${lesson.level ? `<span class="lesson-level">${esc(lesson.level)}</span>` : ''}${lesson.note ? `<span class="lesson-note">${esc(lesson.note)}</span>` : ''}</div>
         <div class="item-actions"><button class="primary-lite choose" title="Start recording this lesson (title and module are filled in)">● Record</button>${!blocker ? '<button class="ai-beta aiRecord" title="Beta: drives your browser to perform and record this lesson from its verified plan">⚡ Auto-record <span class="beta-chip">Beta</span></button>' : ''}${plan ? '<button class="secondary plan">View plan</button>' : ''}</div></div>`;
-      item.querySelector('.choose').onclick = () => chooseWorkflow(m.module, workflow);
+      item.querySelector('.choose').onclick = () => { recordLessonContext = { title: lesson.title, module: m.module }; chooseWorkflow(m.module, workflow); };
       item.querySelector('.aiRecord')?.addEventListener('click', () => startAiBrowserRecording(m.module, workflow));
       item.querySelector('.plan')?.addEventListener('click', () => openViewPlanModal(m.module, workflow));
       body.appendChild(item);
@@ -938,11 +938,59 @@ function renderPlanCard(module, workflow, steps) {
     openViewPlanModal(module, { ...workflow, steps });
   };
 
+  // Follow-along: highlight the step you're on and advance it as matching actions are captured.
+  // Re-rendering the same plan (e.g. the panel reloading mid-recording) keeps the progress.
+  const key = `${workflow.title}|${(steps || []).length}`;
+  if (planFollow.key !== key) planFollow = { key, steps: steps || [], current: 0, seen: state.steps?.length || 0 };
   el.querySelectorAll('.plan-step-item').forEach((item) => {
     item.onclick = () => {
-      item.classList.toggle('done');
+      const idx = Number(item.dataset.stepIdx);
+      // Clicking an open step marks it (and everything before it) done; clicking a done step reopens it.
+      planFollow.current = idx < planFollow.current ? idx : idx + 1;
+      paintPlanFollow();
     };
   });
+  paintPlanFollow();
+}
+
+var planFollow = { key: null, steps: [], current: 0, seen: 0 };
+function paintPlanFollow() {
+  const items = document.querySelectorAll('#selectedWorkflow .plan-step-item');
+  items.forEach((item, idx) => {
+    item.classList.toggle('done', idx < planFollow.current);
+    item.classList.toggle('ai-active', idx === planFollow.current);
+  });
+  items[planFollow.current]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+// Does a captured action carry out this plan step? Clicks/typing match a quoted label in the step
+// ("View", "Edit vendor profile"); navigation matches the route or tab the step names.
+function capturedMatchesPlanStep(cap, stepText) {
+  const text = String(typeof stepText === 'string' ? stepText : stepText?.text || '').toLowerCase();
+  const quoted = [...text.matchAll(/"([^"]{2,80})"/g)].map((m) => m[1].trim()).filter(Boolean);
+  if (cap.action === 'navigate') {
+    let path = '';
+    try { path = new URL(cap.url).pathname.toLowerCase(); } catch (_) { path = String(cap.route || '').toLowerCase(); }
+    const segs = path.split('/').filter(Boolean);
+    return /^(navigate|open|go to)\b/.test(text) && (text.includes(path) || segs.some((sg) => sg.length > 2 && text.includes(sg.replace(/[-_]/g, ' '))) || segs.some((sg) => sg.length > 2 && text.includes(sg)));
+  }
+  const t = cap.target || {};
+  const names = [t.name, t.text, t.label, t.placeholder].map((v) => String(v || '').trim().toLowerCase()).filter((v) => v.length >= 2);
+  return quoted.some((q) => names.some((n) => n === q || (q.length >= 3 && n.includes(q)) || (n.length >= 3 && q.includes(n))));
+}
+function advancePlanFollow() {
+  const caps = state.steps || [];
+  if (caps.length < planFollow.seen) planFollow.seen = 0; // a new recording started
+  if (!planFollow.steps.length || $('#selectedWorkflow')?.hidden) { planFollow.seen = caps.length; return; }
+  const fresh = caps.slice(planFollow.seen);
+  planFollow.seen = caps.length;
+  let moved = false;
+  for (const cap of fresh) {
+    // Look a couple of steps ahead: "Wait for…" steps have no action of their own and get skipped.
+    for (let j = planFollow.current; j < Math.min(planFollow.current + 3, planFollow.steps.length); j++) {
+      if (capturedMatchesPlanStep(cap, planFollow.steps[j])) { planFollow.current = j + 1; moved = true; break; }
+    }
+  }
+  if (moved) paintPlanFollow();
 }
 
 async function chooseWorkflow(module, workflow, start=true) {
@@ -1766,11 +1814,14 @@ function pollAiRecordJob(key, title, planSteps = [], opts = {}) {
 }
 
 let activeRecordAiPlan = null; // { userPrompt, plan, previousPlan }
+// Set when recording starts from a To Record lesson: an accepted AI plan keeps the sheet's exact
+// lesson title and module (the AI rewords titles, which breaks the sheet link write-back).
+var recordLessonContext = null; // { title, module }
 
 function openRecordStartModal() {
   activeRecordAiPlan = null;
   const currentTitle = $('#scriptName').value.trim();
-  $('#recordAiPromptInput').value = currentTitle;
+  $('#recordAiPromptInput').value = recordLessonContext ? `${recordLessonContext.title} (${recordLessonContext.module})` : currentTitle;
   $('#recordPlanClarifyInput').value = '';
 
   const currentPlanBox = $('#recordModalCurrentPlanBox');
@@ -1790,6 +1841,7 @@ function openRecordStartModal() {
 function closeRecordStartModal() {
   $('#recordStartModal').hidden = true;
   activeRecordAiPlan = null;
+  recordLessonContext = null;
 }
 
 function showRecordModalView(viewName) {
@@ -1879,6 +1931,7 @@ function refineRecordAiPlan() {
 async function acceptAndRecordPlan() {
   if (!activeRecordAiPlan?.plan) return;
   const plan = activeRecordAiPlan.plan;
+  if (recordLessonContext) { plan.title = recordLessonContext.title; plan.module = recordLessonContext.module; }
   const mod = plan.module || 'Workflow';
   const steps = plan.steps || [];
   if (activeRecordAiPlan.editor) plan.grounding = buildGroundingFromStepMeta(steps, activeRecordAiPlan.editor.stepMeta);
@@ -1984,6 +2037,7 @@ function updateRecordingBanner() {
     const lastStep = state.steps?.[count - 1];
     const route = lastStep?.route ? ` · ${lastStep.route}` : '';
     $('#recordingStepIndicator').textContent = `${count} ${count === 1 ? 'step' : 'steps'} captured${route}`;
+    advancePlanFollow();
   } else {
     banner.hidden = true;
   }
@@ -2999,6 +3053,7 @@ $('#recordPlanClarifyInput').onkeydown = (e) => {
   }
 };
 $('#recordPlanAcceptAndRecordBtn').onclick = acceptAndRecordPlan;
+$('#recordModalManualBtn').onclick = async () => { closeRecordStartModal(); await startRecordingDirectly(); };
 $('#recordPlanSaveLaterBtn').onclick = saveRecordPlanLater;
 $('#recordPlanDismissBtn').onclick = closeRecordStartModal;
 

@@ -489,3 +489,6 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .lesson-note{font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:99px;padding:1px 7px}
 .primary-lite{background:var(--purple);color:#fff;border:0;border-radius:7px;padding:6px 11px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .primary-lite:hover{background:var(--purple2)}
+.record-manual-or{display:flex;align-items:center;gap:10px;margin:12px 0 10px;color:var(--muted);font-size:11px;font-weight:600}
+.record-manual-or::before,.record-manual-or::after{content:'';flex:1;height:1px;background:var(--line)}
+.record-manual-btn{width:100%;padding:9px 12px;font-weight:700}
