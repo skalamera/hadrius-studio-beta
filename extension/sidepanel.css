@@ -316,7 +316,7 @@ button.revertBtn:hover{background:#f0fdf4;border-color:#86efac;color:#166534}
 /* Floating render/export bar — pinned outside the tab <main>s so a render or export stays
    visible and controllable no matter which tab you switch to while it runs. */
 .floating-render-bar{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:30;border-radius:14px 14px 0 0;border-bottom:0;box-shadow:0 -6px 24px rgba(23,35,30,.14);animation:slideUp .2s ease-out}
-body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.has-floating-bar #pylonArticlesView{padding-bottom:96px}
+body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.has-floating-bar #pylonArticlesView{padding-bottom:calc(var(--floating-bar-h,96px) + 16px)}
 @keyframes slideUp{from{transform:translateY(12px);opacity:.4}to{transform:translateY(0);opacity:1}}
 
 .render-status-spinner{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #ddd6fe;border-top-color:var(--purple);animation:spinSlow .8s linear infinite;flex-shrink:0}

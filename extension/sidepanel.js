@@ -2007,6 +2007,13 @@ function updateRenderButtons() {
 // Shown whenever there's something to control or watch — a recorded script to render/export,
 // a render in progress, or a finished/failed render still waiting to be dismissed — so it stays
 // usable while browsing other tabs instead of only appearing on the Record tab.
+// The render bar's height changes (module row, replace notice, render status), so the views reserve
+// exactly its current height at the bottom instead of a fixed guess that let it cover the last rows.
+if (window.ResizeObserver && document.querySelector('#floatingRenderBar')) {
+  new ResizeObserver(([entry]) => {
+    document.body.style.setProperty('--floating-bar-h', `${Math.ceil(entry.target.getBoundingClientRect().height)}px`);
+  }).observe(document.querySelector('#floatingRenderBar'));
+}
 function updateFloatingBarVisibility() {
   const bar = $('#floatingRenderBar');
   if (!bar) return;
