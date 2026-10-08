@@ -109,7 +109,7 @@ XF = 0.8                  # dissolve length between slides
 FONT = '/System/Library/Fonts/Helvetica.ttc'
 tmp = out / '_build'; tmp.mkdir(exist_ok=True)
 
-# ---------- 1. narration (VoiceStudio > ElevenLabs > edge-tts), cached by text ----------
+# ---------- 1. narration (ElevenLabs > VoiceStudio > edge-tts), cached by text ----------
 # renderer/tts.py owns the provider chain and a persistent cache outside out/<name>/ (which
 # render.sh wipes every time), so an edit re-voices only the lines that actually changed. The
 # panel's per-step preview writes into the same cache, so a previewed line is free at render time.
@@ -118,8 +118,10 @@ narration.prune()
 narrator = narration.Narrator(
     vs_voice=args[args.index('--vs-voice') + 1] if '--vs-voice' in args else None,
     edge_voice=VOICE, edge_rate=RATE, edge_pitch=PITCH)
+_speak_text = lambda s: re.sub(r'\bHadrius\b', 'Heydrius', s['narration']) if s.get('narration') else ''
+narrator.plan([_speak_text(s) for s in slides])  # pick one provider for the whole video
 for s in slides:
-    text_to_speak = re.sub(r'\bHadrius\b', 'Heydrius', s['narration']) if s.get('narration') else ''
+    text_to_speak = _speak_text(s)
     s['audio'] = str(narrator.speak(text_to_speak)[0]) if text_to_speak else None
 print(narrator.describe())
 
@@ -434,17 +436,32 @@ else:
 total = sum(s['sdur'] for s in slides) - XF * (len(slides) - 1)
 
 # ---------- 4. audio: narration at slide start (zero-overlap by construction) + music bed ----------
-t = 0.0; mix_in = []; filt = []; idx = 1
+# Every line is loudness-normalized to VOICE_LUFS first: providers deliver very different levels
+# (VoiceStudio ~-16 LUFS, ElevenLabs -23 to -27), and a quiet voice sank under the music bed. The
+# music is then ducked under the voice (sidechain) so narration always sits clearly on top.
+VOICE_LUFS = -16
+t = 0.0; voice_in = []; filt = []; idx = 1
 inputs = ['-i', str(video)]
 for k, s in enumerate(slides):
     s['start'] = round(t, 3)
     if s['audio']:
         inputs += ['-i', s['audio']]; d = int((t + (XF if k else 0.15)) * 1000)
-        filt.append(f"[{idx}:a]aresample=48000,adelay={d}|{d},volume=1.0[a{idx}]"); mix_in.append(f"[a{idx}]"); idx += 1
+        filt.append(f"[{idx}:a]aresample=48000,loudnorm=I={VOICE_LUFS}:TP=-1.5:LRA=11,aresample=48000,adelay={d}|{d}[a{idx}]"); voice_in.append(f"[a{idx}]"); idx += 1
     t += s['sdur'] - (XF if k < len(slides) - 1 else 0)
+mix_in = []
+if voice_in:
+    filt.append(''.join(voice_in) + f"amix=inputs={len(voice_in)}:duration=longest:normalize=0[vox]")
 if MUSIC.exists():
     inputs += ['-stream_loop', '-1', '-i', str(MUSIC)]
-    filt.append(f"[{idx}:a]aresample=48000,atrim=0:{total:.3f},afade=t=in:d=2,afade=t=out:st={max(total-3,0):.3f}:d=3,volume=-5dB[mus]"); mix_in.append('[mus]'); idx += 1
+    filt.append(f"[{idx}:a]aresample=48000,atrim=0:{total:.3f},afade=t=in:d=2,afade=t=out:st={max(total-3,0):.3f}:d=3,volume=-5dB[mus]"); idx += 1
+    if voice_in:
+        filt.append("[vox]asplit=2[voxm][voxsc]")
+        filt.append("[mus][voxsc]sidechaincompress=threshold=0.05:ratio=2:attack=40:release=600:makeup=1[musd]")
+        mix_in += ['[voxm]', '[musd]']
+    else:
+        mix_in.append('[mus]')
+elif voice_in:
+    mix_in.append('[vox]')
 filt.append(''.join(mix_in) + f"amix=inputs={len(mix_in)}:duration=longest:normalize=0,atrim=0:{total:.3f},alimiter=limit=0.95[aout]")
 content_video = tmp / 'content.mp4'
 subprocess.run(['ffmpeg', '-y', *inputs, '-filter_complex', ';'.join(filt), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy',

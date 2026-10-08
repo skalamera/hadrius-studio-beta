@@ -49,6 +49,19 @@ def voicestudio_alive():
         return False
 
 
+def elevenlabs_credits_left():
+    """Characters left on the ElevenLabs plan this billing period, or None if it can't be read
+    (no key, key without user_read permission, network). None means "unknown", not "empty"."""
+    if not ELEVEN_KEY: return 0
+    try:
+        req = urllib.request.Request('https://api.elevenlabs.io/v1/user/subscription', headers={'xi-api-key': ELEVEN_KEY})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            d = json.loads(resp.read())
+        return max(0, int(d.get('character_limit') or 0) - int(d.get('character_count') or 0))
+    except Exception:
+        return None
+
+
 def _voicestudio(text, path, voice):
     body = json.dumps({'input': text, 'voice': voice, 'response_format': 'mp3', 'speed': 1.0}).encode()
     req = urllib.request.Request(f'{VOICESTUDIO_URL}/v1/audio/speech', data=body, method='POST',
@@ -114,13 +127,22 @@ def normalize_pronunciation(text: str) -> str:
 
 
 class Narrator:
-    """One per render — probes VoiceStudio once, then synthesizes (or reuses) each line."""
+    """One per render. Provider order: ElevenLabs, then VoiceStudio, then edge-tts.
+
+    ElevenLabs is used only while the plan has credits left; VoiceStudio only when its local
+    server answers /health. The choice is made once per render (see plan()) so a video never
+    switches voice halfway because credits ran out mid-render."""
+
+    EL_TAG_EXTRA = f'{ELEVEN_VOICE}|{ELEVEN_MODEL}'
 
     def __init__(self, vs_voice=None, edge_voice=EDGE_VOICE, edge_rate=EDGE_RATE, edge_pitch=EDGE_PITCH):
         CACHE.mkdir(parents=True, exist_ok=True)
         self.vs_active = voicestudio_alive()
         self.vs_voice = vs_voice or VOICESTUDIO_VOICE
         self.edge = (edge_voice, edge_rate, edge_pitch)
+        self.el_credits = elevenlabs_credits_left() if ELEVEN_KEY else 0
+        # Without a plan() call (single-line previews) any credit at all is enough.
+        self.el_active = bool(ELEVEN_KEY) and (self.el_credits is None or self.el_credits > 0)
         self.used_fallback = False
         self.cache_hits = 0
         self.generated = 0
@@ -128,13 +150,28 @@ class Narrator:
         # for every later line instead of each one paying for its own failed round-trip.
         self.dead = set()
 
+    def plan(self, texts):
+        """Decide up front whether ElevenLabs can voice every line of this render. Lines it has
+        already cached are free; if the rest need more characters than the plan has left, the
+        whole render goes to the next provider instead of mixing two voices."""
+        if not self.el_active or self.el_credits is None: return
+        need = 0
+        for t in texts:
+            if not t: continue
+            t = normalize_pronunciation(t)
+            hit = CACHE / f"el-{_key('el', t, self.EL_TAG_EXTRA)}.mp3"
+            if not (hit.exists() and hit.stat().st_size > 0): need += len(t)
+        if need > self.el_credits:
+            self.el_active = False
+            print(f'  ⚠ ElevenLabs has {self.el_credits} characters left, this render needs {need}; using the next provider', file=sys.stderr)
+
     def providers(self):
         """Provider chain in preference order, each as (tag, cache key extra, synth fn)."""
         chain = []
+        if self.el_active:
+            chain.append(('el', self.EL_TAG_EXTRA, _elevenlabs))
         if self.vs_active:
             chain.append(('vs', self.vs_voice, lambda t, p: _voicestudio(t, p, self.vs_voice)))
-        if ELEVEN_KEY:
-            chain.append(('el', f'{ELEVEN_VOICE}|{ELEVEN_MODEL}', _elevenlabs))
         chain.append(('edge', '|'.join(self.edge), lambda t, p: _edge(t, p, *self.edge)))
         live = [c for c in chain if c[0] not in self.dead]
         return live or chain[-1:]
@@ -180,8 +217,8 @@ class Narrator:
         raise RuntimeError(f'every TTS provider failed: {last_err}')
 
     def describe(self):
-        if self.vs_active: provider = f'VoiceStudio ({self.vs_voice})'
-        elif ELEVEN_KEY: provider = f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})'
+        if self.el_active: provider = f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})'
+        elif self.vs_active: provider = f'VoiceStudio ({self.vs_voice})'
         else: provider = f'edge-tts ({self.edge[0]})'
         return (f"narration: {provider}{' — some lines fell back' if self.used_fallback or self.dead else ''}"
                 f" · {self.cache_hits} cached, {self.generated} generated")
