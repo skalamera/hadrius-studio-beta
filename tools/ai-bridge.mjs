@@ -3774,6 +3774,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && (u.pathname === '/render/clear' || u.pathname === '/render/dismiss' || req.url === '/render/clear' || req.url === '/render/dismiss')) {
+    // Never wipe the state of a render that is still going: its close handler reads render.outDir,
+    // and resetting it mid-render used to crash the whole bridge (path.join(null)). The panel's
+    // Clear button and the preview's auto-dismiss both call this, so it must be safe to call anytime.
+    if (render.running) {
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, running: true, error: `A render of "${render.name}" is still running; it can be cleared once it finishes.` }));
+    }
     Object.assign(render, {
       running: false,
       name: null,
@@ -3873,9 +3880,12 @@ function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = 
   child.on('close', (code) => {
     render.running = false;
     render.finishedAt = Date.now();
-    const video = path.join(render.outDir, `${name}.mp4`);
-    const interactive = path.join(render.outDir, 'interactive', 'index.html');
-    const reportPath = path.join(render.outDir, 'report.json');
+    // Use this render's own output folder, not render.outDir, which other code may have reset.
+    const outDir = path.join(REPO_ROOT, 'out', name);
+    render.outDir = outDir;
+    const video = path.join(outDir, `${name}.mp4`);
+    const interactive = path.join(outDir, 'interactive', 'index.html');
+    const reportPath = path.join(outDir, 'report.json');
     if (fs.existsSync(video)) render.video = video;
     if (fs.existsSync(interactive)) render.interactive = interactive;
     if (fs.existsSync(reportPath)) {
@@ -3889,7 +3899,7 @@ function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = 
     }
     if (code === 0 && (render.video || (mode === 'pylon' && render.report?.slides))) {
       render.phase = 'done';
-      try { if (render.video) fs.writeFileSync(path.join(render.outDir, 'render-key.json'), JSON.stringify({ key: render.renderKey || null, mode })); } catch (_) {}
+      try { if (render.video) fs.writeFileSync(path.join(outDir, 'render-key.json'), JSON.stringify({ key: render.renderKey || null, mode })); } catch (_) {}
       publishFinishedRender(name, mode);
     } else {
       render.phase = 'failed';
