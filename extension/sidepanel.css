@@ -419,6 +419,9 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .step.playing .idx{color:var(--purple)}
 .step .play-in-video{font-size:11px;padding:4px 8px;align-self:flex-start}
 .step .video-time{font-size:10px;color:var(--purple);font-variant-numeric:tabular-nums;font-weight:600;flex-shrink:0}
+.step{position:relative}
+.step.playing::after{content:"";position:absolute;left:0;bottom:0;height:3px;width:var(--step-progress,0%);background:var(--purple);border-radius:0 2px 2px 0;transition:width .25s linear;pointer-events:none}
+.step-clip-wrap .step-clip{width:100%;display:block;border-radius:6px;background:#000;aspect-ratio:16/9}
 .video-preview.building video{display:none}
 .video-preview.building::after{content:'';display:block;aspect-ratio:16/9;border-radius:8px;background:linear-gradient(100deg,#f1f0fb 30%,#e6e2fb 50%,#f1f0fb 70%);background-size:200% 100%;animation:vp-shimmer 1.4s linear infinite}
 .video-preview.building .video-preview-now{color:var(--purple);font-weight:600}

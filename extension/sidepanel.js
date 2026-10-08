@@ -2263,6 +2263,7 @@ async function startPreviewRender() {
   const status = await send({ type: 'PANEL_RENDER_STATUS' });
   if (status?.running) return; // someone else's render owns the renderer; the user can render later
   const script = toScript();
+  rememberScriptName(script.name);
   const res = await send({ type: 'PANEL_RENDER', script, mode: 'preview' });
   if (!res?.ok) return;
   if (box) {
@@ -2338,6 +2339,16 @@ async function previewNarration(btn, statusEl, text) {
 // reordering or deleting a step doesn't point the player at the wrong moment.
 const videoPreview = { name: null, timeline: null, bySrc: {}, loadedFor: null, collapsed: false };
 
+// The name field is often filled programmatically (plan/lesson title, AI narration), which fires no
+// change event, so the background draft keeps name ''. After a panel reload the editor then has no
+// name and can't find its rendered video. Persist the name whenever a preview is built or found.
+function rememberScriptName(name) {
+  const n = String(name || '').trim();
+  if (!n || n === 'untitled' || state.script?.name === n) return;
+  state.script = { ...(state.script || {}), name: n };
+  send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: n } }).catch(() => {});
+}
+
 function currentVideoName() {
   const raw = (state.script?.name || $('#scriptName')?.value || '').trim();
   return raw || null;
@@ -2364,6 +2375,8 @@ async function loadVideoPreview(force = false) {
     const player = $('#videoPreviewPlayer');
     const src = `${BRIDGE}/video/${encodeURIComponent(name)}.mp4?v=${Math.round(r.mtime || Date.now())}`;
     if (player.getAttribute('src') !== src) player.setAttribute('src', src);
+    videoPreview.src = src;
+    rememberScriptName(name);
     box.hidden = false;
     box.classList.toggle('collapsed', videoPreview.collapsed);
     $('#videoPreviewToggle').textContent = videoPreview.collapsed ? 'Show' : 'Hide';
@@ -2419,6 +2432,9 @@ function syncPlayingStep() {
   state.steps.forEach((step, i) => {
     const on = !!cur && step.media?.pre === cur.src;
     cards[i]?.classList.toggle('playing', on);
+    // Progress through this step's span, drawn as a bar along the bottom of the playing card.
+    if (on) cards[i]?.style.setProperty('--step-progress', `${Math.min(100, Math.max(0, ((t - cur.start) / Math.max(0.1, cur.end - cur.start)) * 100)).toFixed(1)}%`);
+    else cards[i]?.style.removeProperty('--step-progress');
     if (on) label = `Step ${i + 1} · ${(step.narration || '').slice(0, 70)}`;
   });
   const total = videoPreview.timeline.steps;
@@ -2469,7 +2485,7 @@ function renderSteps() {
         <span class="idx">${i + 1}</span>
         <span class="action ${actionClass}">${esc(step.action)}</span>
         <span class="target" title="${esc(targetDesc)}">${esc(targetDesc)}</span>
-        ${vspan ? `<span class="video-time" title="Where this step plays in the rendered video">${fmtTime(vspan.start)}</span>` : ''}
+        ${vspan ? `<span class="video-time" title="Where this step starts and ends in the rendered video">${fmtTime(vspan.start)}–${fmtTime(vspan.end)}</span>` : ''}
         ${step.narration ? '<span class="step-narration-icon" title="Has narration">🗣</span>' : ''}
         <span class="tools">
           <button class="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -2480,7 +2496,8 @@ function renderSteps() {
       <div class="detail" ${isOpen ? '' : 'hidden'}>
         ${step.route ? `<div class="step-route-badge">Route: ${esc(step.route)}</div>` : ''}
         ${vspan ? `<button class="play-in-video secondary" type="button" title="Jump the rendered video to this step">▶ Play in video (${fmtTime(vspan.start)}–${fmtTime(vspan.end)})</button>` : ''}
-        ${thumbUrl ? `<div class="thumb-wrap"><img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" /><div class="thumb-caption" ${(step.caption || step.narration) ? '' : 'hidden'}>${esc(step.caption || step.narration || '')}</div></div>` : ''}
+        ${(vspan && videoPreview.src) ? `<div class="thumb-wrap step-clip-wrap"><video class="step-clip" controls playsinline preload="none" ${thumbUrl ? `poster="${thumbUrl}"` : ''} src="${videoPreview.src}#t=${vspan.start.toFixed(2)},${vspan.end.toFixed(2)}"></video></div>`
+          : thumbUrl ? `<div class="thumb-wrap"><img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" /><div class="thumb-caption" ${(step.caption || step.narration) ? '' : 'hidden'}>${esc(step.caption || step.narration || '')}</div></div>` : ''}
         <label class="step-field-label">
           <span>Narration</span>
           <textarea class="narration" placeholder="What the voice says while this step happens">${esc(step.narration || '')}</textarea>
@@ -2511,6 +2528,26 @@ function renderSteps() {
     card.querySelector('.caption').onchange = (e) => update({ caption: e.target.value });
     const playBtn = card.querySelector('.play-in-video');
     if (playBtn) playBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); playStepInVideo(step); };
+
+    // This step's own clip: the rendered video limited to the step's span. It stops at the span's
+    // end, and pressing play again restarts from the step's first frame (past the dissolve).
+    const clip = card.querySelector('.step-clip');
+    if (clip && vspan) {
+      const clipStart = Math.min(vspan.start + 0.85, Math.max(vspan.start, vspan.end - 0.2));
+      clip.addEventListener('click', (e) => e.stopPropagation());
+      clip.addEventListener('loadedmetadata', () => { clip.currentTime = clipStart; }, { once: true });
+      clip.addEventListener('play', () => {
+        $('#videoPreviewPlayer')?.pause();
+        if (clip.currentTime < vspan.start || clip.currentTime >= vspan.end - 0.05) clip.currentTime = clipStart;
+        card.classList.add('playing');
+      });
+      clip.addEventListener('timeupdate', () => {
+        if (clip.currentTime >= vspan.end) { clip.pause(); clip.currentTime = vspan.end; }
+        const p = ((clip.currentTime - vspan.start) / Math.max(0.1, vspan.end - vspan.start)) * 100;
+        card.style.setProperty('--step-progress', `${Math.min(100, Math.max(0, p)).toFixed(1)}%`);
+      });
+      clip.addEventListener('pause', () => { card.classList.remove('playing'); card.style.removeProperty('--step-progress'); });
+    }
 
     // Live caption overlay on the screenshot — same fallback the renderer uses (caption, else narration).
     const capOverlay = card.querySelector('.thumb-caption');
