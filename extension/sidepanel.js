@@ -2266,6 +2266,14 @@ async function startPreviewRender() {
   rememberScriptName(script.name);
   const res = await send({ type: 'PANEL_RENDER', script, mode: 'preview' });
   if (!res?.ok) return;
+  watchPreviewRender();
+}
+
+// Poll the bridge until the preview render stops, then load the video into the editor. Also called
+// on panel load when a preview for this script is still building, so reopening or reloading the
+// panel mid-render doesn't leave the steps on screenshots once it finishes.
+function watchPreviewRender() {
+  const box = $('#videoPreview');
   if (box) {
     box.hidden = false;
     box.classList.add('building');
@@ -2277,13 +2285,16 @@ async function startPreviewRender() {
     if (!st?.ok || st.running) return;
     clearInterval(previewRenderTimer);
     box?.classList.remove('building');
-    if (st.error || st.mode !== 'preview') {
+    if (st.error) {
       if (box && !videoPreview.timeline) box.hidden = true;
       $('#videoPreviewNow').textContent = '';
       return;
     }
+    // Don't require st.mode === 'preview' here: by the time a long preview finishes, the bridge's
+    // status may already be reset to idle (mode 'both'), and bailing then left the editor on
+    // screenshots even though the video was ready. loadVideoPreview checks the bridge for the video.
     // Clear the "done" state so the main render controls don't show a stale "MP4 ready" for a preview.
-    send({ type: 'PANEL_RENDER_CLEAR' }).catch(() => {});
+    if (st.mode === 'preview') send({ type: 'PANEL_RENDER_CLEAR' }).catch(() => {});
     await loadVideoPreview(true);
   }, 2000);
 }
@@ -2362,6 +2373,12 @@ async function loadVideoPreview(force = false) {
   if (!force && videoPreview.loadedFor === name) return;
   videoPreview.loadedFor = name;
   try {
+    // A preview of this script still building (panel reopened mid-render): wait for it instead of
+    // showing whatever older video sits under this name.
+    {
+      const st = await send({ type: 'PANEL_RENDER_STATUS' });
+      if (st?.running && st.mode === 'preview' && slug(st.name || '') === slug(name)) { watchPreviewRender(); return; }
+    }
     const r = await api(`/video/${encodeURIComponent(name)}/timeline`);
     if (!r.ok || !r.video) {
       // Leave the box up while a preview render is still building it.
