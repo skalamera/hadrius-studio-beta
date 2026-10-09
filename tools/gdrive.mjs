@@ -42,6 +42,8 @@ const MODULE_FOLDER_IDS = {
   'communications': '1n-mseLIM0HVxOrxPOxjlwaWTnkJoFdNd',
   'marketing': '1-4ZUTzlx1Cftm0VOCIFTKvjZCVqVBRAn',
   'account surveillance': '1sQFEs6yJhK8HXzbNjKZNak3PzcVX3JEX',
+  'platform': '1ZYo7KnomZSgli3Y6IyUa0LjbiNLgb0DT',
+  'employee training': '1czN7xjjMy4CoWoNnf1L0W6bSsDmrAGfj',
   'other': '1b8s4ZCWh1jimRiWjFpVh-rzNRdlLNfKK',
 };
 /** The right module subfolder under the Hadrius Academy folder, or "Other" if unrecognized. */

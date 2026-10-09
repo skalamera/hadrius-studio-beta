@@ -7,6 +7,8 @@ export const ACADEMY_SHEET_ID = '1Ppm4aOi6lyo0tCwm2Ay1_QCb2xGFvIuJ1KDlgFWnyxU';
 export const ACADEMY_SHEET_URL = `https://docs.google.com/spreadsheets/d/${ACADEMY_SHEET_ID}/edit`;
 
 // tab -> app module name (the names ALLOWED_MODULES / the panel use), gid, and the done column.
+// altLinkColumns: other columns that also count as "has a video" (Employee Training keeps
+// re-recorded links in "Updated Link"); write-back always goes to linkColumn.
 export const ACADEMY_TABS = [
   { tab: 'Testing Program', module: 'Testing program', gid: 2104426564, linkColumn: 'Video Link' },
   { tab: 'People Oversight', module: 'People oversight', gid: 1441169249, linkColumn: 'Video Link' },
@@ -14,6 +16,8 @@ export const ACADEMY_TABS = [
   { tab: 'Communications', module: 'Communications', gid: 541970526, linkColumn: 'Video Link' },
   { tab: 'Marketing Review', module: 'Marketing', gid: 1427227117, linkColumn: 'Updated Link' },
   { tab: 'Account Surveillance', module: 'Account surveillance', gid: 569087505, linkColumn: 'Video Link' },
+  { tab: 'Platform', module: 'Platform', gid: 1472628520, linkColumn: 'Video Link' },
+  { tab: 'Employee Training', module: 'Employee Training', gid: 1658258787, linkColumn: 'Video Link', altLinkColumns: ['Updated Link'] },
 ];
 
 /** RFC 4180 CSV -> rows (handles quoted commas, doubled quotes and newlines inside quotes). */
@@ -36,20 +40,22 @@ export function parseCsv(text) {
 }
 
 /** Lessons of one tab: [{ title, level, link|null, note }] (note = non-URL text like "On Hold"). */
-export function lessonsFromCsv(text, linkColumn) {
+export function lessonsFromCsv(text, linkColumn, altLinkColumns = []) {
   const rows = parseCsv(text);
   const header = (rows[0] || []).map((h) => h.trim().toLowerCase());
   const ti = header.indexOf('lesson title');
   const li = header.indexOf(linkColumn.toLowerCase());
   if (ti < 0 || li < 0) throw new Error(`missing "Lesson Title" or "${linkColumn}" column`);
+  const alt = altLinkColumns.map((c) => header.indexOf(c.toLowerCase())).filter((i) => i >= 0);
   const out = [];
   for (const r of rows.slice(1)) {
     const title = (r[ti] || '').trim();
     if (!title) continue; // section header rows (GETTING STARTED, …)
     const raw = (r[li] || '').trim();
+    const altUrl = alt.map((i) => (r[i] || '').trim()).find((v) => /^https?:\/\//i.test(v));
     const isUrl = /^https?:\/\//i.test(raw);
     const note = !isUrl && raw && !/^add link here$/i.test(raw) ? raw : '';
-    out.push({ title, level: (r[0] || '').trim(), link: isUrl ? raw : null, note });
+    out.push({ title, level: (r[0] || '').trim(), link: isUrl ? raw : altUrl || null, note: altUrl ? '' : note });
   }
   return out;
 }
@@ -60,7 +66,7 @@ export async function getAcademyLessons({ fresh = false, maxAgeMs = 5 * 60000 } 
   const modules = [];
   // Sequential on purpose: parallel exports of 6 tabs trip Google's 429 rate limit.
   for (const t of ACADEMY_TABS) {
-    const lessons = lessonsFromCsv(await googleSheetCsv(ACADEMY_SHEET_ID, t.gid), t.linkColumn);
+    const lessons = lessonsFromCsv(await googleSheetCsv(ACADEMY_SHEET_ID, t.gid), t.linkColumn, t.altLinkColumns);
     const done = lessons.filter((l) => l.link).length;
     modules.push({ module: t.module, tab: t.tab, linkColumn: t.linkColumn, total: lessons.length, done, remaining: lessons.length - done, lessons });
   }
@@ -91,7 +97,14 @@ export async function recordAcademyVideoLink({ title, module, url }) {
     const header = (values[0] || []).map((h) => String(h).trim().toLowerCase());
     const ti = header.indexOf('lesson title'), li = header.indexOf(t.linkColumn.toLowerCase());
     if (ti < 0 || li < 0) continue;
-    values.forEach((row, r) => { if (r > 0 && normLesson(row[ti]) === key) hits.push({ t, row: r + 1, li, current: String(row[li] || '').trim(), lesson: row[ti] }); });
+    const alt = (t.altLinkColumns || []).map((c) => header.indexOf(c.toLowerCase())).filter((i) => i >= 0);
+    values.forEach((row, r) => {
+      if (r > 0 && normLesson(row[ti]) === key) {
+        // A link already in an alternate column counts as the lesson's video.
+        const altUrl = alt.map((i) => String(row[i] || '').trim()).find((v) => /^https?:\/\//i.test(v));
+        hits.push({ t, row: r + 1, li, current: altUrl || String(row[li] || '').trim(), lesson: row[ti] });
+      }
+    });
     if (i === 0 && hits.length) break; // found in the video's own module tab
   }
   if (!hits.length) return { status: 'no-match' };

@@ -286,9 +286,11 @@ function getModuleCollectionUrl(moduleName) {
   return null;
 }
 
+// Module icon PNGs exist for the app modules; anything else (Platform, Employee Training) uses Other's.
+const MODULE_ICONS = new Set(['account-surveillance', 'branches', 'communications', 'marketing', 'other', 'people-oversight', 'testing-program']);
 function moduleIconPath(moduleName) {
   const s = slug(moduleName || 'other');
-  return `icons/modules/${s}.png`;
+  return `icons/modules/${MODULE_ICONS.has(s) ? s : 'other'}.png`;
 }
 
 const openPylonSections = new Set();
@@ -299,7 +301,7 @@ const openDoneSections = new Set();
 // Dashboard on top (remaining per module + overall % done), then the remaining lessons by module.
 // A lesson that matches an existing workflow plan (same module, same title) reuses that plan, so
 // View plan / Auto-record keep working for it; the rest can be recorded manually.
-const ACADEMY_SHORT = { 'Testing Program': 'Testing', 'People Oversight': 'People', 'Communications': 'Comms', 'Marketing Review': 'Marketing', 'Account Surveillance': 'Surveillance' };
+const ACADEMY_SHORT = { 'Testing Program': 'Testing', 'People Oversight': 'People', 'Communications': 'Comms', 'Marketing Review': 'Marketing', 'Account Surveillance': 'Surveillance', 'Employee Training': 'Employee' };
 const ACADEMY_LEVEL_ORDER = ['getting started', 'beyond the basics', 'advanced functionality'];
 function academyPlanFor(moduleName, title) {
   const group = (catalog.modules || []).find((g) => g.module.toLowerCase() === moduleName.toLowerCase());
@@ -2328,11 +2330,11 @@ async function previewNarration(btn, statusEl, text) {
   btn.textContent = 'Generating…';
   statusEl.textContent = '';
   try {
-    const r = await api('/preview/narration', { method: 'POST', body: JSON.stringify({ text: line }) });
+    const r = await api('/preview/narration', { method: 'POST', body: JSON.stringify({ text: line, voice: currentVoice() }) });
     const audio = new Audio(r.url);
     previewAudio = audio; previewBtn = btn;
     btn.textContent = '■ Stop';
-    const voice = { vs: 'VoiceStudio', el: 'ElevenLabs', edge: 'edge-tts' }[r.provider] || r.provider;
+    const voice = { vs: 'VoiceStudio', el: 'ElevenLabs', mac: 'macOS', edge: 'edge-tts' }[r.provider] || r.provider;
     statusEl.textContent = `${voice}${r.cached ? ' · cached' : ''} · reused by the next render`;
     audio.onended = () => { if (previewAudio === audio) stopPreview(); };
     await audio.play();
@@ -2627,6 +2629,7 @@ function toScript() {
     environment: { name: envName, startUrl: firstUrl },
     recording: { id: state.recordingId || state.script?.recording?.id, recordedAt: now },
     captionsFromNarration: false,
+    voice: (typeof currentVoice === 'function' && currentVoice()) || undefined,
     steps: state.steps.map((s) => ({
       index: s.index,
       action: s.action,
@@ -3249,7 +3252,79 @@ function updateModulePick() {
   $('#moduleHint').textContent = modulePick.override ? 'set by you'
     : value ? ({ inferred: 'detected from pages', coverage: 'from coverage' }[modulePick.source] || '')
     : 'not detected';
+  sel.title = `Sets the title-card badge, the Drive folder and the Pylon collection${$('#moduleHint').textContent ? ` (${$('#moduleHint').textContent})` : ''}`;
+  updateVoicePick();
 }
+
+// ---- Voice picker: narration voice for renders and per-step previews. The list comes from the
+// bridge (GET /voices, which also says what this machine can use); the pick is saved per user.
+var voicePick = { voices: [], value: null, defaultValue: null, loaded: false };
+chrome.storage.local.get(['voiceChoice'], (r) => { if (r?.voiceChoice) voicePick.value = r.voiceChoice; updateVoicePick(); });
+async function loadVoices() {
+  try {
+    const r = await api('/voices');
+    voicePick.voices = r.voices || []; voicePick.defaultValue = r.default || null; voicePick.loaded = true;
+  } catch (_) {}
+  updateVoicePick();
+}
+function currentVoice() {
+  const ok = (v) => voicePick.voices.find((x) => x.value === v && x.available);
+  return (ok(voicePick.value) || ok(voicePick.defaultValue) || {}).value || '';
+}
+function updateVoicePick() {
+  const sel = $('#voiceSelect');
+  if (!sel) return;
+  const value = currentVoice();
+  const opt = (v) => `<option value="${esc(v.value)}"${v.value === value ? ' selected' : ''}${v.available ? '' : ' disabled'} title="${esc(v.available ? v.detail : v.why || '')}">${esc(v.label)}${v.available ? '' : ' (unavailable)'}</option>`;
+  const groups = [...new Set(voicePick.voices.map((v) => v.group || ''))];
+  sel.innerHTML = groups.map((g) => {
+    const items = voicePick.voices.filter((v) => (v.group || '') === g).map(opt).join('');
+    return g ? `<optgroup label="${esc(g)}">${items}</optgroup>` : items;
+  }).join('');
+  sel.disabled = typeof isRenderingActive !== 'undefined' && !!isRenderingActive;
+  const cur = voicePick.voices.find((v) => v.value === value);
+  sel.title = cur ? `Narration voice: ${cur.label}${cur.group ? ` · ${cur.group}` : ''} (${cur.detail})` : 'Narration voice for this render';
+}
+// ▶ next to the picker: a short fixed sample in the selected voice. Same /preview/narration path and
+// cache as the per-step preview, so each voice's sample is generated once and then free.
+const VOICE_SAMPLE = 'Welcome to Hadrius Academy. In this video, we\'ll walk through the workflow step by step.';
+let voiceSampleAudio = null;
+function stopVoiceSample() {
+  if (voiceSampleAudio) { voiceSampleAudio.pause(); voiceSampleAudio = null; }
+  const b = $('#voicePreviewBtn'); if (b) { b.classList.remove('playing'); b.textContent = '▶'; b.disabled = false; }
+}
+$('#voicePreviewBtn').onclick = async (e) => {
+  e.preventDefault();
+  const btn = e.currentTarget;
+  if (voiceSampleAudio) return stopVoiceSample();
+  if (typeof stopPreview === 'function') stopPreview();
+  const voice = currentVoice();
+  const label = (voicePick.voices.find((v) => v.value === voice) || {}).label || 'this voice';
+  btn.disabled = true; btn.textContent = '…'; btn.title = `Generating a sample of ${label}…`;
+  try {
+    const r = await api('/preview/narration', { method: 'POST', body: JSON.stringify({ text: VOICE_SAMPLE, voice }) });
+    if (!r?.ok) throw new Error(r?.error || 'no audio');
+    const audio = new Audio(r.url);
+    voiceSampleAudio = audio;
+    btn.disabled = false; btn.classList.add('playing'); btn.textContent = '■'; btn.title = `Playing ${label} · click to stop`;
+    audio.onended = () => { if (voiceSampleAudio === audio) stopVoiceSample(); };
+    await audio.play();
+  } catch (err) {
+    stopVoiceSample();
+    toast(`Couldn't preview ${label}: ${err.message || err}`);
+  } finally {
+    if (!voiceSampleAudio) btn.title = 'Hear a short sample of this voice';
+  }
+};
+
+$('#voiceSelect').onchange = (e) => {
+  stopVoiceSample();
+  voicePick.value = e.target.value;
+  chrome.storage.local.set({ voiceChoice: voicePick.value });
+  updateVoicePick();
+  if (typeof updateVideoPreviewStale === 'function') updateVideoPreviewStale();
+};
+loadVoices();
 async function refreshModulePick() {
   if (!(state.steps?.length)) return updateModulePick();
   const script = toScript();

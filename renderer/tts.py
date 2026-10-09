@@ -10,7 +10,7 @@ an unchanged one never calls the TTS provider again.
 CLI (used by the bridge):  python renderer/tts.py "<text>"  ->  prints {"path": ..., "provider": ...}
 """
 from __future__ import annotations
-import asyncio, hashlib, json, os, re, sys, time, urllib.request
+import asyncio, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,7 +38,35 @@ VOICESTUDIO_URL = env_from_dotenv('VOICESTUDIO_URL') or 'http://127.0.0.1:3900'
 VOICESTUDIO_VOICE = env_from_dotenv('VOICESTUDIO_VOICE_ID') or '4bfebca6'
 ELEVEN_KEY = env_from_dotenv('ELEVENLABS_API_KEY')
 ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'XrExE9yKIg1WjnnlVkGX'  # "Matilda"
+MAC_VOICE = env_from_dotenv('MAC_TTS_VOICE') or 'Samantha'
+
+# NARRATION_VOICE=<provider>:<voice> is the render bar's voice pick (the bridge sets it per render):
+# el:<ElevenLabs voice id>, vs:<VoiceStudio profile>, mac:<macOS say voice>, edge:<edge-tts voice>.
+# It puts that provider first with that voice; the usual providers stay behind it as fallbacks.
+PICKED_PROVIDER = ''
+_pick = env_from_dotenv('NARRATION_VOICE')
+if ':' in _pick:
+    PICKED_PROVIDER, _pv = [x.strip() for x in _pick.split(':', 1)]
+    if _pv:
+        if PICKED_PROVIDER == 'el': ELEVEN_VOICE = _pv
+        elif PICKED_PROVIDER == 'vs': VOICESTUDIO_VOICE = _pv
+        elif PICKED_PROVIDER == 'mac': MAC_VOICE = _pv
 ELEVEN_MODEL = env_from_dotenv('ELEVENLABS_MODEL_ID') or 'eleven_multilingual_v2'
+
+# Treble lift (dB, high shelf at 3.5 kHz) applied when a line is mixed, per ElevenLabs voice, so a
+# dull-sounding voice matches the brightness of the others. Measured against CvD6hF1BJzAFN428j1cO:
+# IDHS58OMlK9jZvRdhEVy has ~6 dB less energy above 4 kHz; +7 dB closes the gap. Applied at mix time
+# (not baked into the cache) so tuning it never re-spends credits. ELEVENLABS_TREBLE_DB overrides.
+ELEVEN_TREBLE_DB = {'IDHS58OMlK9jZvRdhEVy': 7}
+
+
+def voice_filter(tag):
+    """Extra ffmpeg audio filter for a line voiced by provider `tag`, or '' for none."""
+    if tag != 'el': return ''
+    override = env_from_dotenv('ELEVENLABS_TREBLE_DB')
+    try: g = float(override) if override else ELEVEN_TREBLE_DB.get(ELEVEN_VOICE, 0)
+    except ValueError: g = 0
+    return f'treble=g={g:g}:f=3500:t=s:w=0.7' if g else ''
 
 
 def voicestudio_alive():
@@ -96,6 +124,21 @@ def _edge(text, path, voice, rate, pitch):
     loop = asyncio.new_event_loop()
     try: loop.run_until_complete(coro)
     finally: loop.close()
+
+
+def mac_say_available():
+    return sys.platform == 'darwin' and shutil.which('say') is not None
+
+
+def _mac_say(text, path, voice):
+    """macOS built-in speech (`say`), converted to mp3 so it mixes like the other providers."""
+    aiff = Path(str(path) + '.aiff')
+    try:
+        subprocess.run(['say', '-v', voice, '-o', str(aiff), text], check=True, capture_output=True, timeout=120)
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(aiff), '-ar', '44100', '-ac', '1', '-c:a', 'libmp3lame',
+                        '-b:a', '128k', '-f', 'mp3', str(path)], check=True, capture_output=True, timeout=120)
+    finally:
+        aiff.unlink(missing_ok=True)
 
 
 def _key(provider, text, extra=''):
@@ -172,7 +215,14 @@ class Narrator:
             chain.append(('el', self.EL_TAG_EXTRA, _elevenlabs))
         if self.vs_active:
             chain.append(('vs', self.vs_voice, lambda t, p: _voicestudio(t, p, self.vs_voice)))
+        if PICKED_PROVIDER == 'mac' and mac_say_available():
+            chain.append(('mac', MAC_VOICE, lambda t, p: _mac_say(t, p, MAC_VOICE)))
         chain.append(('edge', '|'.join(self.edge), lambda t, p: _edge(t, p, *self.edge)))
+        # NARRATION_PROVIDER=voicestudio|elevenlabs|edge moves that provider to the front (when it's
+        # available); the rest stay as fallbacks in their usual order.
+        prefer = PICKED_PROVIDER or {'voicestudio': 'vs', 'vs': 'vs', 'elevenlabs': 'el', 'el': 'el', 'edge': 'edge'}.get(
+            env_from_dotenv('NARRATION_PROVIDER').lower())
+        if prefer: chain.sort(key=lambda c: c[0] != prefer)
         live = [c for c in chain if c[0] not in self.dead]
         return live or chain[-1:]
 
@@ -217,9 +267,8 @@ class Narrator:
         raise RuntimeError(f'every TTS provider failed: {last_err}')
 
     def describe(self):
-        if self.el_active: provider = f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})'
-        elif self.vs_active: provider = f'VoiceStudio ({self.vs_voice})'
-        else: provider = f'edge-tts ({self.edge[0]})'
+        provider = {'el': f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})', 'vs': f'VoiceStudio ({self.vs_voice})',
+                    'mac': f'macOS say ({MAC_VOICE})', 'edge': f'edge-tts ({self.edge[0]})'}[self.providers()[0][0]]
         return (f"narration: {provider}{' — some lines fell back' if self.used_fallback or self.dead else ''}"
                 f" · {self.cache_hits} cached, {self.generated} generated")
 

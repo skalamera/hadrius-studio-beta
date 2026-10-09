@@ -28,6 +28,8 @@ const PYLON_MODULE_COLLECTIONS = {
   'communications': '1ce37e6f-f0aa-407a-abca-d01d1acb752c',
   'marketing': '2fc02445-6485-4a26-8367-70cbfe9649b5',
   'account surveillance': '973aa1d0-4caf-4893-b822-d92d3995eb71',
+  'platform': '462084d6-7634-4a16-b3ae-180f58bf1d90',
+  'employee training': '1104b166-a5b5-4fce-bfcc-ec1857fc710c',
   'other': PYLON_OTHER_COLLECTION_ID,
 };
 /** The right sub-collection for a workflow's module, or the "Other" collection if unknown. */
@@ -155,6 +157,8 @@ export const PYLON_MODULE_COLLECTION_MAP = Object.freeze({
   'Communications': '1ce37e6f-f0aa-407a-abca-d01d1acb752c',
   'Marketing': '2fc02445-6485-4a26-8367-70cbfe9649b5',
   'Account Surveillance': '973aa1d0-4caf-4893-b822-d92d3995eb71',
+  'Platform': '462084d6-7634-4a16-b3ae-180f58bf1d90',
+  'Employee Training': '1104b166-a5b5-4fce-bfcc-ec1857fc710c',
   'Other': PYLON_OTHER_COLLECTION_ID
 });
 

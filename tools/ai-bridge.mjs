@@ -1688,11 +1688,54 @@ async function findCoverageInfo(scriptName) {
  * sorts manual recordings (no module of their own) instead of dumping them in "Other".
  * `inferred` is true when the answer came from the URLs, so callers can persist it onto the script.
  */
+// Render-bar picks beyond the coverage modules: Academy curriculum tabs with no app module of
+// their own, plus "Other". They're always explicit (never inferred). Platform and Employee
+// Training have their own Drive folders (gdrive.mjs) and Pylon collections (pylon.mjs).
+const EXTRA_RENDER_MODULES = ['Platform', 'Employee Training', 'Other'];
+
+// Voices offered in the render bar. ElevenLabs names are the voices' names in the ElevenLabs library.
+const NARRATION_VOICES = [
+  { value: 'el:CvD6hF1BJzAFN428j1cO', label: 'Kristen', group: 'ElevenLabs', detail: 'Warm, corporate, steady' },
+  { value: 'el:IDHS58OMlK9jZvRdhEVy', label: 'Jennifer', group: 'ElevenLabs', detail: 'Calm AI explainer' },
+  { value: 'el:ZoiZ8fuDWInAcwPXaVeq', label: 'Josh', group: 'ElevenLabs', detail: 'Warm, smooth, steady (male)' },
+  { value: 'vs:4bfebca6', label: 'The Upbeat', group: 'VoiceStudio', detail: 'Local VoiceStudio' },
+  { value: 'mac:Samantha', label: 'Samantha', group: 'macOS', detail: 'Built-in Mac voice' },
+];
+/** A value from the repo .env as renderer/tts.py sees it (env var first, then .env). The bridge's
+ * loadDotEnv only imports an allow-list, and the narration keys aren't on it on purpose: exporting
+ * them would hand renders ~/.hermes/.env's values over the repo's. */
+function repoEnv(k) {
+  if ((process.env[k] || '').trim()) return process.env[k].trim();
+  try {
+    const line = fs.readFileSync(path.join(REPO_ROOT, '.env'), 'utf8').split('\n').find((l) => l.trim().startsWith(`${k}=`));
+    return line ? line.slice(line.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '') : '';
+  } catch { return ''; }
+}
+function narrationVoiceValue(v) { const s = String(v || '').trim(); return NARRATION_VOICES.some((x) => x.value === s) ? s : ''; }
+/** What a render uses with no pick: the .env setup (NARRATION_PROVIDER / ELEVENLABS_VOICE_ID). */
+function defaultNarrationVoice(voices) {
+  const prov = repoEnv('NARRATION_PROVIDER').toLowerCase();
+  const el = `el:${repoEnv('ELEVENLABS_VOICE_ID')}`;
+  const want = ['voicestudio', 'vs'].includes(prov) ? 'vs:4bfebca6' : el;
+  const ok = (v) => voices.find((x) => x.value === v && x.available);
+  return (ok(want) || ok(el) || ok('vs:4bfebca6') || voices.find((x) => x.available) || voices[0]).value;
+}
+/** Child-process env carrying the voice pick to renderer/tts.py (unset = the .env default chain). */
+function narrationEnv(voice) {
+  const v = narrationVoiceValue(voice);
+  const env = { ...process.env };
+  if (v) env.NARRATION_VOICE = v; else delete env.NARRATION_VOICE;
+  return env;
+}
+function explicitModule(raw) {
+  const v = String(raw || '').trim();
+  return canonicalModule(v) || EXTRA_RENDER_MODULES.find((m) => m.toLowerCase() === v.toLowerCase()) || null;
+}
+
 async function resolveScriptModule(name, scriptObj, coverageModule) {
-  const own = canonicalModule(scriptObj?.module);
+  // A coverage module, or a deliberate render-bar pick (Platform, Employee Training, Other); don't re-infer over it.
+  const own = explicitModule(scriptObj?.module);
   if (own) return { module: own, inferred: false };
-  // "Other" is a deliberate pick from the render bar's module picker; don't re-infer over it.
-  if (String(scriptObj?.module || '').trim().toLowerCase() === 'other') return { module: 'Other', inferred: false };
   const cov = canonicalModule(coverageModule !== undefined ? coverageModule : (await findCoverageInfo(name)).module);
   if (cov) return { module: cov, inferred: false };
   const guess = inferModuleFromScript(scriptObj);
@@ -2095,14 +2138,14 @@ const server = http.createServer(async (req, res) => {
       const { script: rs } = JSON.parse(raw || '{}');
       const rname = safeName(formatHumanTitle(rs?.title || rs?.name || ''));
       const ownRaw = String(rs?.module || '').trim();
-      const own = canonicalModule(ownRaw) || (ownRaw.toLowerCase() === 'other' ? 'Other' : null);
+      const own = explicitModule(ownRaw);
       let module = own, source = own ? 'script' : null;
       if (!module) {
         const r = await resolveScriptModule(rname, { ...(rs || {}), module: '' });
-        module = canonicalModule(r.module) || null;
+        module = explicitModule(r.module);
         source = module ? (r.inferred ? 'inferred' : 'coverage') : null;
       }
-      return sendJson(res, 200, { ok: true, module, source, modules: [...ALLOWED_MODULES, 'Other'] });
+      return sendJson(res, 200, { ok: true, module, source, modules: [...ALLOWED_MODULES, ...EXTRA_RENDER_MODULES] });
     } catch (e) {
       return sendJson(res, 400, { ok: false, error: String(e?.message || e) });
     }
@@ -2174,17 +2217,27 @@ const server = http.createServer(async (req, res) => {
     return fs.createReadStream(mp4).pipe(res);
   }
 
+  // GET /voices -> the render bar's voice picker. `value` goes onto the script as script.voice and
+  // reaches renderer/tts.py as NARRATION_VOICE; `available` says whether this machine can use it.
+  if (req.method === 'GET' && u.pathname === '/voices') {
+    const vsUp = await fetch(`${(repoEnv('VOICESTUDIO_URL') || 'http://127.0.0.1:3900').replace(/\/$/, '')}/health`, { signal: AbortSignal.timeout(800) }).then((r) => r.ok).catch(() => false);
+    const elKey = !!repoEnv('ELEVENLABS_API_KEY');
+    const voices = NARRATION_VOICES.map((v) => ({ ...v, available: v.value.startsWith('el:') ? elKey : v.value.startsWith('vs:') ? vsUp : v.value.startsWith('mac:') ? process.platform === 'darwin' : true,
+      why: v.value.startsWith('el:') && !elKey ? 'needs ELEVENLABS_API_KEY in .env' : v.value.startsWith('vs:') && !vsUp ? 'VoiceStudio isn\'t running on this machine' : v.value.startsWith('mac:') && process.platform !== 'darwin' ? 'macOS only' : null }));
+    return sendJson(res, 200, { ok: true, voices, default: defaultNarrationVoice(voices) });
+  }
+
   // ---- per-step narration preview: voices one line through renderer/tts.py, the same provider
   // chain and cache the render uses — so a previewed line costs nothing at the next render ----
   if (req.method === 'POST' && u.pathname === '/preview/narration') {
     try {
-      const { text } = await readJsonBody(req);
+      const { text, voice } = await readJsonBody(req);
       const line = String(text || '').trim();
       if (!line) return sendJson(res, 400, { ok: false, error: 'no narration text to preview' });
       const venvPython = path.join(REPO_ROOT, '.venv', 'bin', 'python');
       const python = fs.existsSync(venvPython) ? venvPython : 'python3';
       const out = await new Promise((resolve, reject) => {
-        execFile(python, [path.join(REPO_ROOT, 'renderer', 'tts.py'), line], { cwd: REPO_ROOT, timeout: 150000 }, (err, stdout, stderr) => {
+        execFile(python, [path.join(REPO_ROOT, 'renderer', 'tts.py'), line], { cwd: REPO_ROOT, timeout: 150000, env: narrationEnv(voice) }, (err, stdout, stderr) => {
           if (err) return reject(new Error(String(stderr || err.message).trim().split('\n').pop()));
           try { resolve(JSON.parse(stdout.trim().split('\n').pop())); } catch { reject(new Error('tts.py returned no result')); }
         });
@@ -3544,6 +3597,8 @@ const server = http.createServer(async (req, res) => {
         if (!script.environment.startUrl && !recipe) throw new Error('script has no start URL — re-record so the first step captures the page it was on');
         if (render.running) throw new Error('a render is already running');
         render.uploadToDrive = uploadToDrive !== false;
+        script.voice = narrationVoiceValue(script.voice) || undefined;
+        render.voice = script.voice || null;
         const rawTitle = (script.title || script.name || 'Untitled walkthrough').trim();
         const humanTitle = formatHumanTitle(rawTitle);
         const name = safeName(humanTitle);
@@ -3598,7 +3653,7 @@ const server = http.createServer(async (req, res) => {
 
           // Article-only: no re-render, so a module picked in the render bar has to reach the saved
           // script here, or publishRenderToPylon files the article under the old one.
-          const pickedModule = canonicalModule(script.module) || (String(script.module || '').trim().toLowerCase() === 'other' ? 'Other' : null);
+          const pickedModule = explicitModule(script.module);
           if (pickedModule) await patchSavedScript(name, { module: pickedModule }, 'render');
 
           (async () => {
@@ -3825,7 +3880,7 @@ function renderKeyForScript(script) {
     return [s.media.pre, (s.narration || '').trim(), (s.caption || '').trim(), g.bbox || null, g.viewport || null];
   });
   const payload = JSON.stringify([script.title || script.name, canonicalModule(script.module) || script.module || null,
-    !!script.captionsFromNarration, script.recording?.id || null, steps]);
+    !!script.captionsFromNarration, script.recording?.id || null, steps, narrationVoiceValue(script.voice) || null]);
   return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 24);
 }
 
@@ -3864,7 +3919,7 @@ function publishFinishedRender(name, mode) {
 
 function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = null) {
   Object.assign(render, { running: true, name, mode, renderKey, phase: 'replaying', log: [...prelude], outDir: path.join(REPO_ROOT, 'out', name), video: null, interactive: null, report: null, error: null, startedAt: render.startedAt || Date.now(), finishedAt: null, pylon: null });
-  const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.local/node/bin:${process.env.HOME}/.npm-global/bin:${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
+  const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...narrationEnv(render.voice), PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.local/node/bin:${process.env.HOME}/.npm-global/bin:${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
   const onLine = (chunk) => {
     for (const raw of String(chunk).split('\n')) {
       const line = raw.replace(/\x1b\[[0-9;]*m/g, '').trimEnd();

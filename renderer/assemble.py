@@ -122,7 +122,11 @@ _speak_text = lambda s: re.sub(r'\bHadrius\b', 'Heydrius', s['narration']) if s.
 narrator.plan([_speak_text(s) for s in slides])  # pick one provider for the whole video
 for s in slides:
     text_to_speak = _speak_text(s)
-    s['audio'] = str(narrator.speak(text_to_speak)[0]) if text_to_speak else None
+    if text_to_speak:
+        _path, _tag = narrator.speak(text_to_speak)
+        s['audio'] = str(_path); s['audio_filter'] = narration.voice_filter(_tag)
+    else:
+        s['audio'] = None
 print(narrator.describe())
 
 def dur(f):
@@ -446,7 +450,8 @@ for k, s in enumerate(slides):
     s['start'] = round(t, 3)
     if s['audio']:
         inputs += ['-i', s['audio']]; d = int((t + (XF if k else 0.15)) * 1000)
-        filt.append(f"[{idx}:a]aresample=48000,loudnorm=I={VOICE_LUFS}:TP=-1.5:LRA=11,aresample=48000,adelay={d}|{d}[a{idx}]"); voice_in.append(f"[a{idx}]"); idx += 1
+        eq = (s.get('audio_filter') or '') and s['audio_filter'] + ','
+        filt.append(f"[{idx}:a]aresample=48000,{eq}loudnorm=I={VOICE_LUFS}:TP=-1.5:LRA=11,aresample=48000,adelay={d}|{d}[a{idx}]"); voice_in.append(f"[a{idx}]"); idx += 1
     t += s['sdur'] - (XF if k < len(slides) - 1 else 0)
 mix_in = []
 if voice_in:
