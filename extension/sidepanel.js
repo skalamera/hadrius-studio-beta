@@ -3571,7 +3571,8 @@ async function refreshVersionStatus(fresh) {
     textEl.textContent = `v${v.version}`;
     if (v.upToDate === false) {
       lineEl.classList.add('outdated');
-      const behind = v.commitsBehind ? `${v.commitsBehind} commit${v.commitsBehind === 1 ? '' : 's'} behind` : 'behind origin/main';
+      const behind = v.notGit ? 'This copy was installed from a zip, so it can\'t track updates yet'
+        : v.commitsBehind ? `${v.commitsBehind} commit${v.commitsBehind === 1 ? '' : 's'} behind` : 'behind origin/main';
       const latest = v.latestVersion && v.latestVersion !== v.version ? ` (latest: v${v.latestVersion})` : '';
       tooltipEl.textContent = '';
       tooltipEl.append(`${behind}${latest}. Click to update now (runs update.sh in the background).`);

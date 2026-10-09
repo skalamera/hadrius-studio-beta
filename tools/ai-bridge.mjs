@@ -223,6 +223,13 @@ let updateState = { checkedAt: 0, upToDate: null, latestVersion: null, commitsBe
  * than nothing at all. */
 async function checkForUpdate({ maxAgeMs = 5 * 60000 } = {}) {
   if (Date.now() - updateState.checkedAt < maxAgeMs) return updateState;
+  // A zip install has no .git, so git can't compare it with origin/main. It's always worth
+  // updating (update.sh turns the folder into a git clone in place, keeping .env), so offer the
+  // one-click update instead of "fatal: not a git repository".
+  if (!fs.existsSync(path.join(REPO_ROOT, '.git'))) {
+    updateState = { checkedAt: Date.now(), upToDate: false, latestVersion: null, commitsBehind: null, notGit: true, detail: null };
+    return updateState;
+  }
   try {
     await execGit(['fetch', 'origin', 'main', '--quiet']);
     const [localSha, remoteSha] = await Promise.all([execGit(['rev-parse', 'HEAD']), execGit(['rev-parse', 'origin/main'])]);
@@ -2354,6 +2361,7 @@ const server = http.createServer(async (req, res) => {
       upToDate: update.upToDate,
       latestVersion: update.latestVersion,
       commitsBehind: update.commitsBehind,
+      notGit: !!update.notGit,
       checkError: update.detail,
     });
   }
