@@ -37,7 +37,7 @@ def env_from_dotenv(name):
 VOICESTUDIO_URL = env_from_dotenv('VOICESTUDIO_URL') or 'http://127.0.0.1:3900'
 VOICESTUDIO_VOICE = env_from_dotenv('VOICESTUDIO_VOICE_ID') or '4bfebca6'
 ELEVEN_KEY = env_from_dotenv('ELEVENLABS_API_KEY')
-ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'XrExE9yKIg1WjnnlVkGX'  # "Matilda"
+ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'ZoiZ8fuDWInAcwPXaVeq'  # "Josh", the team default
 MAC_VOICE = env_from_dotenv('MAC_TTS_VOICE') or 'Samantha'
 
 # NARRATION_VOICE=<provider>:<voice> is the render bar's voice pick (the bridge sets it per render):

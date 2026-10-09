@@ -1712,13 +1712,13 @@ function repoEnv(k) {
   } catch { return ''; }
 }
 function narrationVoiceValue(v) { const s = String(v || '').trim(); return NARRATION_VOICES.some((x) => x.value === s) ? s : ''; }
-/** What a render uses with no pick: the .env setup (NARRATION_PROVIDER / ELEVENLABS_VOICE_ID). */
+// The team's standard narration voice: every user's picker starts here, and any render that arrives
+// without a pick (Auto-record batches, re-renders of older scripts) uses it too.
+const DEFAULT_NARRATION_VOICE = 'el:ZoiZ8fuDWInAcwPXaVeq'; // Josh
+/** Josh when this machine can use ElevenLabs; otherwise VoiceStudio, then the first usable voice. */
 function defaultNarrationVoice(voices) {
-  const prov = repoEnv('NARRATION_PROVIDER').toLowerCase();
-  const el = `el:${repoEnv('ELEVENLABS_VOICE_ID')}`;
-  const want = ['voicestudio', 'vs'].includes(prov) ? 'vs:4bfebca6' : el;
   const ok = (v) => voices.find((x) => x.value === v && x.available);
-  return (ok(want) || ok(el) || ok('vs:4bfebca6') || voices.find((x) => x.available) || voices[0]).value;
+  return (ok(DEFAULT_NARRATION_VOICE) || ok('vs:4bfebca6') || voices.find((x) => x.available) || voices[0]).value;
 }
 /** Child-process env carrying the voice pick to renderer/tts.py (unset = the .env default chain). */
 function narrationEnv(voice) {
@@ -3597,7 +3597,8 @@ const server = http.createServer(async (req, res) => {
         if (!script.environment.startUrl && !recipe) throw new Error('script has no start URL — re-record so the first step captures the page it was on');
         if (render.running) throw new Error('a render is already running');
         render.uploadToDrive = uploadToDrive !== false;
-        script.voice = narrationVoiceValue(script.voice) || undefined;
+        // No pick: Josh when this machine has an ElevenLabs key, else the .env provider chain.
+        script.voice = narrationVoiceValue(script.voice) || (repoEnv('ELEVENLABS_API_KEY') ? DEFAULT_NARRATION_VOICE : undefined);
         render.voice = script.voice || null;
         const rawTitle = (script.title || script.name || 'Untitled walkthrough').trim();
         const humanTitle = formatHumanTitle(rawTitle);

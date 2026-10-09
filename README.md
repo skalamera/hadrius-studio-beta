@@ -25,7 +25,7 @@ bash setup.sh
 Setup asks for the team's `STUDIO_SHARED_SECRET` (ask Stephen) so you share the same workflows and script library as everyone else. It then tells you which optional keys are missing from `.env`:
 
 - `PYLON_API_TOKEN` — needed for **Render + Article** and the Recorded tab's Pylon sync.
-- `ELEVENLABS_API_KEY` — narration voice for rendered videos (ElevenLabs "Matilda" by default; set `ELEVENLABS_VOICE_ID` to change). Without it, renders fall back to the free edge-tts voice.
+- `ELEVENLABS_API_KEY` — narration voice for rendered videos. Everyone defaults to ElevenLabs "Josh"; the render bar's Voice picker also offers Kristen, Jennifer, VoiceStudio's The Upbeat (if VoiceStudio is running) and the Mac's Samantha, each with a ▶ sample. Without the key, renders use VoiceStudio if it's running, else the free edge-tts voice.
 - `GEMINI_API_KEY` — optional; only used as a fallback when the Claude CLI is unavailable.
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` — optional; when set, every rendered video (both **Render MP4** and **Render + Article**) is also uploaded into the [Hadrius Academy folder](https://drive.google.com/drive/folders/1MlLinwFLBprG3Ybz8JAHhuL0V_VubTJr) in My Drive — the module subfolder matching the workflow's module (Testing Program, People Oversight, Branches, Communications, Marketing, Account Surveillance, or Other) — as an "Anyone with the link" viewer copy, linked from the Recorded tab next to the Pylon article. One-time setup for stephen@hadrius.com's account:
   1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an OAuth client of type **Desktop app** (any project with the Drive API enabled) — this gives you a client ID and secret.
