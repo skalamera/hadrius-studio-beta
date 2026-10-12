@@ -149,6 +149,10 @@
   <!-- Floating render/export bar — lives outside the tab <main>s so it stays visible and
        usable no matter which tab you're on while a render/export is running or ready. -->
   <section id="floatingRenderBar" class="footer-actions floating-render-bar" hidden>
+    <button type="button" id="renderBarToggle" class="render-bar-toggle" aria-expanded="true" aria-controls="floatingRenderBar" title="Collapse the render bar">
+      <span class="render-bar-chevron" aria-hidden="true">▾</span>
+      <span id="renderBarSummary" class="render-bar-summary">Render options</span>
+    </button>
     <div class="render-options" id="renderOptions">
       <div class="seg" role="radiogroup" aria-label="What to make">
         <button type="button" class="seg-btn" data-out="video" role="radio">Video</button>

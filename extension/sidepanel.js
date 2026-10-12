@@ -377,7 +377,9 @@ function renderAcademy() {
     const body = section.querySelector('.module-body');
     matching.sort((a, b) => ACADEMY_LEVEL_ORDER.indexOf(a.level.toLowerCase()) - ACADEMY_LEVEL_ORDER.indexOf(b.level.toLowerCase()));
     for (const lesson of matching) {
-      const plan = academyPlanFor(m.module, lesson.title);
+      // A coverage workflow with the same title wins; otherwise the plan prepared for this lesson
+      // (POST /academy-plans/prepare), which only offers Auto-record when fully verified.
+      const plan = academyPlanFor(m.module, lesson.title) || (lesson.plan ? { ...lesson.plan, autoRecordBlocker: lesson.planBlocker ?? undefined } : null);
       const workflow = plan ? { ...plan, title: lesson.title } : { title: lesson.title, purpose: '', steps: [], sources: [] };
       const blocker = plan ? autoRecordBlocker(plan) : 'no plan';
       const item = document.createElement('div'); item.className = 'item lesson-item';
@@ -2024,7 +2026,39 @@ function updateFloatingBarVisibility() {
   const show = hasSteps || isRenderingActive || statusVisible;
   bar.hidden = !show;
   document.body.classList.toggle('has-floating-bar', show);
+  updateRenderBarSummary();
 }
+
+// Collapsible render bar: the header row folds away the options/buttons (render status stays
+// visible) so the bar stops covering the lesson lists. The choice is remembered per user.
+function setRenderBarCollapsed(collapsed) {
+  const bar = $('#floatingRenderBar');
+  const toggle = $('#renderBarToggle');
+  if (!bar || !toggle) return;
+  bar.classList.toggle('collapsed', collapsed);
+  toggle.setAttribute('aria-expanded', String(!collapsed));
+  toggle.title = collapsed ? 'Expand the render bar' : 'Collapse the render bar';
+  updateRenderBarSummary();
+}
+function updateRenderBarSummary() {
+  const el = $('#renderBarSummary');
+  const bar = $('#floatingRenderBar');
+  if (!el || !bar) return;
+  if (!bar.classList.contains('collapsed')) { el.textContent = 'Render options'; return; }
+  const out = document.querySelector('#renderOptions .seg-btn.active, #renderOptions .seg-btn[aria-checked="true"]')?.textContent?.trim();
+  const sel = (id) => { const s = $(id); return s && s.selectedIndex >= 0 ? s.options[s.selectedIndex]?.textContent?.trim() : ''; };
+  const parts = [out, !$('#modulePick')?.hidden && sel('#moduleSelect'), sel('#voiceSelect')].filter(Boolean);
+  el.textContent = parts.length ? `Render · ${parts.join(' · ')}` : 'Render options';
+}
+$('#renderBarToggle')?.addEventListener('click', () => {
+  const collapsed = !$('#floatingRenderBar').classList.contains('collapsed');
+  setRenderBarCollapsed(collapsed);
+  chrome.storage.local.set({ renderBarCollapsed: collapsed });
+});
+chrome.storage.local.get(['renderBarCollapsed'], (r) => setRenderBarCollapsed(!!r?.renderBarCollapsed));
+// Keep the collapsed summary current when the output/module/voice pick changes.
+$('#floatingRenderBar')?.addEventListener('change', () => updateRenderBarSummary());
+$('#renderOptions')?.addEventListener('click', () => setTimeout(updateRenderBarSummary, 0));
 
 function updateRecordingButtons() {
   const isRec = !!state.recording;

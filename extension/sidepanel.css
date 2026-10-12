@@ -316,6 +316,13 @@ button.revertBtn:hover{background:#f0fdf4;border-color:#86efac;color:#166534}
 /* Floating render/export bar — pinned outside the tab <main>s so a render or export stays
    visible and controllable no matter which tab you switch to while it runs. */
 .floating-render-bar{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:30;border-radius:14px 14px 0 0;border-bottom:0;box-shadow:0 -6px 24px rgba(23,35,30,.14);animation:slideUp .2s ease-out}
+.render-bar-toggle{display:flex;align-items:center;gap:6px;width:100%;margin:-4px 0 2px;padding:2px 0;background:none;border:0;cursor:pointer;color:var(--muted);font:inherit;font-size:12px;font-weight:600;text-align:left}
+.render-bar-toggle:hover{color:var(--purple)}
+.render-bar-chevron{display:inline-block;transition:transform .15s}
+.render-bar-summary{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.floating-render-bar.collapsed .render-bar-chevron{transform:rotate(-90deg)}
+.floating-render-bar.collapsed .render-bar-toggle{margin:-4px 0}
+.floating-render-bar.collapsed #renderOptions,.floating-render-bar.collapsed #modulePick,.floating-render-bar.collapsed #renderNotice,.floating-render-bar.collapsed .render-buttons{display:none!important}
 body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.has-floating-bar #pylonArticlesView{padding-bottom:calc(var(--floating-bar-h,96px) + 16px)}
 @keyframes slideUp{from{transform:translateY(12px);opacity:.4}to{transform:translateY(0);opacity:1}}
 
