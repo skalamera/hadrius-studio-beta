@@ -45,8 +45,11 @@ async function isSignedIn(page, stagingBase) {
   const url = page.url();
   if (!url.startsWith(stagingBase)) return false;
   if (LOGIN_PATH_RE.test(new URL(url).pathname)) return false;
-  const hasPassword = await page.evaluate(() => !!document.querySelector('input[type="password"]')).catch(() => true);
-  return !hasPassword;
+  // A password field alone isn't the sign-in page: in-app forms have them too (integration
+  // credentials). Only a password field with no app navigation around it means "signed out".
+  const looksLikeLogin = await page.evaluate(() => !!document.querySelector('input[type="password"]')
+    && !document.querySelector('a[href*="/overview"], a[href*="/settings"], nav a[href*="/people"]')).catch(() => true);
+  return !looksLikeLogin;
 }
 // The SPA paints the requested route FIRST and only then bounces to /auth/sign-in once its token
 // check fails — so a "signed in" reading straight after load means nothing. Give that redirect
@@ -596,6 +599,12 @@ async function handleTakeOverPause(page, onLog) {
   return 'ok';
 }
 
+// Rehearsal: proves a plan is doable by this recorder without changing data. Every step is really
+// performed (navigation, menus, dialogs, typing, file attach) EXCEPT a click that would save,
+// submit, delete or otherwise commit; that control is only checked to exist and be enabled.
+const REHEARSAL_NOTE = `REHEARSAL MODE: this is a dry run that must not change any data. Perform every step for real EXCEPT the click that would save, submit, create, approve, delete, send, publish, assign, import, archive, restore, withdraw or otherwise commit a change. For that click, add "commits": true to your JSON; the driver will confirm the control is present and enabled WITHOUT pressing it, and you should then finish with "done". Do everything up to that point exactly as the real workflow would (fill fields, pick options, set sliders, attach files). If any step cannot be done with the actions available, "fail" and say which step and why.`;
+const COMMIT_LABEL = /^(save|submit|create|approve|publish|send|delete|remove|archive|confirm|invite|import|withdraw|restore|reject|assign|apply|finish|complete|upload new version|bulk approve|mark as|yes,? |connect|disconnect|reconnect|test connection|sync|deactivate|activate|reactivate|enable|disable|generate|run |request|share|revoke|reset|transfer)/i;
+
 function buildTurnPrompt(item, snap, history, turnsLeft, guidance = null) {
   const elLines = snap.elements
     .map((e) => `${e.id}: <${e.tag}${e.role ? ' role=' + e.role : ''}${e.disabled ? ' disabled' : ''}${e.inDialog ? ' in-dialog' : ''}> "${e.name}"`)
@@ -608,7 +617,7 @@ function buildTurnPrompt(item, snap, history, turnsLeft, guidance = null) {
 
 WORKFLOW TO PERFORM
 Title: ${item.title}
-Description: ${item.description || '(none given)'}
+Description: ${item.description || '(none given)'}${item.rehearsal ? `\n\n${REHEARSAL_NOTE}` : ''}
 Starting trigger (if known): ${item.trigger || '(not specified — find the natural entry point)'}
 ${guidance ? `
 UI PATH FROM THE APP'S SOURCE CODE (exact labels are reliable; verify each against the page before clicking):
@@ -849,7 +858,9 @@ function describeOutcome(before, after) {
  * first use, in which case the operator is asked to sign in once in the visible window.
  * Throws Error('cancelled') if `signal` aborts at any point — including mid-action or mid-model-call.
  */
-export async function runAiRecord(item, { onLog = () => {}, signal, profileDir = slotProfileDir(1), stagingBase = STAGING_BASE, plan = null, onPlan = null, companyId = RECORD_COMPANY_ID } = {}) {
+export async function runAiRecord(item, { onLog = () => {}, signal, profileDir = slotProfileDir(1), stagingBase = STAGING_BASE, plan = null, onPlan = null, companyId = RECORD_COMPANY_ID, rehearsal = false } = {}) {
+  if (rehearsal) item = { ...item, rehearsal: true };
+  let rehearsalCommit = null; // the committing control a rehearsal located instead of pressing
   // Pin the tenant explicitly. Without ?company_id the agent lands on whatever company its own
   // staging session happens to default to — which is how a run ended up driving company 1
   // (Hadrius) and failing on a case it had no membership on. Staging is a nightly clone of real
@@ -866,6 +877,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     throwIfCancelled();
     onLog(`Launching browser (${path.basename(profileDir)})…`);
     ctx = await chromium.launchPersistentContext(profileDir, { headless: false, viewport: VIEWPORT });
+    // Always record with the app sidebar expanded. Its collapsed state persists in localStorage
+    // ("sidebar_minimized", packages/ui expanded_state_provider.tsx), and an icon-only sidebar hides
+    // every subtab label (Risks, Controls, ...), so the agent concluded those pages didn't exist.
+    await ctx.addInitScript(() => { try { localStorage.setItem('sidebar_minimized', 'false'); } catch (_) {} });
     // Closing the context makes every in-flight Playwright call reject immediately, so a cancel
     // lands mid-action instead of waiting for the next loop turn.
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -1003,10 +1018,26 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       // A session can expire mid-attempt too, not just between retries — catch it here rather than
       // handing the decision model a login form it has no real credentials for (see ensureSignedIn).
       if (!(await isSignedIn(page, stagingBase))) {
+        if (rehearsal) { failReason = 'the Hadrius session expired during the rehearsal; sign in and run it again'; break; }
         onLog(`  ! session expired mid-run — pausing for a manual sign-in`);
         await ensureSignedIn(false);
         await noteNavigation();
         continue;
+      }
+      // The recorder's browser profile remembers the Hadrius login, and Chrome autofills it into ANY
+      // username/password form, e.g. a third-party integration's. Clear autofilled passwords every
+      // turn, and never continue a workflow that needs third-party credentials: the agent has none,
+      // and the only ones on hand are the operator's own.
+      const filledPw = await page.evaluate(() => {
+        let n = 0;
+        for (const i of document.querySelectorAll('input[type="password"]')) if (i.value) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); n++; }
+        for (const i of document.querySelectorAll('input[autocomplete="username"], input[name*="user" i], input[type="email"]')) if (i.matches(':autofill, :-webkit-autofill')) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); }
+        return n;
+      }).catch(() => 0);
+      if (filledPw) {
+        onLog(`  ! cleared ${filledPw} autofilled password field(s); this step needs third-party credentials`);
+        failReason = 'this workflow needs credentials for a third-party service; record it by hand with test credentials';
+        break;
       }
       const totalPlanSteps = (guidance?.steps?.length) || 10;
       const currentPlanStep = Math.min(turn + 1, totalPlanSteps);
@@ -1087,6 +1118,24 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       const el = Number.isInteger(elementId) ? snap.elements.find((e) => e.id === elementId) : null;
       if (!el) { history.push({ action: decision.action, error: `elementId ${decision.elementId} is not in the list` }); continue; }
       if (!['click', 'type', 'upload', 'hover'].includes(decision.action)) { history.push({ action: decision.action, error: 'unknown action' }); continue; }
+      if (decision.action === 'type' && await page.locator(`[data-kb-ai-id="${elementId}"]`).evaluate((n) => n.type === 'password').catch(() => false)) {
+        failReason = 'this workflow needs a password for a third-party service; record it by hand with test credentials';
+        break;
+      }
+
+      // Rehearsal: never press a committing control. Check it's present and enabled, then stop there.
+      if (rehearsal && decision.action === 'click' && (decision.commits || COMMIT_LABEL.test(String(el.name || '').trim()))) {
+        const enabled = await page.locator(`[data-kb-ai-id="${elementId}"]`).isEnabled({ timeout: 2000 }).catch(() => false);
+        if (el.disabled || !enabled) {
+          history.push({ action: 'click', name: el.name, error: `REHEARSAL: "${el.name}" is disabled, so the change could not be submitted. Something required is still missing; fix it, or "fail" saying what.` });
+          onLog(`  ! rehearsal: final control "${el.name}" is disabled`);
+          continue;
+        }
+        rehearsalCommit = el.name;
+        onLog(`  ✓ rehearsal: located "${el.name}" (enabled), not pressed`);
+        finished = true;
+        break;
+      }
 
       // Hover is pure observation — it reads a tooltip (usually the reason a control is disabled)
       // and is deliberately NOT recorded as a step: it isn't part of the walkthrough a viewer needs
@@ -1214,7 +1263,25 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       try {
         if (decision.action === 'click') {
           let clicked = false;
-          if (activateWithKeyboard) {
+          // Sliders: click the TRACK about a third of the way along, like a person would. A slider
+          // with no starting value (e.g. Create risk's Inherent risk Impact, value [null]) has a thumb
+          // that clicks and arrow keys can't move, but a pointer press on the track still sets it.
+          if (el.role === 'slider') {
+            const tb = await page.evaluate((id) => {
+              let n = document.querySelector(`[data-kb-ai-id="${id}"]`);
+              for (let i = 0; n && i < 6; i++, n = n.parentElement) {
+                const r = n.getBoundingClientRect();
+                if (r.width > 60) return { x: r.x, y: r.y, w: r.width, h: r.height };
+              }
+              return null;
+            }, elementId).catch(() => null);
+            if (tb) {
+              await page.mouse.click(tb.x + tb.w * 0.35, tb.y + tb.h / 2);
+              clicked = true;
+              onLog(`  slider "${el.name}": clicked its track at 35%`);
+            }
+          }
+          if (!clicked && activateWithKeyboard) {
             // Focus + key: menu items, options and buttons activate on Enter, and it sidesteps
             // pointer-event quirks (e.g. a menu closing on pointerdown before the item's own handler).
             // Radios, checkboxes and switches activate on SPACE — Enter does nothing to them (or
@@ -1335,6 +1402,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
 
     throwIfCancelled();
     if (!finished) throw new Error(failReason || `stopped after ${MAX_STEPS} steps without finishing`);
+    if (rehearsal) {
+      onLog(`Rehearsal passed — ${steps.filter((x) => x.action !== 'navigate').length} action(s) performed${rehearsalCommit ? `, final control "${rehearsalCommit}" located` : ''}.`);
+      return { rehearsal: { ok: true, actions: steps.filter((x) => x.action !== 'navigate').length, commitControl: rehearsalCommit } };
+    }
     if (!steps.some((s) => s.action !== 'navigate')) throw new Error('the model finished without performing any recordable action');
 
     const now = new Date().toISOString();
