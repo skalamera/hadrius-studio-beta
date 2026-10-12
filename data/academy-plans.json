@@ -1,0 +1,1989 @@
+{
+  "people oversight::creatingarestrictedlistrule": {
+    "module": "People oversight",
+    "title": "Creating a Restricted List Rule",
+    "plan": {
+      "title": "Creating a Restricted List Rule",
+      "module": "People oversight",
+      "startRoute": "/people-oversight/trade-monitoring",
+      "summary": "From People oversight > Trade monitoring, open Flagging rules, choose the Restricted securities template, and walk through the rule wizard (name, criteria, securities, who it covers, review) to publish a restricted list rule.",
+      "steps": [
+        "Navigate to People oversight > Trade monitoring",
+        "Click the \"Flagging rules\" button in the page header of \"Trade monitoring\" to open the rules list.",
+        "Click \"Create rule\" in the header of the \"Flagging rules\" page to open the \"Create a rule\" gallery.",
+        "On the \"Restricted securities\" card, click \"Use this template\" to open the \"Restricted securities\" wizard.",
+        "On the \"Name & overview\" step, type a name into the \"Rule name\" field (for example \"Deal team restricted list\"), optionally fill \"Description\", leave \"Run indefinitely\" on, then click \"Next\".",
+        "On the \"Restriction criteria\" step, keep the \"Symbols\" card selected under \"What the rule restricts\", keep \"Flag matching trades\" selected under \"Behavior\", then click \"Next\".",
+        "On the \"Securities\" step, type tickers into the \"Search by ticker, name or CUSIP, or paste a list\" box, click \"Add\" (or use \"Upload CSV\" for a file), confirm the rows appear in the table (columns Identifier, Type, Start, End), then click \"Next\".",
+        "On the \"Who it covers\" step, leave the \"Apply to everyone\" switch on (or turn it off and pick employee groups or individuals in \"Search for employee groups or individuals...\"), then click \"Next\".",
+        "On the \"Review & publish\" step, check the \"In the rule list\" summary and leave the \"Active\" switch on, then click \"Publish\" in the page header and wait for the \"Rule published\" toast."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+        "apps/hadrius-app/pages/people-oversight/trade-monitoring/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/page_crm_home.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+        "apps/hadrius-app/pages/employees/trade-monitoring/settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/page_rule_gallery.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/hooks_rule_builder_guard.ts",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/restricted_securities/page_restricted_securities_rule_wizard.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/restricted_securities/types_restricted_securities_rule.ts",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/restricted_securities/component_securities_symbols.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/component_step_rule_definition.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/component_step_employee_scope.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/component_rule_review.tsx",
+        "apps/hadrius-app/src/components/rule_wizard/component_rule_wizard_page.tsx",
+        "apps/hadrius-app/src/components/rule_wizard/component_rule_wizard_shell.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/restricted_lists/component_restricted_list_audience_fields.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/settings/page_add_trade_monitoring_setting.tsx",
+        "packages/pantheon/src/patterns/wizard-shell.tsx"
+      ],
+      "prerequisites": [
+        "Hadrius Academy must have the People oversight employee-compliance module on (company feature \"employee_c8e\"); otherwise the sidebar shows \"Code of ethics\" and no \"Trade monitoring\" child (use_employee_tab.tsx).",
+        "The user needs trade-monitoring read access (useHasTradeMonitoringReadAccessOptimistic) to see the \"Trade monitoring\" tab, and the \"employee_compliance.trade_monitoring.edit_restrictions\" permission, because the \"Flagging rules\" button only renders when hasEditRestrictions is true (tab_trade_monitor_dashboard.tsx).",
+        "The company needs the new rule builder flag (employee_compliance_config.new_rule_builder_enabled) for the \"Create rule\" button, the gallery and the wizard. useRuleBuilderGuard redirects to /employees/trade-monitoring/settings without it. I could not read Hadrius Academy's flag value because the company lookup tool was denied.",
+        "If that flag is off, the same page shows an \"Add\" button instead, which opens the older single-page form at /employees/trade-monitoring/add. There you pick \"Security list\" in \"Rule type\", enter a \"Rule name\", upload a CSV/XLSX, and click \"Accept valid rows\". The steps above do not apply to that form.",
+        "Optional: employee groups or individuals must exist if the rule should cover specific people rather than \"Apply to everyone\"."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 9,
+        "totalSteps": 9,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+            "quote": "title: \"People oversight\", path: \"/people-oversight\" ... key: \"trade_monitoring\", title: \"Trade monitoring\", path: \"/people-oversight/trade-monitoring\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/trades/tab_trade_monitor_dashboard.tsx",
+            "quote": "onClick={() => router.push(\"/employees/trade-monitoring/settings\")} ... Flagging rules",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/pages/employees/trade-monitoring/settings.tsx",
+            "quote": "actionItems = [{ label: \"Create rule\", href: RULE_GALLERY_PATH, icon: Plus }];",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/page_rule_gallery.tsx",
+            "quote": "title: \"Restricted securities\" ... path: \"restricted-securities\" ... if (available) buttonLabel = \"Use this template\";",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/component_step_rule_definition.tsx",
+            "quote": "label: \"Name & overview\" ... <InputField label=\"Rule name\" ... placeholder=\"Deal team blackout\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/restricted_securities/page_restricted_securities_rule_wizard.tsx",
+            "quote": "label: \"Restriction criteria\" ... label=\"Flag matching trades\" ... SYMBOLS: \"Symbols\"",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/restricted_securities/component_securities_symbols.tsx",
+            "quote": "placeholder=\"Search by ticker, name or CUSIP, or paste a list\" ... Add ... Upload CSV ... <TableHead>Identifier</TableHead>",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/trade_monitoring/rules/component_step_employee_scope.tsx",
+            "quote": "label: \"Who it covers\" ... label=\"Apply to everyone\"",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/components/rule_wizard/component_rule_wizard_page.tsx",
+            "quote": "publishLabel = \"Publish\" ... { label: primaryLabel, onClick: handlePublish, disabled: !isOnReviewStep || isPublishing } ... successToast={{ title: \"Rule published\", description: \"Your restricted securities rule is saved.\" }}",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:32:52.238Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:32:52.239Z",
+    "preparedBy": "stephenskalamera"
+  },
+  "marketing::compareversions": {
+    "module": "Marketing",
+    "title": "How to Compare Versions",
+    "plan": {
+      "title": "How to Compare Versions",
+      "module": "Marketing",
+      "startRoute": "/marketing/projects",
+      "summary": "Open a marketing document that has at least two parsed versions, choose \"Compare versions\" from the version dropdown, pick an earlier version to compare against, and review the changes side by side.",
+      "steps": [
+        "Navigate to Marketing > Projects",
+        "Click the horizontal-ellipsis (three-dot) button at the top right of the project card that contains the document, then click \"View project\" in the \"Actions\" popover.",
+        "On the \"Project details page\", find the document in the \"Workflow & document progress\" table and click \"View\" in its Actions column.",
+        "In the document review header, click the version dropdown button (labelled \"Version V<n>\", for example V3).",
+        "Click \"Compare versions\" in the dropdown menu to open the comparison page.",
+        "Click \"Pick a version\" in the left panel, then choose an earlier version (for example \"V1\") under \"Compare against\".",
+        "Wait for the sidebar to finish generating and list the changes, then click \"Tables\" in the \"Change content type\" switcher to show the table changes (use \"Text\" or \"Images\" for the other types).",
+        "Click \"Back to review\" at the top left to return to the document."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_marketing_tab.tsx",
+        "apps/hadrius-app/pages/marketing/projects/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project_view/component_row.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project/page_project.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project/component_project_docs_workflow_progress.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project_view/v3/components/component_doc_review_nav.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project_view/v3/components/component_compare_versions_menu_item.tsx",
+        "apps/hadrius-app/pages/marketing/project/[id]/documents/[doc_id]/compare/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/page_compare_view.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/components/component_comparison_panels.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/components/component_comparison_empty_state.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/components/component_comparison_sidebar.tsx",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/utils/comparison_sidebar_query.ts",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/utils/reducto_version_helpers.ts",
+        "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/hooks/use_version_comparison_feature.ts"
+      ],
+      "prerequisites": [
+        "The Marketing module must be enabled for the Hadrius Academy company and the user must have Marketing access (MarketingProjectsPage checks useCompanyHasFeature(\"marketing_review\") and useCanAccessMarketing()).",
+        "The company's Marketing review config must have enable_version_comparison set to true. Otherwise the \"Compare versions\" menu item is hidden and the compare page shows \"Comparison unavailable\" (component_compare_versions_menu_item.tsx, use_version_comparison_feature.ts). I could not check this value for Hadrius Academy because the company lookup was not permitted.",
+        "A marketing project with a document that has at least 2 versions parsed by Reducto. Otherwise the menu item is disabled with the text \"Version comparison requires at least 2 versions parsed beginning in March 2026.\" (reducto_version_helpers.ts canCompareDocumentVersions). Older versions parsed before March 2026 may not qualify.",
+        "The document must be reviewable (not \"Processing\" or in an error state) so that the \"View\" button appears (component_project_docs_workflow_progress.tsx isDocumentReady)."
+      ],
+      "provisionable": "needs-deliberate-setup",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 8,
+        "totalSteps": 8,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_marketing_tab.tsx",
+            "quote": "key: \"projects\",\n    title: \"Projects\",\n    path: `/marketing/projects`,",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project_view/component_row.tsx",
+            "quote": "<PopoverGroup>Actions</PopoverGroup> ... <PopoverItem icon={<ArrowUpRight />} onClick={() => router.push(projectPath)}>\n                    View project",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project/component_project_docs_workflow_progress.tsx",
+            "quote": "<Text variant=\"extra_large_medium\">Workflow & document progress</Text> ... <Text variant=\"base_bold\" className=\"text-white\">\n                                View",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project_view/v3/components/component_doc_review_nav.tsx",
+            "quote": "aria-label={`Version V${docVersion.version_number}`}",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/project_view/v3/components/component_compare_versions_menu_item.tsx",
+            "quote": "<DropdownMenuItem\n      label=\"Compare versions\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/components/component_comparison_empty_state.tsx",
+            "quote": "title=\"Pick a version\" ... <DropdownMenuLabel label=\"Compare against\" />",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/components/component_comparison_sidebar.tsx",
+            "quote": "<SegmentedController className=\"w-full min-w-0\" aria-label=\"Change content type\"> ... text: \"Text\", images: \"Images\", tables: \"Tables\"",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/archive/marketing_review/compare/page_compare_view.tsx",
+            "quote": "<PantheonButton variant=\"outline\" leftIcon={<Icon icon={Undo2} size={16} />} onClick={handleBackToReview}>\n      Back to review",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:34:00.423Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:34:00.423Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:07:47.691Z"
+  },
+  "platform::platformtourhomesidebarandnavigation": {
+    "module": "Platform",
+    "title": "Platform Tour: Home, Sidebar, and Navigation",
+    "plan": {
+      "title": "Platform Tour: Home, Sidebar, and Navigation",
+      "module": "Other",
+      "startRoute": "/home",
+      "summary": "Tour the Home dashboard, then the sidebar's header, parent tabs and sub-tabs, and its collapse control, ending on the People directory page.",
+      "steps": [
+        "Navigate to Platform > Home (/home)",
+        "Point out the \"Home\" page header, the \"N items need your attention\" description under it, and the \"Refresh\" button at its right; click \"Refresh\".",
+        "Scroll the Home page's grid of module cards (for example \"Testing program\", \"Certifications\", \"Disclosures\", \"Email\"), each showing a count and either \"Needs attention\" or \"No action needed\".",
+        "In the sidebar header, point to the company picker button showing the current company name (Hadrius Academy), then click the Hadrius logo link (aria-label \"Home\") to show it returns to Home.",
+        "In the sidebar, click the parent tab \"Testing program\" to expand it and show its sub-tabs \"Tests\" and \"Findings\" (\"Policies\", \"Calendar\" and the others appear when the user is an admin).",
+        "Click the parent tab \"People oversight\" to expand it and show its sub-tabs, such as \"Certifications\" and \"Accounts\".",
+        "Click the sidebar tab \"People directory\" to open the People directory page.",
+        "Wait for the page header \"People directory\" to appear, then point to the \"Search employees...\" field and the \"Add employees\" button.",
+        "Click the panel-collapse icon button at the bottom right of the sidebar (no aria-label or title; it renders the PanelLeftClose icon beside \"What's new on Hadrius\") to collapse the sidebar to icons, then click it again to expand."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/home.tsx",
+        "apps/hadrius-app/src/pages/coreloop/page_dashboard.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/parent_tab.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/header.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/footer.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/use_tab_states.ts",
+        "apps/hadrius-app/src/components/v3/page_elements/component_company_picker.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+        "apps/hadrius-app/src/api/auth/helpers.ts"
+      ],
+      "prerequisites": [
+        "The Hadrius Academy company must be the selected company; I could not look it up, so confirm the account and its modules.",
+        "The module cards on Home appear only for modules ACTIVE on the company (dashboard CardContainer checks company?.firm_oversight === \"ACTIVE\" and similar flags), so which cards show depends on Academy's modules.",
+        "A signed-in user with an admin role is needed to show the admin-only \"Testing program\" sub-tabs such as \"Policies\"; without admin access only \"Tests\", \"Findings\" and \"Calendar\" remain (ADMIN_ONLY_SUBTAB_KEYS).",
+        "If the user is an admin with access to more than one company, the sidebar also shows an \"Overview\" tab (shouldUseOverviewHome) and the logo link goes to /home, which is still a valid route."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 9,
+        "totalSteps": 9,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/pages/home.tsx",
+            "quote": "<DashboardPage />",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/page_dashboard.tsx",
+            "quote": "title=\"Home\" ... description={pageDescription} ... Refresh",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/page_dashboard.tsx",
+            "quote": "title={\"Testing program\"} ... <Text variant=\"base_medium\">No action needed</Text>",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/header.tsx",
+            "quote": "<Link href=\"/home\" aria-label=\"Home\"",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_firm_oversight_tab.tsx",
+            "quote": "title: \"Testing program\" ... { key: \"findings\", title: \"Findings\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_employee_tab.tsx",
+            "quote": "title: \"People oversight\" ... title: \"Certifications\"",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "title: \"People directory\", path: \"/people-oversight/people-directory\"",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "title=\"People directory\" ... searchPlaceholder=\"Search employees...\" ... Add employees",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/footer.tsx",
+            "quote": "onClick={() => toggleSidebar()} ... <PanelLeftClose className=\"h-6 w-6\" />",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:34:42.365Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:34:42.365Z",
+    "preparedBy": "stephenskalamera"
+  },
+  "platform::settingupyouraccountemailpasswordandmfa": {
+    "module": "Platform",
+    "title": "Setting Up Your Account: Email, Password, and MFA",
+    "plan": {
+      "title": "Setting Up Your Account: Email, Password, and MFA",
+      "module": "Other",
+      "startRoute": "/settings/account",
+      "summary": "On the Account tab of Settings, change your sign-in email (with a confirmation code), change your password, and turn on authenticator-app MFA.",
+      "steps": [
+        "Navigate to Settings > Account (/settings/account)",
+        "In the \"Update email address\" card, type the new address into \"New email address\".",
+        "Type the same address into \"Confirm new email address\".",
+        "Click \"Update email address\" and wait for the \"Confirmation code\" field to appear in the same card.",
+        "In the \"Change password\" card, type your existing password into \"Current password\".",
+        "Type the new password into \"New password\".",
+        "Type the new password again into \"Confirm new password\".",
+        "Click \"Change password\" and wait for the message \"Your password has been updated.\"",
+        "In the \"Multi-factor authentication (MFA)\" card, scan the QR code (or copy the code with the \"Copy MFA setup code\" icon button) into your authenticator app, then type the 6-digit code into \"Verify TOTP code\".",
+        "Click \"Verify code\" and wait for the \"Success\" dialog (\"Your multi-factor authentication (MFA) setting has been successfully updated.\"), then click \"OK\"."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/settings/account.tsx",
+        "apps/hadrius-app/next.config.js",
+        "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/component_edit_email_address.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/component_change_password.tsx"
+      ],
+      "prerequisites": [
+        "The signed-in user must have password login enabled (user.can_use_password_login). Without it the \"Change password\" card is not rendered (page_account_settings.tsx:642). SSO-only users will not see it.",
+        "A real inbox for the new email address. The \"Confirmation code\" is emailed, and confirming it signs the user out (component_edit_email_address.tsx: submitConfirmationCode calls signOut()).",
+        "An authenticator app (TOTP) for the MFA step. If MFA is already \"Enabled\", the card only offers disabling it, with no QR code.",
+        "No admin role or feature flag is required. The Account tab is not gated in component_account_settings_header.tsx."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+            "quote": "value: \"account\", title: \"Account\", href: \"/settings/account\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/component_edit_email_address.tsx",
+            "quote": "label={\"New email address\"}",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/component_edit_email_address.tsx",
+            "quote": "label={\"Confirm new email address\"}",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/component_edit_email_address.tsx",
+            "quote": "Update email address ... {showConfirmation && ( <InputField label={\"Confirmation code\"}",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/component_change_password.tsx",
+            "quote": "label={\"Current password\"}",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/component_change_password.tsx",
+            "quote": "label={\"New password\"}",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/component_change_password.tsx",
+            "quote": "label={\"Confirm new password\"}",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/component_change_password.tsx",
+            "quote": "<PantheonButton onClick={submitPassword} loading={isLoading}> Change password",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+            "quote": "aria-label=\"Copy MFA setup code\" ... label={\"Verify TOTP code\"}",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+            "quote": "title={\"Success\"} ... positiveText={\"OK\"} ... Verify code",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:35:12.989Z"
+      }
+    },
+    "blocker": "rehearsal failed: timed out after 10 min waiting for a Hadrius sign-in",
+    "preparedAt": "2026-10-09T16:35:12.989Z",
+    "preparedBy": "stephenskalamera",
+    "verified": false,
+    "rehearsedAt": "2026-10-09T17:17:56.117Z"
+  },
+  "platform::switchingbetweenadminandemployeeview": {
+    "module": "Platform",
+    "title": "Switching Between Admin and Employee View",
+    "plan": {
+      "title": "Switching Between Admin and Employee View",
+      "module": "Other",
+      "startRoute": "/settings/account",
+      "summary": "An admin who also has an active employee record uses the \"Use as employee\" button in the Settings header to switch the app into the employee experience, checks the employee dashboard, then uses \"Use as admin\" on Settings to switch back.",
+      "steps": [
+        "Navigate to Settings > Account (the \"Account\" tab on the \"Settings\" page, at /settings/account).",
+        "Confirm the Settings page header, titled \"Settings\", shows the \"Use as employee\" button (user icon) at the top right, next to the red \"Sign out\" button.",
+        "Click the \"Use as employee\" button.",
+        "Wait for the left sidebar to change from the admin navigation, which includes \"People directory\", to the employee navigation, which starts with \"Dashboard\" and \"Profile\" and ends with \"Settings\". \"People directory\" should no longer appear.",
+        "Click \"Dashboard\" in the employee sidebar (/employee/dashboard).",
+        "Wait for the \"Hello <first name>!\" heading and the line \"Review your compliance status and any required actions below.\"",
+        "Click \"Settings\" in the employee sidebar (/account, which redirects to /settings/account).",
+        "Click the \"Use as admin\" button in the Settings page header. The same button now shows this label instead of \"Use as employee\".",
+        "Wait for the admin sidebar to reappear, with the \"People directory\" tab visible again."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/account_settings_tab_page.tsx",
+        "apps/hadrius-app/pages/settings/account.tsx",
+        "apps/hadrius-app/src/api/auth/get-role.tsx",
+        "apps/hadrius-app/src/api/auth/helpers.ts",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/pages/employee/dashboard.tsx",
+        "apps/hadrius-app/src/pages/employees/page_employee_dashboard_new.tsx",
+        "apps/hadrius-app/next.config.js"
+      ],
+      "prerequisites": [
+        "The signed-in user is an admin (user.is_admin) with admin view in the selected company.",
+        "That user has a linked employee record in the selected company (user.linked_employees contains the company).",
+        "The company's People oversight feature (employee_c8e) is ACTIVE. Without it the switch button is not rendered.",
+        "The linked employee's onboarding_status is not PENDING. Otherwise the dashboard shows the onboarding home instead of the \"Hello <first name>!\" heading."
+      ],
+      "provisionable": "needs-deliberate-setup",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 9,
+        "totalSteps": 9,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+            "quote": "title: \"Account\", href: \"/settings/account\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+            "quote": "<AdminEmployeeSwitchButton />\n          <SignOutButton />; if (!isAdmin || company?.employee_c8e !== \"ACTIVE\") return null;",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+            "quote": "{userRole === \"ADMIN\" ? \"Use as employee\" : \"Use as admin\"}",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
+            "quote": "if (shouldShowEmployeeNav) { return <EmployeeNavBar />; }; employee_nav_bar.tsx: <TabIndex title={\"Dashboard\"} path={\"/employee/dashboard\"} ... <TabIndex title={\"Profile\"} ...; use_tabs.tsx: title: \"People directory\"",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx",
+            "quote": "<TabIndex title={\"Dashboard\"} path={\"/employee/dashboard\"}",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/employees/page_employee_dashboard_new.tsx",
+            "quote": "Hello {employee?.first_name}! ... Review your compliance status and any required actions below.",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx",
+            "quote": "<TabIndex title={\"Settings\"} path={\"/account\"}; next.config.js: source: \"/account\", destination: \"/settings/account\"",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+            "quote": "{userRole === \"ADMIN\" ? \"Use as employee\" : \"Use as admin\"}",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "title: \"People directory\",\n    path: \"/people-oversight/people-directory\"",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:36:50.922Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:36:50.922Z",
+    "preparedBy": "stephenskalamera"
+  },
+  "platform::completingyourfirmsetupchecklist": {
+    "module": "Platform",
+    "title": "Completing Your Firm Setup Checklist",
+    "plan": {
+      "title": "Completing Your Firm Setup Checklist",
+      "module": "Other",
+      "startRoute": "/admin-onboarding",
+      "summary": "An administrator opens the full-screen \"Get ready to go live\" checklist from the sidebar, jumps between modules, filters out finished items, launches an item's call-to-action, then comes back with \"Return to setup\".",
+      "steps": [
+        "Navigate to Platform > Complete setup (the \"Complete setup\" button at the bottom of the left sidebar, route /admin-onboarding)",
+        "Wait for the full-screen page headed \"Get ready to go live\" (overline \"Administrator setup\") to finish loading.",
+        "In the \"Your progress\" card on the left, read the \"N of M complete\" line and the progress bar below it.",
+        "In the \"Onboarding modules\" navigation on the left, click a module name (for example \"People Directory\") to scroll to that section.",
+        "In the module section, read the \"N of M\" counter at the top right of the section header, and the group headings inside it (for example \"Onboarding\" and \"Customization\").",
+        "Turn on the \"Hide completed\" switch under the module list to hide finished items, then turn it off again.",
+        "In an item that shows \"Not complete\", click its outline call-to-action button (for example \"Manage groups\" under \"Create custom groups and permissions\"). This opens the page where the task is done (/employees/settings?tab=groups).",
+        "Wait for the banner reading \"Continue working through your setup checklist.\" to appear at the top of the page that opened.",
+        "Click \"Return to setup\" in that banner to go back to /admin-onboarding.",
+        "Check the item's status and the counters. Completed items show \"Complete\" with a check mark and a struck-through title, and the \"N of M\" counters and the progress bar update.",
+        "Click \"Skip for now\" (link-style button in the top-right of the header) to leave the checklist and go to the app home."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/admin-onboarding.tsx",
+        "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+        "apps/hadrius-app/src/pages/onboarding/component_admin_onboarding_return_banner.tsx",
+        "apps/hadrius-app/src/pages/onboarding/context_admin_onboarding.tsx",
+        "apps/hadrius-app/src/api/onboarding/api_admin_onboarding.ts",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/footer.tsx",
+        "hadrius_backend/hadrius/onboarding_dashboard/migrations/0009_seed_admin_onboarding_config.py"
+      ],
+      "prerequisites": [
+        "Signed in as a user with the ADMIN role. Other roles are redirected to /employee/dashboard (page_admin_onboarding.tsx).",
+        "The sidebar \"Complete setup\" button only shows when the checklist API returns show_in_nav true. Otherwise open /admin-onboarding directly.",
+        "The modules and items shown come from the company's checklist data (seeded in the backend and based on the products in the plan), so the exact modules vary by company."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 11,
+        "totalSteps": 11,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/footer.tsx",
+            "quote": "<Link href=\"/admin-onboarding\" aria-label=\"Complete setup\" title={completeSetupTitle}>",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "<Typography variant=\"overline\">Administrator setup</Typography> ... Get ready to go live",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "title=\"Your progress\" description={`${completedItems} of ${items.length} complete`}",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "<nav aria-label=\"Onboarding modules\" ... href={`#${module.id}`}",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "{completedItems} of {module.items.length}",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "<Switch label=\"Hide completed\" checked={hideCompleted} onCheckedChange={setHideCompleted} size=\"sm\" />",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "<Link href={callToAction.url} onClick={startChecklistAction}>{callToAction.title}",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/onboarding/component_admin_onboarding_return_banner.tsx",
+            "quote": "<Typography variant=\"controlText\">Continue working through your setup checklist.</Typography>",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/onboarding/component_admin_onboarding_return_banner.tsx",
+            "quote": "<Link href=\"/admin-onboarding\">Return to setup",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "{item.completed ? \"Complete\" : \"Not complete\"}",
+            "verified": true
+          },
+          {
+            "step": 11,
+            "file": "apps/hadrius-app/src/pages/onboarding/page_admin_onboarding.tsx",
+            "quote": "<Button variant=\"link\" size=\"sm\" ... onClick={skipOnboarding}>Skip for now</Button>",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:37:49.705Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:37:49.705Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:18:30.873Z"
+  },
+  "platform::addingemployeessingleaddvscsvimport": {
+    "module": "Platform",
+    "title": "Adding Employees: Single Add vs. CSV Import",
+    "plan": {
+      "title": "Adding Employees: Single Add vs. CSV Import",
+      "module": "People oversight",
+      "startRoute": "/people-oversight/people-directory",
+      "summary": "Add one employee with the Manual form on the Add employees page, then add several at once with Bulk upload by importing a CSV and confirming the review table.",
+      "steps": [
+        "Navigate to People oversight > People directory",
+        "Click \"Add employees\" in the table toolbar next to \"Export\" to open the \"Add employees\" page, which starts on the \"Manual\" tab.",
+        "Type the employee's first name into the \"First name\" field under \"Employee details\".",
+        "Type the employee's last name into the \"Last name\" field.",
+        "Type a valid address into the \"Email address\" field (leave \"Middle name\" and the optional \"Employment start date\" empty; \"Assign to group(s)\" and \"Assign permission(s)\" default to \"Employees\" and \"Employee\").",
+        "Click \"Add employee\" at the top right and wait for the \"Employee added\" toast; the app returns to the People directory.",
+        "Click \"Add employees\" again to reopen the \"Add employees\" page.",
+        "Click \"Bulk upload\" in the Manual / Bulk upload switcher to show the \"Upload employees via CSV\" section (the \"Download CSV template\" button sits in that section's header).",
+        "Upload a .csv file in the dropzone (\"Upload a .csv file with employee data\") and wait for the \"Review imported employees\" table, which shows \"N valid\" badges once every row passes.",
+        "Click \"Confirm import\" at the top right and wait for the \"Employees added\" toast; the app returns to the People directory."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/pages/people-oversight/people-directory/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/page_people_oversight_upsell.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+        "apps/hadrius-app/pages/employees/new.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/component_csv_upload_review_table.tsx"
+      ],
+      "prerequisites": [
+        "The signed-in user can open the People directory. The page is ungated by module (page_people_oversight_upsell.tsx: \"The people directory is part of Hadrius base; never module-gated\"). Whether a specific role may submit the add is enforced by the backend and I did not check it.",
+        "Single add: use an email address not already in the company.",
+        "CSV import: have a .csv file ready (the template comes from \"Download CSV template\") with first name, last name and email per row, and no duplicate emails in the file.",
+        "If the CSV names groups or permissions, they must match existing ones exactly, since names are case-sensitive; unmatched names show as \"Unrecognized\" warnings in the review table."
+      ],
+      "provisionable": "none-needed",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "title: \"People directory\", path: \"/people-oversight/people-directory\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "<PantheonButton leftIcon={<UserPlus />} onClick={() => router.push(\"/employees/new\")}>\n                Add employees",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "quote": "label=\"First name\"",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "quote": "label=\"Last name\"",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "quote": "label=\"Email address\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "quote": "{manualLoading ? \"Adding...\" : \"Add employee\"} ... title: \"Employee added\"",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "Add employees",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "quote": "<SegmentedControllerItem isActive={mode === \"bulk\"} onClick={() => setMode(\"bulk\")}>\n                  Bulk upload",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "quote": "description=\"Upload a .csv file with employee data\"",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_add_employee_new.tsx",
+            "quote": "Confirm import ... title: \"Employees added\"",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:38:27.017Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:38:27.017Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:18:54.535Z"
+  },
+  "platform::invitingemployeesandadminstotheplatform": {
+    "module": "Platform",
+    "title": "Inviting Employees and Admins to the Platform",
+    "plan": {
+      "title": "Inviting Employees and Admins to the Platform",
+      "module": "Other",
+      "startRoute": "/settings/invites",
+      "summary": "As an admin of the Hadrius Academy company, open Settings > Invites and use the \"Create invite\" dialog to send one Admin invite and one Employee invite.",
+      "steps": [
+        "Navigate to Settings > Invites (click the gear icon labelled \"Settings\" at the top of the sidebar, then click the \"Invites\" tab; route /settings/invites)",
+        "Click \"Create invite\" (the outline button with a plus icon at the top right of the \"Invites\" section header) to open the \"Invite new user to Hadrius\" dialog.",
+        "With the \"Admin\" tab selected (it is the default), type the admin's name into the \"Full name\" field (placeholder \"John Doe\").",
+        "Type the admin's email into the \"Email address\" field (placeholder \"first.last@firm.com\").",
+        "Click \"Send Invite\" and wait for the dialog to close. The new row appears in the invites table under the default \"Pending\" chip with \"Yes\" in the \"Admin\" column.",
+        "Click \"Create invite\" again to reopen the \"Invite new user to Hadrius\" dialog.",
+        "Click the \"Employee\" tab at the top of the dialog; the description changes to \"Send an email invitation to add an employee to your firm.\"",
+        "Type the employee's name into the \"Full name\" field.",
+        "Type the employee's email into the \"Email address\" field.",
+        "Click \"Send Invite\" and wait for the dialog to close. The employee row appears in the table with \"No\" in the \"Admin\" column."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/settings/invites.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/account_settings_tab_page.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/page_account.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/component_invites.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/component_settings_section_header.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/header.tsx"
+      ],
+      "prerequisites": [
+        "The signed-in user must hold the ADMIN role in the Hadrius Academy company and be in admin view, not \"Use as employee\" mode. The route redirects non-admins to /settings/account (pages/settings/invites.tsx), the \"Invites\" tab is omitted for non-admins, and \"Create invite\" renders only when hasAdminViewInSelectedCompany is true (page_account.tsx).",
+        "Hadrius Academy must be the selected company in the sidebar company picker.",
+        "Use fresh email addresses for the invitees. Each invite sends a real email by default. The code does not show how a duplicate email is handled, so that case is unverified."
+      ],
+      "provisionable": "none-needed",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+            "quote": "value: \"invites\" as const, title: \"Invites\", href: \"/settings/invites\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+            "quote": "<PantheonButton variant=\"outline\" size=\"sm\" onClick={() => setIsOpen(true)} leftIcon={<Plus />}>\n        Create invite",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+            "quote": "<InputField label=\"Full name\" {...register(\"name\", { required: true })} placeholder=\"John Doe\" />; titles={[\"Admin\", \"Employee\"]}; role: \"ADMIN\"",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+            "quote": "label=\"Email address\" ... placeholder=\"first.last@firm.com\"",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+            "quote": "<Text variant=\"button_text\">Send Invite</Text>",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_invites.tsx",
+            "quote": "useState<\"all\" | \"admin\" | \"employee\" | \"pending\" | \"accepted\">(\"pending\"); <Chip text=\"Pending\"",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+            "quote": "Create invite",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+            "quote": "titles={[\"Admin\", \"Employee\"]} ... \"Send an email invitation to add an employee to your firm.\"",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_create_invite.tsx",
+            "quote": "<InputField label=\"Full name\"",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/component_invites.tsx",
+            "quote": "header: \"Admin\" ... row.original.is_admin ? \"Yes\" : \"No\"",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:39:11.948Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:39:11.948Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:19:04.656Z"
+  },
+  "platform::navigatingthepeopledirectoryandemployeeprofiles": {
+    "module": "Platform",
+    "title": "Navigating the People Directory and Employee Profiles",
+    "plan": {
+      "title": "Navigating the People Directory and Employee Profiles",
+      "module": "People oversight",
+      "startRoute": "/people-oversight/people-directory",
+      "summary": "Search and filter the People directory, open an employee's profile, and move between profile sections and back to the directory.",
+      "steps": [
+        "Navigate to People oversight > People directory",
+        "Click the \"Search employees...\" field and type part of an employee's name or email to narrow the table.",
+        "Click the \"Inactive\" chip above the table to switch the list to inactive people, then click the \"Active\" chip to return to active people.",
+        "Click the \"Filters\" button to open the \"People filters\" panel, which has the sections \"Permissions\", \"Groups\", \"Brokerage status\" and \"Open items\".",
+        "Click an employee's name in the \"Employee name\" column to open that employee's profile.",
+        "On the Profile tab, point out the \"Personal details\" card and the \"Groups and permissions\" card, which has \"Assign group(s)\" and \"Assign permission(s)\".",
+        "Click the \"Certifications\" tab in the tab bar under the employee's name to see their certifications.",
+        "Click \"People directory\" in the breadcrumb at the top of the profile to return to the directory."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/pages/people-oversight/people-directory/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/page_people_oversight_upsell.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/component_employee_table.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/shared/components/table_top.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/details/page_employee_details.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/details/page_employee_tab_view.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/details/tab_employee_profile_new.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_roles_groups_memberships.tsx",
+        "apps/hadrius-app/src/pages/employees/accounts/constants_admin_tabs.ts"
+      ],
+      "prerequisites": [
+        "The Hadrius Academy company needs several employee records, ideally with a mix of Active and Inactive status, so the search and chips visibly change the table.",
+        "The \"Brokerage status\" and \"Open items\" columns only appear when the company's employee_c8e (People oversight) module is ACTIVE (component_employee_table.tsx: company?.employee_c8e === \"ACTIVE\"). Without it the table shows only Employee name, Status, Type, Permissions and Groups.",
+        "The People directory itself is not module-gated (use_tabs.tsx and page_people_oversight_upsell.tsx both say it is part of Hadrius base)."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 8,
+        "totalSteps": 8,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "title: \"People directory\", path: \"/people-oversight/people-directory\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "searchPlaceholder=\"Search employees...\"",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "{ id: \"status:active\", label: \"Active\" }, { id: \"status:inactive\", label: \"Inactive\" }",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/branch_oversight/shared/components/table_top.tsx",
+            "quote": "onClick={() => onFiltersOpenChange(!isFiltersOpen)}> ... Filters",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/component_employee_table.tsx",
+            "quote": "header: \"Employee name\" ... href={`/employees/${row.original.employee.id}`}",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/tab_employee_profile_new.tsx",
+            "quote": "title=\"Personal details\" ... title=\"Groups and permissions\"; component_roles_groups_memberships.tsx: <Text>Assign group(s)</Text>, <Text>Assign permission(s)</Text>",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/employees/accounts/constants_admin_tabs.ts",
+            "quote": "Certifications = \"Certifications\" (ungated rule: Profile, Certifications, Accounts); page_employee_details.tsx: <Tabs aria-label=\"Employee profile sections\">",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/page_employee_details.tsx",
+            "quote": "{ label: \"People directory\", href: getEmployeeDirectoryPath() }",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:39:46.835Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:39:46.835Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:19:56.980Z"
+  },
+  "platform::creatinggroupsandcustompermissions": {
+    "module": "Platform",
+    "title": "Creating Groups and Custom Permissions",
+    "plan": {
+      "title": "Creating Groups and Custom Permissions",
+      "module": "People oversight",
+      "startRoute": "/people-oversight/people-directory",
+      "summary": "From the People directory, open Permissions & groups, create a new group with a linked permissions profile, then edit that profile to turn on specific permissions.",
+      "steps": [
+        "Navigate to People oversight > People directory",
+        "Click the \"Permissions & groups\" button (gear icon) in the page header to open the Groups tab of the settings page.",
+        "Click the \"New group\" button in the page header to open the \"Create new group\" dialog.",
+        "Type a name (for example \"Academy Supervisors\") into the \"Group name\" field.",
+        "Turn on the \"Create a permissions profile for this group\" switch.",
+        "Click \"Create group\" and wait for the dialog to close and the new group to be selected in the sidebar.",
+        "Click the \"View permissions\" link-button (shield icon) in the group header to open the Permissions tab on the new profile.",
+        "Click the \"Edit\" button (pencil icon) at the top right of the profile.",
+        "Turn on the \"View all disclosures\" switch (one of the permission switches under Disclosures).",
+        "Click \"Save\" and wait for the profile to return to read-only view with the permission switched on."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+        "apps/hadrius-app/pages/employees/settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/page_employee_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/tab_employee_group_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/component_group_form_modal.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_form_modal.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_permissions_view.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx"
+      ],
+      "prerequisites": [
+        "Signed in to the Hadrius Academy company as an admin (settings access is admin or role-based; Employee permissions is gated by the 'employee_records' access key in page_account_settings.tsx, and I could not confirm the backend permission that guards the group and role endpoints)",
+        "At least one employee in the company is optional, only needed if the video also adds members to the group",
+        "The group name must be unique and not already used in the company (the backend may reject duplicates; this was not confirmed in the frontend)"
+      ],
+      "provisionable": "none-needed",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "title: \"People directory\",\n    path: \"/people-oversight/people-directory\",",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "onClick={() => router.push(\"/employees/settings?tab=groups\")}\n              >\n                Permissions & groups",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_employee_settings.tsx",
+            "quote": "{currentTab === \"Groups\" && (\n                <Button leftIcon={<Plus />} onClick={triggerGroupCreate}>\n                  New group",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/component_group_form_modal.tsx",
+            "quote": "<InputField label=\"Group name\" {...register(\"name\", { required: true })} />",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/component_group_form_modal.tsx",
+            "quote": "aria-label=\"Create a permissions profile for this group\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/component_group_form_modal.tsx",
+            "quote": "{isEditing ? \"Update group\" : \"Create group\"}",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/tab_employee_group_settings.tsx",
+            "quote": "<Shield className=\"h-4 w-4\" />\n                      <span>View permissions</span>",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_settings.tsx",
+            "quote": "<Pencil className=\"h-4 w-4\" />\n              Edit",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_permissions_view.tsx",
+            "quote": "\"employee_compliance.disclosures.read_all\": {\n    label: \"View all disclosures\",",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_settings.tsx",
+            "quote": "<SaveIcon className=\"h-4 w-4\" />\n                Save",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:40:39.824Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:40:39.824Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:20:20.689Z"
+  },
+  "platform::managingthedocumentlibarary": {
+    "module": "Platform",
+    "title": "Managing the Document Libarary",
+    "plan": {
+      "title": "Managing the Document Libarary",
+      "module": "Other",
+      "startRoute": "/document_library",
+      "summary": "Create a folder in the Document library, upload files, open a file to see its versions, rename it, and archive it, in the Hadrius Academy company.",
+      "steps": [
+        "Navigate to Documents > Document library (sidebar item \"Documents\", route /document_library)",
+        "Click \"Create folder\" to open the \"Create folder\" dialog.",
+        "Type the folder name into the \"Name\" field, then click \"Create\" and wait for the toast \"Folder created\".",
+        "Click the new folder's name in the list to open it. The path shown above the list updates to include the folder name.",
+        "Click \"Upload files\" to open the \"Upload\" dialog (\"Add new files to the current folder.\").",
+        "Upload a file with the drop zone in the \"Upload\" dialog and wait for the dialog to close and the file to appear as a row.",
+        "Click the file's name to open its details dialog (titled with the file name), which shows \"Version\", \"Uploaded by\", \"Uploaded on\" and \"Version history\".",
+        "Close the details dialog, then click the vertical-ellipsis button at the right end of the file's row (aria-label \"File actions\") and choose \"Rename\".",
+        "In the \"Rename file\" dialog, type the new name into the \"Name\" field and click \"Rename\".",
+        "Click the \"File actions\" vertical-ellipsis button on the row again and choose \"Archive\". The file disappears from the list. Turn on the \"Show archived\" switch at the top right to show it again."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/document_library/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+        "apps/hadrius-app/src/pages/coreloop/records/hooks_document_library.ts",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx"
+      ],
+      "prerequisites": [
+        "The Document Library product must be ACTIVE for the Hadrius Academy company (feature \"document_library\"). Otherwise the \"Documents\" sidebar item is hidden (use_tabs.tsx).",
+        "The user must be able to write in the library. Admins in the company, or users with the \"records.document_library.full_access\" permission, always can. Otherwise they need WRITE on the current folder, or \"Upload files\" and \"Create folder\" are disabled.",
+        "Rename and Archive on a file also need write access to that file. Both menu items are hidden without it (tab_document_library.tsx).",
+        "Sidebar labels may differ for employee-view users: the page title then reads \"Library\" instead of \"Document library\"."
+      ],
+      "provisionable": "self-serve-quick",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "key: \"document_library\", title: \"Documents\", path: \"/document_library\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "<Button onClick={() => setCreateFolderModalOpen(true)} disabled={!canWriteHere} leftIcon={<FolderPlus />}>Create folder</Button>; <Dialog title=\"Create folder\"",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "<InputField label=\"Name\" .../> ... Create ... title: \"Folder created\"",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "<FolderItemLineItem onClick={() => updatePath(currentPath ? `${currentPath}/${dirKey}` : dirKey)} name={dirKey}",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "Upload files ... <Dialog title=\"Upload\" description=\"Add new files to the current folder.\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "<DropZone acceptedFormats={[\"PDF\", \"DOC\", \"DOCX\", \"XLS\", \"XLSX\", \"CSV\", \"TXT\", \"PNG\", \"JPG\"]} ... onFilesSelected={handleFilesSelected}",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "<Dialog title={file.display_name} ...> <Typography variant=\"controlLabel\">Version</Typography> ... Uploaded by ... Version history",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "aria-label=\"File actions\" ... <DropdownMenuItem label=\"Rename\" icon={Pencil} onClick={onRenameClicked} />",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "<Dialog title=\"Rename file\" ... <InputField label=\"Name\" ... <Button ...>Rename</Button>",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/records/tab_document_library.tsx",
+            "quote": "label={fileItem.is_archived ? \"Unarchive\" : \"Archive\"}; <Switch ... label=\"Show archived\" size=\"sm\" />",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:41:02.246Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:41:02.246Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:20:30.505Z"
+  },
+  "platform::findingyourwayaroundsettings": {
+    "module": "Platform",
+    "title": "Finding Your Way Around Settings",
+    "plan": {
+      "title": "Finding Your Way Around Settings",
+      "module": "Other",
+      "startRoute": "/settings/product",
+      "summary": "Open Settings > Product, find the \"Platform\" group of links (Email notifications, Template library and others), and open Email notifications and Template library to see where those settings live.",
+      "steps": [
+        "Navigate to Settings > Product",
+        "Wait for the \"Product settings\" section header and find the group headed \"Platform\" in the directory card.",
+        "Click the \"Email notifications\" row in the \"Platform\" group (description \"Configure everything related to emails sent by Hadrius.\").",
+        "Wait for the page titled \"Email notifications\" to load with its tab bar, opening on the \"Delivery log\" tab.",
+        "Click the \"Branding\" tab in the Email notifications tab bar.",
+        "Click the \"Settings\" breadcrumb at the top of the page to return to the Product settings directory.",
+        "Click the \"Template library\" row in the \"Platform\" group (description \"Manage reusable templates across product workflows.\").",
+        "Wait for the page titled \"Template library\" (\"Reusable building blocks that keep every review consistent\") to load."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx",
+        "apps/hadrius-app/next.config.js",
+        "apps/hadrius-app/pages/settings/product.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/account_settings_tab_page.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+        "apps/hadrius-app/pages/settings/email-notifications/[tab].tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_notification_hub.tsx",
+        "apps/hadrius-app/pages/templates/index.tsx"
+      ],
+      "prerequisites": [
+        "The \"Email notifications\" row only appears if the company has the \"email_log\" feature (useCompanyHasFeature(\"email_log\")). It is shown locked, and cannot be opened, unless the user is an admin or holds the \"platform.notification_hub.read\" permission. I could not check whether the Hadrius Academy company has \"email_log\" enabled (the company lookup tool was denied).",
+        "The \"Branding\" tab is visible to anyone with hub access, so no extra role is needed for step 5.",
+        "The \"Template library\" row is shown to every company but is locked if the user's template access is denied (useGetTemplates isPermissionDenied). An admin avoids this.",
+        "Sign in as an admin of the Hadrius Academy company so the Platform links are not locked and the \"Settings\" sidebar item and Product tab are fully available."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 8,
+        "totalSteps": 8,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/employee_nav_bar.tsx",
+            "quote": "<TabIndex title={\"Settings\"} path={\"/account\"} Icon={Settings} isMinimized={isMinimized} />",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+            "quote": "<SettingsSectionHeader title=\"Product settings\" icon={SlidersHorizontal} /> ... group: \"Platform\",",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+            "quote": "title: \"Email notifications\", description: \"Configure everything related to emails sent by Hadrius.\", href: \"/settings/email-notifications/delivery-log\"",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_notification_hub.tsx",
+            "quote": "title=\"Email notifications\" ... { value: \"delivery-log\", label: \"Delivery log\" }",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_notification_hub.tsx",
+            "quote": "{ value: \"branding\", label: \"Branding\" },",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_notification_hub.tsx",
+            "quote": "breadcrumbs={[{ label: \"Settings\", href: \"/settings/product\" }, { label: \"Email notifications\" }]}",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+            "quote": "title: \"Template library\", description: \"Manage reusable templates across product workflows.\", href: \"/templates\"",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/pages/templates/index.tsx",
+            "quote": "<PageHeader title=\"Template library\" description=\"Reusable building blocks that keep every review consistent\" />",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:41:38.681Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:41:38.681Z",
+    "preparedBy": "stephenskalamera"
+  },
+  "platform::deactivatinganemployeewhohasleftthefirm": {
+    "module": "Platform",
+    "title": "Deactivating an Employee Who Has Left the Firm",
+    "plan": {
+      "title": "Deactivating an Employee Who Has Left the Firm",
+      "module": "People oversight",
+      "startRoute": "/people-oversight/people-directory",
+      "summary": "Open the departed employee's profile from the People directory and use Take action > Deactivate employee to mark them inactive, which removes their open tasks and roles and disables their login.",
+      "steps": [
+        "Navigate to People oversight > People directory",
+        "Click the \"Search employees...\" field and type the departed employee's name or email so their row is the only one shown.",
+        "Click the employee's name link in the \"Employee name\" column (the row's aria-label is \"View <first name> <last name>\") to open their profile.",
+        "Click the \"Take action\" dropdown button (with the chevron) at the top right of the profile header.",
+        "Click \"Deactivate employee\" (the red menu item with the user-X icon) in the dropdown menu.",
+        "Wait for the \"Deactivate employee?\" dialog and read its list of changes (for example \"Delete incomplete certification tasks\" and \"Deactivate their login credentials\") and the red \"Deletes are not reversible.\" alert.",
+        "Click the red \"Deactivate employee\" button in the dialog footer and wait for the \"Employee deactivated\" toast (\"Employee has been deactivated successfully.\").",
+        "Click the \"People directory\" breadcrumb at the top of the profile, then click the \"Inactive\" chip above the table to see the employee listed with an \"Inactive\" badge in the \"Status\" column."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/pages/people-oversight/people-directory/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/page_people_oversight_upsell.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/page_crm_home.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/component_employee_table.tsx",
+        "apps/hadrius-app/pages/employees/[id]/index.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/details/page_employee_details.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx"
+      ],
+      "prerequisites": [
+        "An employee with status ACTIVE must already exist in the Hadrius Academy company (the \"Deactivate employee\" menu item only renders when employee.status === \"ACTIVE\" in component_employee_page_header_actions.tsx). I could not check the Academy company's data, so this is unconfirmed.",
+        "The signed-in user must be able to edit employees. I found no client-side role check on the menu item, so any restriction would be enforced by the backend, which I did not read.",
+        "The deactivation is destructive and not reversible for incomplete certification tasks, pending disclosure tasks and trade restrictions, so use a throwaway or test employee for the recording. \"Reactivate employee\" restores the active status, roles and groups, but not the deleted items."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 8,
+        "totalSteps": 8,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "title: \"People directory\", path: \"/people-oversight/people-directory\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "searchPlaceholder=\"Search employees...\"",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/component_employee_table.tsx",
+            "quote": "header: \"Employee name\" ... getRowAriaLabel={(row) => `View ${row.employee.first_name} ${row.employee.last_name}`}",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+            "quote": "<Button variant=\"dropdown\" rightIcon={<ChevronDown />}>Take action</Button>",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+            "quote": "{employee.status === \"ACTIVE\" && (<DropdownMenuItem label=\"Deactivate employee\" icon={UserRoundX} variant=\"destructive\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+            "quote": "title=\"Deactivate employee?\" ... Delete incomplete certification tasks ... <Alert variant=\"destructive\" title=\"Deletes are not reversible.\" />",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/details/component_employee_page_header_actions.tsx",
+            "quote": "<Button variant=\"destructive\" loading={deactivateLoading} loadingText=\"Deactivating\" onClick={onDeactivateConfirmed}>Deactivate employee</Button> ... toast({ title: \"Employee deactivated\", description: \"Employee has been deactivated successfully.\"",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "{ id: \"status:inactive\", label: \"Inactive\" }; breadcrumb in page_employee_details.tsx: { label: \"People directory\", href: getEmployeeDirectoryPath() }; Status badge in component_employee_table.tsx: text={status === \"ACTIVE\" ? \"Active\" : \"Inactive\"}",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:42:23.814Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:42:23.815Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:20:55.685Z"
+  },
+  "platform::rolesvsgroupsassigningrolesandmodulelevelaccess": {
+    "module": "Platform",
+    "title": "Roles vs. Groups: Assigning Roles and Module-Level Access",
+    "plan": {
+      "title": "Roles vs. Groups: Assigning Roles and Module-Level Access",
+      "module": "People oversight",
+      "startRoute": "/people-oversight/people-directory",
+      "summary": "Create a custom permissions profile (the role) in People directory settings, switch on module-level access such as Marketing review, then open its members to assign people, which is how a role differs from a plain group tag.",
+      "steps": [
+        "Navigate to People oversight > People directory",
+        "Click the \"Permissions & groups\" button in the page header to open the employee settings page, which lands on the \"Groups\" tab.",
+        "Click the \"Permissions\" tab in the \"Employee settings sections\" tab bar.",
+        "Click \"New permissions profile\" in the page header to open the \"Create new permissions profile\" dialog.",
+        "Type a name (for example \"Marketing Reviewers\") into the \"Permissions profile name\" field.",
+        "Click \"Create permissions profile\"; the new profile is selected in the \"All permissions profiles\" sidebar under \"Custom\".",
+        "Click \"Edit\" next to the profile name so the permission switches become editable.",
+        "Scroll to the \"Marketing review\" section and turn on the \"Submit marketing materials for review\" switch.",
+        "Click \"Save\" to store the module-level access.",
+        "Click \"Manage members\" to open the profile's linked group on the \"Groups\" tab, where \"Add members\" assigns people to the role."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/employees/settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/page_employee_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_form_modal.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_sidebar_navigation.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_permissions_view.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_membership_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/tab_employee_group_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/crm/employees/groups/component_group_form_modal.tsx"
+      ],
+      "prerequisites": [
+        "Signed in to the Hadrius Academy company with a user who can open employee settings (the code gates only the \"Visibility barriers\" tab on superadmin; the access rule for the rest was not confirmed).",
+        "At least one employee in the company to add as a member; the profile name must not already exist.",
+        "The \"Marketing review\" section always renders in the Permissions tab; the module itself may still be inactive for the company."
+      ],
+      "provisionable": "self-serve-quick",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "title: \"People directory\",\n    path: \"/people-oversight/people-directory\",",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/tab_employee_directory.tsx",
+            "quote": "onClick={() => router.push(\"/employees/settings?tab=groups\")}\n              >\n                Permissions & groups",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_employee_settings.tsx",
+            "quote": "const titles = [\"Groups\", \"Permissions\", ...(hasInfoBarriers ? [\"Visibility barriers\"] : []), \"Checklists\"];",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/page_employee_settings.tsx",
+            "quote": "{currentTab === \"Permissions\" && (\n                <Button leftIcon={<Plus />} onClick={() => setIsRoleModalOpen(true)}>\n                  New permissions profile",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_form_modal.tsx",
+            "quote": "<InputField label=\"Permissions profile name\" {...register(\"display_name\", { required: true })} />",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_form_modal.tsx",
+            "quote": "<Button onClick={handleSave} loading={isLoading}>\n                Create permissions profile",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_settings.tsx",
+            "quote": "<Button type=\"button\" variant=\"outline\" size=\"sm\" onClick={() => setIsEditing(true)}>\n                <Pencil className=\"h-4 w-4\" />\n                Edit",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/component_role_permissions_view.tsx",
+            "quote": "<Text variant=\"base_bold\">Marketing review</Text> ... action={\"marketing_review.documents.submitter.write_all\"} ... label: \"Submit marketing materials for review\"",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_settings.tsx",
+            "quote": "<SaveIcon className=\"h-4 w-4\" />\n                Save",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/crm/employees/roles/tab_employees_role_settings.tsx",
+            "quote": "onClick={() => router.push(`/employees/settings/?tab=groups&group=${role.synced_group}`)} ... <span>Manage members</span>",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:43:13.136Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:43:13.136Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:21:19.469Z"
+  },
+  "platform::usingthetemplatelibrarycertificationdisclosurebranchexamfirmoversight": {
+    "module": "Platform",
+    "title": "Using the Template Library (certification, disclosure, branch exam, firm oversight)",
+    "plan": {
+      "title": "Using the Template Library (certification, disclosure, branch exam, firm oversight)",
+      "module": "Other",
+      "startRoute": "/templates",
+      "summary": "Open the Template library (Platform), filter the table by template type, create a new Certification template from scratch, confirm it as a draft, and find it under the Drafts filter.",
+      "steps": [
+        "Navigate to Platform > Template library (sidebar item \"Templates\", or Settings > Product > Platform > \"Template library\"); the page header reads \"Template library\".",
+        "Click the type filter dropdown (placeholder \"All template types\") in the toolbar above the table and choose \"Certification\" from its options; the options are \"Branch exam\", \"Certification\", \"Disclosure\", \"Disclosure review\" and \"Firm oversight\", limited to the types enabled for the firm. The \"Type\" column then shows only Certification templates.",
+        "Click the \"Create template\" button (plus icon) at the right of the search row, next to the \"Search by template name\" field, to open the \"Create a new template\" dialog.",
+        "If the dialog shows two tabs, click \"Start from scratch\" (the other tab is \"Generate with AI\").",
+        "Click the \"Template name\" field (placeholder \"e.g. 2026 tri-annual branch exam\") and type a name for the template.",
+        "Click the dropdown showing \"Select a module\" under \"Module\" and choose \"Certification\".",
+        "Click \"Create template\" (with an arrow icon) in the dialog footer; it is disabled until a name and module are set. The template builder opens with a \"Save as draft\" button and a \"Preview\" button in the header.",
+        "Click \"Save as draft\" in the builder header.",
+        "In the \"Save template as draft?\" dialog, click \"Save draft\", then wait for the toast \"Template saved as draft\". The app then returns to the Template library.",
+        "Click \"Drafts\" in the status filter row above the table to show the new Certification template with its Draft status badge."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/templates/index.tsx",
+        "apps/hadrius-app/next.config.js",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/components/templates_table.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/detail_view/pages/create_template.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/detail_view/components/template_editor.tsx",
+        "apps/hadrius-app/src/api/base_questionnaire/api_questionnaire.ts"
+      ],
+      "prerequisites": [
+        "The user must be allowed to read templates. If the templates request is permission-denied, the page shows a \"Template Library\" access-restricted view and the sidebar item is hidden (templates_dashboard.tsx, use_tabs.tsx).",
+        "The \"Create template\" button only appears if the user can manage at least one template type. For Certification that is the permission template_library.employee_templates.certifications.manage (templates_dashboard.tsx, useAvailableModuleSections).",
+        "A type appears in the filter and in the \"Module\" dropdown only if the firm's template-config includes it. \"Firm oversight\" only appears if that module is enabled for the firm, and it needs the permission template_library.firm_oversight_templates.manage to create.",
+        "The \"Start from scratch\" / \"Generate with AI\" tabs only appear for users with template_library.all.admin. Other users see the scratch form directly."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/tabs/use_tabs.tsx",
+            "quote": "key: \"templates\", title: \"Templates\", path: \"/templates\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/components/templates_table.tsx",
+            "quote": "{ value: \"all\", label: \"All template types\" }, ... placeholder=\"All template types\"",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+            "quote": "<PantheonButton variant=\"default\" leftIcon={<Plus />} ...>Create template</PantheonButton> ... \"Create a new template\"",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+            "quote": "<TabsTrigger value=\"scratch\">Start from scratch</TabsTrigger>",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+            "quote": "Template name <span className=\"text-destructive\">*</span> ... placeholder=\"e.g. 2026 tri-annual branch exam\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+            "quote": "{selected ? selected.label : \"Select a module\"} ... [TemplateTypeEnum.CERTIFICATION]: \"Certification\"",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/pages/templates_dashboard.tsx",
+            "quote": "<Button variant=\"default\" disabled={isCreateDisabled} onClick={handleCreate}>Create template",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/detail_view/components/template_editor.tsx",
+            "quote": "onClick={() => onSaveOrPublishButtonClick(TemplateStatus.DRAFT)} ... Save as draft",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/detail_view/components/template_editor.tsx",
+            "quote": "title: \"Save template as draft?\", ... action: \"Save draft\" ... title: isDraft ? \"Template saved as draft\" : \"Template published\" ... router.push(\"/templates\")",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/template_library/dashboard/components/templates_table.tsx",
+            "quote": "{ id: TemplateStatus.DRAFT, label: \"Drafts\" }",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:44:58.648Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:44:58.648Z",
+    "preparedBy": "stephenskalamera",
+    "verified": true,
+    "rehearsedAt": "2026-10-09T17:21:36.354Z"
+  },
+  "platform::connectinganintegrationandtestingtheconnection": {
+    "module": "Platform",
+    "title": "Connecting an Integration and Testing the Connection",
+    "plan": {
+      "title": "Connecting an Integration and Testing the Connection",
+      "module": "Other",
+      "startRoute": "/settings/integrations",
+      "summary": "In Settings, open the Integrations tab, choose an integration, enter its connection details and click Connect, then run Test connection to verify the saved credentials.",
+      "steps": [
+        "Navigate to Settings > Integrations (route /settings/integrations). From any page, click the icon-only gear link with aria-label \"Settings\" at the right of the sidebar header, then click the \"Integrations\" tab.",
+        "Click the \"Search integrations\" box and type the integration's name to filter the list. The \"Grid\" and \"List\" switcher is also available.",
+        "On the card or row for the integration, click the outline button \"Connect\". It reads \"Manage\" if the integration is already connected and \"Learn more\" if your firm is not eligible. The detail page opens with the URL /settings/integrations?integration=<slug>.",
+        "Read the \"Setup guide\" section, which is expanded while the integration is not connected, to see which values you need to gather.",
+        "In the \"Connection details\" section, fill in every field listed. Labels are generated from the backend field names (for example \"API key\" or \"Client ID\") and depend on the integration. Password fields show the placeholder \"••••••••\". Date fields show \"Select a date\", and dropdown fields show \"Select an option\".",
+        "Click the button at the bottom right of \"Connection details\". It reads \"Connect\" for a new connection and \"Save changes\" for an existing one, and it stays disabled until at least one field has been changed.",
+        "Wait for the green alert titled \"Success\" under the fields (a red \"Something went wrong\" alert means the save failed). The \"Status\" badge in the \"At a glance\" sidebar changes to \"Connected\" and a \"Test connection\" section appears.",
+        "In the \"Test connection\" section, click the outline button \"Test connection\" at the top right of the section. Its description reads \"Verify the saved connection using the stored credentials.\"",
+        "Wait for the alert titled \"Connection works\". If the credentials are wrong, the alert is titled \"Connection failed\" instead."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/settings/integrations.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/component_account_settings_header.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_integrations.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/integrations/component_integration_detail.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/header.tsx"
+      ],
+      "prerequisites": [
+        "You must be an admin or superadmin, or hold the \"platform.integrations.configure\" permission. Otherwise /settings/integrations redirects to /settings/account and the \"Integrations\" tab is hidden.",
+        "The integration must not be marked disabled for the firm. If disabled, its card shows a \"Not available\" badge, the button reads \"Learn more\", and the detail page has no form or \"Test connection\" section.",
+        "You need valid credentials for the chosen integration from the vendor. The \"Test connection\" section only appears once the integration is connected.",
+        "The integration must expose form fields. An OAuth-style connector with no fields shows no \"Connection details\" section."
+      ],
+      "provisionable": "self-serve-quick",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 9,
+        "totalSteps": 9,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/header.tsx",
+            "quote": "<Link href={SETTINGS_PATH} aria-label=\"Settings\"",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_integrations.tsx",
+            "quote": "placeholder=\"Search integrations\"",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_integrations.tsx",
+            "quote": "return integration.is_connected ? \"Manage\" : \"Connect\";",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/integrations/component_integration_detail.tsx",
+            "quote": "title=\"Setup guide\"",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/integrations/component_integration_detail.tsx",
+            "quote": "title=\"Connection details\" ... placeholder=\"••••••••\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/integrations/component_integration_detail.tsx",
+            "quote": "disabled={!isDirty}>{integration.is_connected ? \"Save changes\" : \"Connect\"}",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/integrations/component_integration_detail.tsx",
+            "quote": "title={result.ok ? \"Success\" : \"Something went wrong\"}",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/integrations/component_integration_detail.tsx",
+            "quote": "title=\"Test connection\" description=\"Verify the saved connection using the stored credentials.\" ... Test connection",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/integrations/component_integration_detail.tsx",
+            "quote": "title={result.ok ? \"Connection works\" : \"Connection failed\"}",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:45:56.549Z"
+      }
+    },
+    "blocker": "rehearsal failed: page.waitForTimeout: Target page, context or browser has been closed",
+    "preparedAt": "2026-10-09T16:45:56.549Z",
+    "preparedBy": "stephenskalamera",
+    "verified": false,
+    "rehearsedAt": "2026-10-09T17:29:24.809Z"
+  },
+  "platform::customizingemailbrandinglogogreetingfooter": {
+    "module": "Platform",
+    "title": "Customizing Email Branding (logo, greeting, footer)",
+    "plan": {
+      "title": "Customizing Email Branding (logo, greeting, footer)",
+      "module": "Other",
+      "startRoute": "/settings/email-notifications/branding",
+      "summary": "In Settings > Email notifications > Branding, open the Edit design panel and set the email logo, greeting and footer content, with autosave and a live preview.",
+      "steps": [
+        "Navigate to Settings > Email notifications > Branding (/settings/email-notifications/branding)",
+        "Click the \"Edit design\" button above the email preview to open the design panel; the header shows the \"Edit design\" title.",
+        "On the \"Header\" segment, under the \"Custom logo\" section, drop or select a PNG (up to 2MB) in the file dropzone; wait for the \"Logo uploaded\" toast.",
+        "Click the \"Content\" segment in the design panel.",
+        "In the \"Greeting\" section, type your greeting (for example \"Hi there,\") into the \"Greeting\" field; the preview updates and a \"Saved your ...\" toast appears after autosave.",
+        "Click the \"Footer\" segment in the design panel.",
+        "In the \"Footer content\" section, type into the \"Support email\" field.",
+        "In the \"Footer content\" section, type into the \"Tagline\" field and wait for the success toast.",
+        "Click the \"Content\" segment, then in the \"Fine print\" section click \"Add footer copy\" and type into the rich-text box (placeholder \"A disclaimer, a mailing address…\").",
+        "Click the icon-only \"Close design panel\" button (X at the right of the panel header) to view the final branded email in the preview."
+      ],
+      "sources": [
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_notification_hub.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/branding/branding_tab.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/branding/logo_section.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/branding/brand_icon_field.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/branding/sender_section.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/branding/footer_section.tsx",
+        "apps/hadrius-app/src/pages/coreloop/account/settings/page_account_settings.tsx",
+        "apps/hadrius-app/next.config.js",
+        "apps/hadrius-app/pages/settings/email-notifications/[tab].tsx"
+      ],
+      "prerequisites": [
+        "Company must have the \"email_log\" feature enabled (useCompanyHasFeature(\"email_log\") in page_notification_hub.tsx); Hadrius Academy needs it on.",
+        "User needs the platform.notification_hub.read permission to see the page, and platform.notification_hub.resolve (\"Email notifications\" resolve permission) to edit; otherwise the tab shows a \"Read only\" alert and fields are disabled.",
+        "A PNG logo file up to 2MB to upload (file upload handled by the recorder).",
+        "The footer color section only appears once a company logo is uploaded; no other data is required."
+      ],
+      "provisionable": "likely-already-present",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/page_notification_hub.tsx",
+            "quote": "{ value: \"branding\", label: \"Branding\" }, ... href={`/settings/email-notifications/${tab.value}`}",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/branding_tab.tsx",
+            "quote": "<Button variant=\"outline\" icon={<Paintbrush className=\"h-4 w-4\" />} onClick={() => setDesignOpen(true)}>Edit design</Button>",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/brand_icon_field.tsx",
+            "quote": "toast({ title: \"Logo uploaded\", toastStyle: \"success\" }); ... description={`${LOGO_EXTENSIONS_LABEL}, up to 2MB`}",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/branding_tab.tsx",
+            "quote": "message: \"Content\" in SEGMENTS (header: \"Header\", message: \"Content\", footer: \"Footer\")",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/sender_section.tsx",
+            "quote": "<InputField aria-label=\"Greeting\" placeholder=\"Hi there,\" ... description=\"Sits above the message on every notification.\"",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/branding_tab.tsx",
+            "quote": "footer: \"Footer\"",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/footer_section.tsx",
+            "quote": "label=\"Support email\" aria-label=\"Support email\"",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/footer_section.tsx",
+            "quote": "label=\"Tagline\" aria-label=\"Tagline\" placeholder=\"Footer tagline\"",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/footer_section.tsx",
+            "quote": "<Button variant=\"ghost\" size=\"sm\" ...>Add footer copy</Button> ... placeholder=\"A disclaimer, a mailing address…\"",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/pages/coreloop/account/settings/branding/branding_tab.tsx",
+            "quote": "aria-label=\"Close design panel\" icon={<X className=\"h-4 w-4\" />}",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:46:29.660Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:46:29.660Z",
+    "preparedBy": "stephenskalamera"
+  },
+  "platform::gettingstartedwithaskhadrius": {
+    "module": "Platform",
+    "title": "Getting Started with Ask Hadrius",
+    "plan": {
+      "title": "Getting Started with Ask Hadrius",
+      "module": "Other",
+      "startRoute": "/home",
+      "summary": "From the Home page, open the Ask Hadrius panel from the sidebar, send a question about your workspace, then start a new chat and revisit past conversations from the panel header.",
+      "steps": [
+        "Navigate to Platform > Home (click \"Home\" at the top of the sidebar navigation, route /home)",
+        "Click the \"Ask Hadrius\" button (sparkle icon) in the sidebar header, below the company picker, to open the Ask Hadrius panel.",
+        "Wait for the panel to show the header title \"Ask Hadrius\" and the heading \"Ask about your workspace\", with the label \"Suggested for this page\" above a few suggested question cards.",
+        "Click into the text box with the placeholder \"Ask Hadrius...\" (accessible name \"Ask Hadrius prompt\") at the bottom of the panel.",
+        "Type a question into the \"Ask Hadrius prompt\" text box, for example \"Which modules need attention?\".",
+        "Click the round arrow-up icon button labelled \"Send message\" at the right end of the text box.",
+        "Wait for the reply to start streaming: the send button turns into the square-icon \"Stop response\" button, the sidebar button's label becomes \"Ask Hadrius, working\", and a thinking indicator appears at the bottom of the chat.",
+        "Click the icon-only pencil-square button labelled \"New chat\" (tooltip \"New chat\"), the second icon at the left of the panel header, to start a fresh conversation.",
+        "Click the icon-only three-line menu button labelled \"Conversations\" (tooltip \"Conversations\"), the first icon at the left of the panel header, and wait for the header title to change to \"Conversations\" and the \"Search conversations\" field to appear.",
+        "Click the \"Back\" button (left-arrow icon) at the left of the panel header to return to the chat."
+      ],
+      "sources": [
+        "apps/hadrius-app/pages/home.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
+        "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/header.tsx",
+        "apps/hadrius-app/src/components/agent_chat/component_ask_hadrius_aside.tsx",
+        "apps/hadrius-app/src/components/agent_chat/agent_chat_panel.tsx",
+        "apps/hadrius-app/src/components/agent_chat/agent_chat_header.tsx",
+        "apps/hadrius-app/src/components/agent_chat/agent_chat_input.tsx",
+        "apps/hadrius-app/src/components/agent_chat/agent_chat_suggestions.tsx",
+        "apps/hadrius-app/src/components/agent_chat/suggestion_catalog.ts",
+        "apps/hadrius-app/src/components/agent_chat/suggestion_routes.ts",
+        "apps/hadrius-app/src/api/auth/get-module-permissions.ts"
+      ],
+      "prerequisites": [
+        "The company must have the ASK_HADRIUS feature flag (useCompanyHasFeatureFlag(\"ASK_HADRIUS\") in useCanAccessAskHadrius); without it the sidebar button and panel are not rendered.",
+        "The user's role must have the \"Ask Hadrius read access\" permission (ask_hadrius.all.read_access), set under role permissions; without it the sidebar button is hidden.",
+        "The \"Conversations\" list only shows entries after at least one chat exists; otherwise it shows \"No conversations yet\". Step 6 creates the first one."
+      ],
+      "provisionable": "needs-deliberate-setup",
+      "blockerReason": "",
+      "grounding": {
+        "confidence": "high",
+        "verifiedSteps": 10,
+        "totalSteps": 10,
+        "unverified": [],
+        "steps": [
+          {
+            "step": 1,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/nav_bar.tsx",
+            "quote": "<TabIndex title={\"Home\"} path={homePath ?? \"/home\"} Icon={House} isMinimized={isMinimized} />",
+            "verified": true
+          },
+          {
+            "step": 2,
+            "file": "apps/hadrius-app/src/components/page_elements/nav_bars/sidebar/header.tsx",
+            "quote": "{canAccessAskHadrius && !isCollapsed && (<Button ... onClick={toggleChat} aria-label={askHadriusLabel}> ... <Text className=\"text-h-brand-purple\">Ask Hadrius</Text>",
+            "verified": true
+          },
+          {
+            "step": 3,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_suggestions.tsx",
+            "quote": "Ask about{\" \"}<Typography ...>{suggestions.name}</Typography> ... {suggestions ? \"Suggested for this page\" : \"Try asking\"}; suggestion_catalog.ts: id: \"general-home\", name: \"your workspace\", paths: [\"/home\", \"/\"]; agent_chat_header.tsx: let headerTitle = \"Ask Hadrius\";",
+            "verified": true
+          },
+          {
+            "step": 4,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_input.tsx",
+            "quote": "placeholder=\"Ask Hadrius...\" aria-label=\"Ask Hadrius prompt\"",
+            "verified": true
+          },
+          {
+            "step": 5,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_input.tsx",
+            "quote": "onChange={(event) => onDraftChange(event.target.value)}",
+            "verified": true
+          },
+          {
+            "step": 6,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_input.tsx",
+            "quote": "let sendButtonLabel = \"Send message\"; ... aria-label={sendButtonLabel} ... <ArrowUp className=\"h-4 w-4\" />",
+            "verified": true
+          },
+          {
+            "step": 7,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_input.tsx",
+            "quote": "if (isStreaming) sendButtonLabel = \"Stop response\"; ... <Square className=\"h-4 w-4\" fill=\"currentColor\" />; header.tsx: if (isWorking) askHadriusLabel = \"Ask Hadrius, working\"",
+            "verified": true
+          },
+          {
+            "step": 8,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_header.tsx",
+            "quote": "<Tooltip content=\"New chat\" placement=\"bottom\"><Button ... onClick={onNewChat} aria-label=\"New chat\"><SquarePen className=\"h-4 w-4\" />",
+            "verified": true
+          },
+          {
+            "step": 9,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_header.tsx",
+            "quote": "<Tooltip content=\"Conversations\" placement=\"bottom\"><Button ... onClick={onToggleConversations} aria-label=\"Conversations\"><Menu className=\"h-4 w-4\" />; headerTitle = \"Conversations\"; agent_chat_panel.tsx: placeholder=\"Search conversations\" aria-label=\"Search conversations\"",
+            "verified": true
+          },
+          {
+            "step": 10,
+            "file": "apps/hadrius-app/src/components/agent_chat/agent_chat_header.tsx",
+            "quote": "leftIcon={<ArrowLeft className=\"h-4 w-4\" />}\n                Back",
+            "verified": true
+          }
+        ],
+        "checkedAt": "2026-10-09T16:47:58.812Z"
+      }
+    },
+    "blocker": null,
+    "preparedAt": "2026-10-09T16:47:58.812Z",
+    "preparedBy": "stephenskalamera"
+  }
+}

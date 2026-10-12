@@ -59,6 +59,95 @@ const HEALTH_CHECK_URL = LIBRARY_URL.replace(/\/api\/studio.*/, '/api/studio-hea
 let coverageScan = { running: false, startedAt: null, finishedAt: null, log: [], result: null, error: null };
 let liteScan = { running: false, startedAt: null, finishedAt: null, log: [], error: null };
 const WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'workflows.json');
+
+// ---- Auto-record plans for Academy curriculum lessons (To Record tab). Kept apart from the
+// coverage workflows, whose store only knows the 6 app modules. Committed to the repo so the team
+// gets the prepared plans on update instead of each machine spending ~10 Claude calls per lesson.
+const ACADEMY_PLANS_FILE = path.join(REPO_ROOT, 'data', 'academy-plans.json');
+const academyPlanKey = (module, title) => `${String(module || '').toLowerCase()}::${String(title || '').toLowerCase().replace(/^how[\s-]+to[\s-]+/, '').replace(/[^a-z0-9]+/g, '')}`;
+function readAcademyPlans() { try { return JSON.parse(fs.readFileSync(ACADEMY_PLANS_FILE, 'utf8')); } catch { return {}; } }
+function writeAcademyPlan(key, entry) {
+  const all = readAcademyPlans(); all[key] = entry; // re-read first: other writers may have added entries
+  fs.mkdirSync(path.dirname(ACADEMY_PLANS_FILE), { recursive: true });
+  fs.writeFileSync(ACADEMY_PLANS_FILE, JSON.stringify(all, null, 2) + '\n');
+}
+/** Dry-run a plan in Hadrius Academy with the real recorder (no data changes). Takes an AI slot so
+ * it never shares a browser profile with a real Auto-record. Returns null when it passed, else why. */
+async function rehearseAcademyPlan(module, title, plan, log) {
+  while (!aiSlots.length) await new Promise((r) => setTimeout(r, 5000));
+  const slot = aiSlots.shift();
+  try {
+    const { runAiRecord, slotProfileDir } = await loadAiRecord();
+    const item = { title, module, start_route: plan.startRoute || plan.start_route || '/overview', description: plan.purpose || plan.summary || '', trigger: plan.trigger || '', steps: plan.steps || [], prerequisites: plan.prerequisites || [] };
+    const r = await runAiRecord(item, { onLog: (l) => { if (/rehearsal|✓|!|fail|gave up/i.test(l)) log(`    ${String(l).trim().slice(0, 180)}`); }, profileDir: slotProfileDir(slot), plan, rehearsal: true });
+    return r?.rehearsal?.ok ? null : 'the rehearsal did not finish';
+  } catch (e) {
+    return `rehearsal failed: ${String(e?.message || e).replace(/\s+/g, ' ').slice(0, 220)}`;
+  } finally {
+    aiSlots.push(slot); pumpAiQueue();
+  }
+}
+const academyPlanJob = { running: false, startedAt: 0, done: 0, total: 0, ready: 0, current: null, log: [] };
+async function prepareAcademyPlans({ fresh = false, modules = null, rehearseOnly = false } = {}) {
+  if (academyPlanJob.running) return;
+  Object.assign(academyPlanJob, { running: true, startedAt: Date.now(), done: 0, total: 0, ready: 0, current: null, log: [] });
+  const log = (l) => { academyPlanJob.log.push(l); console.log(`[academy-plans] ${l}`); };
+  try {
+    // A fresh read of 8 tabs can hit Google's rate limit (429); the cached list is fine for this.
+    let data;
+    try { data = await getAcademyLessons({ fresh: true }); }
+    catch (e) { log(`fresh sheet read failed (${String(e.message || e).slice(0, 80)}); using the cached lesson list`); data = await getAcademyLessons({ fresh: false, maxAgeMs: 24 * 3600e3 }); }
+    const have = readAcademyPlans();
+    const todo = [];
+    for (const m of data.modules) {
+      if (modules && !modules.some((x) => x.toLowerCase() === m.module.toLowerCase())) continue;
+      for (const l of m.lessons) {
+        if (l.link) continue;
+        const prev = have[academyPlanKey(m.module, l.title)];
+        // Planned before rehearsal existed (or with a plan that passed the code check): rehearse it.
+        if (rehearseOnly ? (prev && !prev.blocker && !prev.verified) : (fresh || !prev || (!prev.blocker && !prev.verified))) todo.push({ module: m.module, title: l.title, prev: prev && !prev.blocker && !fresh ? prev : null });
+      }
+    }
+    academyPlanJob.total = todo.length;
+    log(`${todo.length} lesson(s) to plan`);
+    for (const { module, title, prev } of todo) {
+      academyPlanJob.current = `${module}: ${title}`;
+      try {
+        if (prev) {
+          const blocker = await rehearseAcademyPlan(module, title, prev.plan, log);
+          writeAcademyPlan(academyPlanKey(module, title), { ...prev, blocker, verified: !blocker, rehearsedAt: new Date().toISOString() });
+          if (!blocker) academyPlanJob.ready++;
+          log(`${blocker ? '✗' : '✓'} ${module}: ${title}${blocker ? ` (${blocker})` : ' (rehearsed)'}`);
+          academyPlanJob.done++; continue;
+        }
+        let plan = await generatePlanFromIdea({ userPrompt: `${title} in ${module}. Run in the Hadrius Academy company.` });
+        for (let k = 0; k < 4 && autoRecordBlocker(plan); k++) {
+          const en = await generatePlanFromIdea({
+            userPrompt: `${title} in ${module}`,
+            previousPlan: { title, module, startRoute: plan.startRoute || plan.start_route, summary: plan.summary || plan.purpose, steps: Array.isArray(plan.steps) ? plan.steps : [] },
+            clarification: 'Inspect the codebase for this specific workflow and formulate an exhaustive, granular step-by-step walkthrough plan referencing exact visible button labels, fields, and dialog controls.',
+          });
+          if (en) plan = en;
+        }
+        let blocker = autoRecordBlocker(plan), rehearsedAt = null;
+        // A plan read from the code isn't proof the recorder can do it (drag-only controls, a
+        // feature off for Hadrius Academy, missing data), so dry-run it for real before offering it.
+        if (!blocker) { academyPlanJob.current = `${module}: ${title} (rehearsing)`; blocker = await rehearseAcademyPlan(module, title, plan, log); rehearsedAt = new Date().toISOString(); }
+        writeAcademyPlan(academyPlanKey(module, title), { module, title, plan: { ...plan, title }, blocker, verified: !blocker, rehearsedAt, preparedAt: new Date().toISOString(), preparedBy: WHOAMI });
+        if (!blocker) academyPlanJob.ready++;
+        log(`${blocker ? '✗' : '✓'} ${module}: ${title}${blocker ? ` (${blocker})` : ''}`);
+      } catch (e) {
+        log(`✗ ${module}: ${title} (error: ${String(e?.message || e).slice(0, 120)})`);
+      }
+      academyPlanJob.done++;
+    }
+  } catch (e) {
+    log(`stopped: ${String(e?.message || e).slice(0, 200)}`);
+  } finally {
+    academyPlanJob.running = false; academyPlanJob.current = null;
+    log(`finished: ${academyPlanJob.ready} of ${academyPlanJob.total} ready to auto-record`);
+  }
+}
 const MANUAL_LINKS_FILE = path.join(REPO_ROOT, 'data', 'manual-links.json');
 const DISMISSED_WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'dismissed-workflows.json');
 
@@ -1705,7 +1794,10 @@ const NARRATION_VOICES = [
   { value: 'el:CvD6hF1BJzAFN428j1cO', label: 'Kristen', group: 'ElevenLabs', detail: 'Warm, corporate, steady' },
   { value: 'el:IDHS58OMlK9jZvRdhEVy', label: 'Jennifer', group: 'ElevenLabs', detail: 'Calm AI explainer' },
   { value: 'el:ZoiZ8fuDWInAcwPXaVeq', label: 'Josh', group: 'ElevenLabs', detail: 'Warm, smooth, steady (male)' },
-  { value: 'vs:4bfebca6', label: 'The Upbeat', group: 'VoiceStudio', detail: 'Local VoiceStudio' },
+  // VoiceStudio profiles are matched by NAME on each machine (profile ids differ per install); the
+  // id here is only the fallback when VoiceStudio can't be asked. Import a .ovsvoice to add one.
+  { value: 'vs:4bfebca6', vsName: 'The Upbeat', label: 'The Upbeat', group: 'VoiceStudio', detail: 'Local VoiceStudio' },
+  { value: 'vs:02be33d6', vsName: 'Stephen', label: 'Stephen', group: 'VoiceStudio', detail: "Stephen's cloned voice (import Stephen.ovsvoice into VoiceStudio)" },
   { value: 'mac:Samantha', label: 'Samantha', group: 'macOS', detail: 'Built-in Mac voice' },
 ];
 /** A value from the repo .env as renderer/tts.py sees it (env var first, then .env). The bridge's
@@ -1718,14 +1810,24 @@ function repoEnv(k) {
     return line ? line.slice(line.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '') : '';
   } catch { return ''; }
 }
-function narrationVoiceValue(v) { const s = String(v || '').trim(); return NARRATION_VOICES.some((x) => x.value === s) ? s : ''; }
+// Any VoiceStudio profile id is accepted (they're per-install); other providers must be listed.
+function narrationVoiceValue(v) { const s = String(v || '').trim(); return NARRATION_VOICES.some((x) => x.value === s) || /^vs:[\w-]{4,40}$/.test(s) ? s : ''; }
+/** This machine's VoiceStudio profiles: name -> id, or null when VoiceStudio isn't running. */
+async function voiceStudioProfiles() {
+  try {
+    const r = await fetch(`${(repoEnv('VOICESTUDIO_URL') || 'http://127.0.0.1:3900').replace(/\/$/, '')}/v1/audio/voices`, { signal: AbortSignal.timeout(1500) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return new Map((d.voices || []).filter((x) => x.type === 'profile').map((x) => [String(x.name).toLowerCase(), x.voice_id]));
+  } catch { return null; }
+}
 // The team's standard narration voice: every user's picker starts here, and any render that arrives
 // without a pick (Auto-record batches, re-renders of older scripts) uses it too.
 const DEFAULT_NARRATION_VOICE = 'el:ZoiZ8fuDWInAcwPXaVeq'; // Josh
 /** Josh when this machine can use ElevenLabs; otherwise VoiceStudio, then the first usable voice. */
 function defaultNarrationVoice(voices) {
   const ok = (v) => voices.find((x) => x.value === v && x.available);
-  return (ok(DEFAULT_NARRATION_VOICE) || ok('vs:4bfebca6') || voices.find((x) => x.available) || voices[0]).value;
+  return (ok(DEFAULT_NARRATION_VOICE) || voices.find((x) => x.vsName === 'The Upbeat' && x.available) || voices.find((x) => x.available) || voices[0]).value;
 }
 /** Child-process env carrying the voice pick to renderer/tts.py (unset = the .env default chain). */
 function narrationEnv(voice) {
@@ -2227,10 +2329,17 @@ const server = http.createServer(async (req, res) => {
   // GET /voices -> the render bar's voice picker. `value` goes onto the script as script.voice and
   // reaches renderer/tts.py as NARRATION_VOICE; `available` says whether this machine can use it.
   if (req.method === 'GET' && u.pathname === '/voices') {
-    const vsUp = await fetch(`${(repoEnv('VOICESTUDIO_URL') || 'http://127.0.0.1:3900').replace(/\/$/, '')}/health`, { signal: AbortSignal.timeout(800) }).then((r) => r.ok).catch(() => false);
+    const profiles = await voiceStudioProfiles();
     const elKey = !!repoEnv('ELEVENLABS_API_KEY');
-    const voices = NARRATION_VOICES.map((v) => ({ ...v, available: v.value.startsWith('el:') ? elKey : v.value.startsWith('vs:') ? vsUp : v.value.startsWith('mac:') ? process.platform === 'darwin' : true,
-      why: v.value.startsWith('el:') && !elKey ? 'needs ELEVENLABS_API_KEY in .env' : v.value.startsWith('vs:') && !vsUp ? 'VoiceStudio isn\'t running on this machine' : v.value.startsWith('mac:') && process.platform !== 'darwin' ? 'macOS only' : null }));
+    const voices = NARRATION_VOICES.map((v) => {
+      if (v.vsName) {
+        const id = profiles?.get(v.vsName.toLowerCase());
+        return { ...v, value: id ? `vs:${id}` : v.value, available: !!id,
+          why: !profiles ? 'VoiceStudio isn\'t running on this machine' : !id ? `no "${v.vsName}" voice in this VoiceStudio${v.vsName === 'Stephen' ? ' (import Stephen.ovsvoice)' : ''}` : null };
+      }
+      return { ...v, available: v.value.startsWith('el:') ? elKey : v.value.startsWith('mac:') ? process.platform === 'darwin' : true,
+        why: v.value.startsWith('el:') && !elKey ? 'needs ELEVENLABS_API_KEY in .env' : v.value.startsWith('mac:') && process.platform !== 'darwin' ? 'macOS only' : null };
+    });
     return sendJson(res, 200, { ok: true, voices, default: defaultNarrationVoice(voices) });
   }
 
@@ -2314,10 +2423,31 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && u.pathname === '/academy-lessons') {
     try {
       const data = await getAcademyLessons({ fresh: u.searchParams.get('fresh') === '1' });
-      return sendJson(res, 200, { ok: true, ...data });
+      // Attach each remaining lesson's prepared plan (data/academy-plans.json), so the panel can
+      // offer Auto-record for lessons with no coverage workflow — Platform/Employee Training included.
+      const plans = readAcademyPlans();
+      const modules = data.modules.map((m) => ({ ...m, lessons: m.lessons.map((l) => {
+        const p = !l.link && plans[academyPlanKey(m.module, l.title)];
+        // Auto-record only for a plan that passed a real rehearsal; anything else carries a blocker.
+        return p ? { ...l, plan: p.plan, planBlocker: p.blocker || (p.verified ? null : 'not rehearsed yet') } : l;
+      }) }));
+      return sendJson(res, 200, { ok: true, ...data, modules, planJob: academyPlanJob.running ? { done: academyPlanJob.done, total: academyPlanJob.total, current: academyPlanJob.current } : null });
     } catch (e) {
       return sendJson(res, 502, { ok: false, error: `Couldn't read the Academy sheet: ${String(e?.message || e)}` });
     }
+  }
+
+  // POST /academy-plans/prepare { fresh?: bool, modules?: [] } -> starts a background job that, for
+  // each remaining lesson without a prepared plan, generates a codebase-grounded plan and enhances it
+  // (up to 4 passes) until it's high-confidence with every step verified. Every result is stored —
+  // the blocker (or null) tells the panel whether Auto-record is offered. GET /academy-plans/status.
+  if (req.method === 'POST' && u.pathname === '/academy-plans/prepare') {
+    const body = await readJsonBody(req).catch(() => ({}));
+    if (!academyPlanJob.running) prepareAcademyPlans({ fresh: !!body.fresh, rehearseOnly: !!body.rehearseOnly, modules: Array.isArray(body.modules) ? body.modules : null }).catch((e) => console.warn('[academy-plans]', e.message));
+    return sendJson(res, 200, { ok: true, running: true, alreadyRunning: academyPlanJob.running && academyPlanJob.startedAt < Date.now() - 1000 });
+  }
+  if (req.method === 'GET' && u.pathname === '/academy-plans/status') {
+    return sendJson(res, 200, { ok: true, ...academyPlanJob, log: academyPlanJob.log.slice(-30) });
   }
 
   // ---- one-click update: runs update.sh detached so it survives setup.sh restarting this bridge ----
