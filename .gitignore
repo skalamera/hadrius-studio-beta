@@ -26,3 +26,6 @@ skills-lock.json
 
 # Agent scratch (plans, one-off scripts)
 .hermes/
+
+# installer/build.sh output: the installer zip carries the team's live credentials
+dist/

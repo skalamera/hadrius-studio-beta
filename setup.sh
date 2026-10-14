@@ -193,28 +193,37 @@ if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null || ! ffmpeg
 
   if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null || ! ffmpeg -version >/dev/null 2>&1 || ! ffprobe -version >/dev/null 2>&1; then
     if [[ "$OS" == "Darwin" ]]; then
-      # On Apple Silicon, ensure Rosetta 2 is available if running prebuilt x86_64 binaries
-      if [[ "$ARCH" == "arm64" ]]; then
-        if ! /usr/bin/arch -x86_64 /usr/bin/true >/dev/null 2>&1; then
+      # Native static builds for Apple Silicon and Intel from ffmpeg.martin-riedl.de, so no Rosetta.
+      # evermeet.cx retired its /getrelease download API (HTTP 410), so its Intel-only build is just
+      # the fallback now, located through its /info API.
+      echo "Downloading prebuilt FFmpeg & FFprobe for macOS into $HOME/.local/bin..."
+      FF_ARCH="amd64"
+      if [[ "$ARCH" == "arm64" ]]; then FF_ARCH="arm64"; fi
+      for tool in ffmpeg ffprobe; do
+        TMP_ZIP="/tmp/${tool}-dl.zip"
+        if curl -fsSL --retry 3 --retry-delay 2 "https://ffmpeg.martin-riedl.de/redirect/latest/macos/${FF_ARCH}/release/${tool}.zip" -o "$TMP_ZIP" 2>/dev/null; then
+          unzip -q -o "$TMP_ZIP" -d "$HOME/.local/bin" 2>/dev/null || true
+        fi
+        rm -f "$TMP_ZIP"
+      done
+      chmod +x "$HOME/.local/bin/ffmpeg" "$HOME/.local/bin/ffprobe" 2>/dev/null || true
+
+      if ! "$HOME/.local/bin/ffmpeg" -version >/dev/null 2>&1 || ! "$HOME/.local/bin/ffprobe" -version >/dev/null 2>&1; then
+        echo "Falling back to evermeet.cx's FFmpeg build (Intel; runs under Rosetta 2 on Apple Silicon)..."
+        if [[ "$ARCH" == "arm64" ]] && ! /usr/bin/arch -x86_64 /usr/bin/true >/dev/null 2>&1; then
           echo "Installing Rosetta 2 for prebuilt binary compatibility..."
           softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
         fi
+        for tool in ffmpeg ffprobe; do
+          TMP_ZIP="/tmp/${tool}-dl.zip"
+          ZIP_URL="$(curl -fsSL "https://evermeet.cx/ffmpeg/info/${tool}/release" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["download"]["zip"]["url"])' 2>/dev/null || true)"
+          if [[ -n "$ZIP_URL" ]] && curl -fsSL --retry 3 --retry-delay 2 "$ZIP_URL" -o "$TMP_ZIP" 2>/dev/null; then
+            unzip -q -o "$TMP_ZIP" -d "$HOME/.local/bin" 2>/dev/null || true
+          fi
+          rm -f "$TMP_ZIP"
+        done
+        chmod +x "$HOME/.local/bin/ffmpeg" "$HOME/.local/bin/ffprobe" 2>/dev/null || true
       fi
-
-      echo "Downloading prebuilt FFmpeg & FFprobe for macOS into $HOME/.local/bin..."
-      TMP_FFMPEG="/tmp/ffmpeg-dl.zip"
-      TMP_FFPROBE="/tmp/ffprobe-dl.zip"
-      curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/zip" -o "$TMP_FFMPEG" 2>/dev/null || true
-      if [[ -f "$TMP_FFMPEG" ]]; then
-        unzip -q -o "$TMP_FFMPEG" -d "$HOME/.local/bin" 2>/dev/null || true
-        rm -f "$TMP_FFMPEG"
-      fi
-      curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o "$TMP_FFPROBE" 2>/dev/null || true
-      if [[ -f "$TMP_FFPROBE" ]]; then
-        unzip -q -o "$TMP_FFPROBE" -d "$HOME/.local/bin" 2>/dev/null || true
-        rm -f "$TMP_FFPROBE"
-      fi
-      chmod +x "$HOME/.local/bin/ffmpeg" "$HOME/.local/bin/ffprobe" 2>/dev/null || true
       xattr -dr com.apple.quarantine "$HOME/.local/bin/ffmpeg" "$HOME/.local/bin/ffprobe" 2>/dev/null || true
     elif [[ "$OS" == "Linux" ]]; then
       sudo apt-get update && sudo apt-get install -y ffmpeg 2>/dev/null || true
@@ -492,7 +501,7 @@ cat <<EOF
 7. Navigate to https://app.hadrius.com to start recording!
 
 Optional Next Steps:
-- Sign into Claude CLI:     claude login
+- Sign into Claude CLI:     claude auth login
 - Sign into Hadrius MCP:    claude mcp login hadrius-codebase
 ===================================================================
 EOF

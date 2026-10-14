@@ -16,6 +16,22 @@ A Chrome side-panel extension for producing short Hadrius knowledge-base walkthr
 
 ## Install
 
+### Teammates: the installer (no Terminal, nothing to type)
+
+Ask Stephen for **Hadrius Studio Installer.zip**, unzip it, and double-click **Install Hadrius Studio**. It installs everything below, writes the team's credentials into `.env` for you, starts the background service, walks you through adding the extension to Chrome (checking each step off by itself), and offers a Claude sign-in at the end. The first time, macOS asks you to approve the app once (System Settings → Privacy & Security → **Open Anyway**); `READ ME FIRST.txt` in the zip has the exact clicks.
+
+Run it again any time to update, repair, or sign in to Claude. It updates an existing install in place (wherever its background service points), and otherwise installs to `~/hadrius-studio-beta`. An install in `~/Downloads` is moved to `~/hadrius-studio-beta` first (or `-2`, … if that name is taken), keeping its `.env` and local renders; the Chrome step then has them remove the old card and add the new folder. Log: `~/Library/Logs/Hadrius Studio Installer/install.log`.
+
+### Building the installer (Stephen)
+
+```bash
+bash installer/build.sh
+```
+
+This bakes this machine's `.env` into `dist/Hadrius Studio Installer.zip`, minus machine-only keys (`PR_WATCH_USER`, `STUDIO_USER`, `KBS_BRIDGE_PORT`, …), and prints which keys went in. Share that zip privately (Slack DM, Drive). **Never commit `dist/` or a team .env: this GitHub repo is public.** After changing any key, rebuild and re-share; running the new installer refreshes each person's `.env` (installer keys overwrite the same keys, other lines are kept). The app is ad hoc signed, not notarized, hence the one-time Open Anyway step.
+
+### Manual install (developers)
+
 Requirements: macOS (or Linux), Google Chrome, and a Claude subscription for the Claude CLI. `setup.sh` installs everything else it can't find — Node, Python tooling, FFmpeg, the Claude CLI, the Hadrius codebase MCP, Playwright's Chromium — and registers the bridge as a background service, so there is nothing to keep running by hand.
 
 ```bash
@@ -33,7 +49,7 @@ Setup asks for the team's `STUDIO_SHARED_SECRET` (ask Stephen) so you share the 
   3. Put all three values in `.env` as `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, then restart the bridge.
   The Hadrius Academy folder id and its module subfolder ids are hardcoded in `tools/gdrive.mjs` (`HADRIUS_ACADEMY_FOLDER_ID` / `MODULE_FOLDER_IDS`) — update them there if the folder is ever recreated or subfolders renamed. `GOOGLE_DRIVE_FOLDER_ID` overrides the per-module routing entirely and uploads everything into one specific folder instead, if that's ever wanted.
 
-Afterwards, sign in once: `claude login`, then `claude mcp login hadrius-codebase` (the Hadrius codebase MCP is what grounds plans and narration in the real source).
+Afterwards, sign in once: `claude auth login`, then `claude mcp login hadrius-codebase` (the Hadrius codebase MCP is what grounds plans and narration in the real source).
 
 In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select the `extension/` folder. Pin **Hadrius Studio** from the extensions menu.
 
