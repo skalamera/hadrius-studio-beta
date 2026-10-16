@@ -9,7 +9,11 @@ export const ACADEMY_SHEET_URL = `https://docs.google.com/spreadsheets/d/${ACADE
 // tab -> app module name (the names ALLOWED_MODULES / the panel use), gid, and the done column.
 // altLinkColumns: other columns that also count as "has a video" (Employee Training keeps
 // re-recorded links in "Updated Link"); write-back always goes to linkColumn.
+// Onboarding is a cross-module checklist: its titles live in "Video Name", it gets no auto-record
+// plans (noPlans: its lessons span modules), and render write-back skips it (noWriteBack) so a
+// video still lands on its module tab instead of turning "ambiguous".
 export const ACADEMY_TABS = [
+  { tab: 'Onboarding', module: 'Onboarding', gid: 1973820092, linkColumn: 'Google Drive Video Link', titleColumn: 'Video Name', noPlans: true, noWriteBack: true },
   { tab: 'Testing Program', module: 'Testing program', gid: 2104426564, linkColumn: 'Video Link' },
   { tab: 'People Oversight', module: 'People oversight', gid: 1441169249, linkColumn: 'Video Link' },
   { tab: 'Branches', module: 'Branches', gid: 1519759355, linkColumn: 'Video Link' },
@@ -40,22 +44,27 @@ export function parseCsv(text) {
 }
 
 /** Lessons of one tab: [{ title, level, link|null, note }] (note = non-URL text like "On Hold"). */
-export function lessonsFromCsv(text, linkColumn, altLinkColumns = []) {
+export function lessonsFromCsv(text, linkColumn, altLinkColumns = [], titleColumn = 'Lesson Title') {
   const rows = parseCsv(text);
   const header = (rows[0] || []).map((h) => h.trim().toLowerCase());
-  const ti = header.indexOf('lesson title');
+  const ti = header.indexOf(titleColumn.toLowerCase());
   const li = header.indexOf(linkColumn.toLowerCase());
-  if (ti < 0 || li < 0) throw new Error(`missing "Lesson Title" or "${linkColumn}" column`);
+  if (ti < 0 || li < 0) throw new Error(`missing "${titleColumn}" or "${linkColumn}" column`);
   const alt = altLinkColumns.map((c) => header.indexOf(c.toLowerCase())).filter((i) => i >= 0);
   const out = [];
   for (const r of rows.slice(1)) {
     const title = (r[ti] || '').trim();
     if (!title) continue; // section header rows (GETTING STARTED, …)
+    if (/^(n\/?a|none|-)$/i.test(title)) continue; // placeholder rows ("N/A", note "no vid") aren't lessons
     const raw = (r[li] || '').trim();
-    const altUrl = alt.map((i) => (r[i] || '').trim()).find((v) => /^https?:\/\//i.test(v));
-    const isUrl = /^https?:\/\//i.test(raw);
-    const note = !isUrl && raw && !/^add link here$/i.test(raw) ? raw : '';
-    out.push({ title, level: (r[0] || '').trim(), link: isUrl ? raw : altUrl || null, note: altUrl ? '' : note });
+    // A cell can hold a note plus the link ("done\n\nhttps://…"), so take the first URL anywhere in it.
+    const urlIn = (v) => (String(v || '').match(/https?:\/\/\S+/i) || [null])[0];
+    const altUrl = alt.map((i) => urlIn(r[i])).find(Boolean);
+    const url = urlIn(raw);
+    const note = !url && raw && !/^add link here$/i.test(raw) ? raw : '';
+    // "done" with no link = handled outside video (the user's call): not a lesson to count either way.
+    if (!url && !altUrl && /^done\b/i.test(note)) continue;
+    out.push({ title, level: (r[0] || '').trim(), link: url || altUrl || null, note: url || altUrl ? '' : note });
   }
   return out;
 }
@@ -64,16 +73,47 @@ let cache = { at: 0, data: null };
 export async function getAcademyLessons({ fresh = false, maxAgeMs = 5 * 60000 } = {}) {
   if (!fresh && cache.data && Date.now() - cache.at < maxAgeMs) return cache.data;
   const modules = [];
-  // Sequential on purpose: parallel exports of 6 tabs trip Google's 429 rate limit.
+  // Sequential on purpose: parallel exports of 6 tabs trip Google's 429 rate limit. Even sequential
+  // reads of 9 tabs can 429 after a few refreshes, so back off and retry before giving up.
+  const csvWithRetry = async (gid) => {
+    for (let attempt = 0; ; attempt++) {
+      try { return await googleSheetCsv(ACADEMY_SHEET_ID, gid); }
+      catch (e) { if (attempt >= 3 || !/429/.test(String(e?.message || e))) throw e; await new Promise((r) => setTimeout(r, 3000 * (attempt + 1))); }
+    }
+  };
   for (const t of ACADEMY_TABS) {
-    const lessons = lessonsFromCsv(await googleSheetCsv(ACADEMY_SHEET_ID, t.gid), t.linkColumn, t.altLinkColumns);
+    const lessons = lessonsFromCsv(await csvWithRetry(t.gid), t.linkColumn, t.altLinkColumns, t.titleColumn);
     const done = lessons.filter((l) => l.link).length;
-    modules.push({ module: t.module, tab: t.tab, linkColumn: t.linkColumn, total: lessons.length, done, remaining: lessons.length - done, lessons });
+    modules.push({ module: t.module, tab: t.tab, linkColumn: t.linkColumn, noPlans: !!t.noPlans, total: lessons.length, done, remaining: lessons.length - done, lessons });
   }
-  const total = modules.reduce((n, m) => n + m.total, 0);
-  const done = modules.reduce((n, m) => n + m.done, 0);
-  cache = { at: Date.now(), data: { sheetUrl: ACADEMY_SHEET_URL, fetchedAt: new Date().toISOString(), total, done, remaining: total - done, modules } };
+  // Headline numbers count unique lessons: the same lesson often sits on its module tab AND on
+  // Onboarding / Employee Training, sometimes under a different title. Rows that link the same
+  // video file, or share a normalized title, are one lesson (union-find over both keys). A lesson
+  // is done if any of its rows has a link.
+  const rows = modules.flatMap((m) => m.lessons);
+  const parent = rows.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const firstByKey = new Map();
+  rows.forEach((l, i) => {
+    for (const key of [l.link && fileIdOf(l.link), `t:${normLesson(l.title)}`].filter(Boolean)) {
+      if (firstByKey.has(key)) parent[find(i)] = find(firstByKey.get(key)); else firstByKey.set(key, i);
+    }
+  });
+  const groupDone = new Map();
+  rows.forEach((l, i) => { const r = find(i); groupDone.set(r, (groupDone.get(r) || false) || !!l.link); });
+  const total = groupDone.size;
+  const done = [...groupDone.values()].filter(Boolean).length;
+  const rowTotal = modules.reduce((n, m) => n + m.total, 0);
+  const rowDone = modules.reduce((n, m) => n + m.done, 0);
+  cache = { at: Date.now(), data: { sheetUrl: ACADEMY_SHEET_URL, fetchedAt: new Date().toISOString(), total, done, remaining: total - done, rowTotal, rowDone, modules } };
   return cache.data;
+}
+
+// A Drive/Pylon link's stable id (Drive file id or Pylon article uuid), so two rows linking the
+// same video count as one lesson even when their share URLs differ (?usp=sharing vs drivesdk).
+function fileIdOf(url) {
+  const m = String(url).match(/\/d\/([-\w]{20,})/) || String(url).match(/[?&]id=([-\w]{20,})/) || String(url).match(/articles\/([0-9a-f-]{36})/);
+  return m ? `f:${m[1]}` : `u:${String(url).split('?')[0]}`;
 }
 
 const normLesson = (s) => String(s || '').toLowerCase().replace(/^how[\s-]+to[\s-]+/, '').replace(/[^a-z0-9]+/g, '');
@@ -89,7 +129,7 @@ export async function recordAcademyVideoLink({ title, module, url }) {
   const key = normLesson(title);
   if (!key || !url) return { status: 'no-match' };
   const mod = String(module || '').trim().toLowerCase();
-  const ordered = [...ACADEMY_TABS].sort((a, b) => (b.module.toLowerCase() === mod) - (a.module.toLowerCase() === mod));
+  const ordered = ACADEMY_TABS.filter((t) => !t.noWriteBack).sort((a, b) => (b.module.toLowerCase() === mod) - (a.module.toLowerCase() === mod));
   const hits = [];
   for (const [i, t] of ordered.entries()) {
     const range = encodeURIComponent(`'${t.tab}'!A1:Z400`);
