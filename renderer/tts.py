@@ -153,9 +153,17 @@ def normalize_pronunciation(text: str) -> str:
       while protecting explicit plural nouns ("their lives", "daily lives", "saving lives").
       Note: we use "livs" instead of "livz" because VoiceStudio/OmniVoice decomposes trailing "-z"
       into an extra possessive/contraction token ("lives is" / "lives's").
+    - Clause dashes ("the group — the people", "a – b", "a - b") -> ", ". ElevenLabs voiced the em
+      dash in "the supervisor group — the people allowed..." as garbled syllables ("group, Koi Mae,
+      the people"); a comma gives the same pause cleanly. Hyphenated words ("C-Suite", "pre-trade",
+      "2026-10-15") have no spaces around the hyphen and are untouched.
     """
     if not text:
         return ""
+    text = re.sub(r'\s*\u2014\s*', ', ', text)            # em dash, spaced or not
+    text = re.sub(r'\s+[\u2013-]\s+', ', ', text)         # spaced en dash / spaced hyphen
+    text = re.sub(r',\s*([,.;:!?])', r'\1', text)         # no doubled punctuation ("— ." / "—,")
+    text = re.sub(r'^\s*,\s*|,\s*$', '', text)            # a dash at the very start or end
     text = re.sub(r'\bHadrius\b', 'Heydrius', text)
     noun_modifiers = r'(their|our|your|my|his|her|its|personal|private|daily|saving|save|saved|lost|human|nine)'
     def replace_lives(m):

@@ -441,6 +441,7 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .seg-btn:hover:not(:disabled){color:var(--ink,#17231e)}
 .seg-btn.on{background:#fff;color:var(--ink,#17231e);box-shadow:0 1px 3px rgba(23,35,30,.14)}
 .seg-btn:disabled{opacity:.55;cursor:default}
+.render-switches{display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap}
 .drive-switch{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink,#17231e);cursor:pointer;user-select:none}
 .drive-switch[hidden]{display:none}
 .drive-switch input{position:absolute;opacity:0;pointer-events:none}

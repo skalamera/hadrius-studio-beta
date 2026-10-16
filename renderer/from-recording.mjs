@@ -43,6 +43,8 @@ const report = {
   healed: [],
   failed: [],
   source: 'recording',
+  // Extra FX (render bar switch): assemble.py adds camera moves, a dimmed spotlight and click ripples.
+  ...(script.fx ? { fx: true } : {}),
 };
 
 let slideNo = 0;
@@ -88,6 +90,7 @@ for (const step of script.steps) {
     target,
     viewport: vp,
     route: step.route,
+    action: step.action || null, // Extra FX draws a click ripple only on clicks
   });
 }
 

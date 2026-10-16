@@ -159,11 +159,18 @@
         <button type="button" class="seg-btn" data-out="pylon" role="radio">Article</button>
         <button type="button" class="seg-btn" data-out="both" role="radio">Both</button>
       </div>
-      <label class="drive-switch" id="driveSwitchWrap" title="Upload the MP4 to the shared Google Drive folder">
-        <input type="checkbox" id="driveToggle" checked>
-        <span class="switch-track"><span class="switch-thumb"></span></span>
-        Upload to Drive
-      </label>
+      <div class="render-switches">
+        <label class="drive-switch" id="driveSwitchWrap" title="Upload the MP4 to the shared Google Drive folder">
+          <input type="checkbox" id="driveToggle" checked>
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          Upload to Drive
+        </label>
+        <label class="drive-switch" id="fxSwitchWrap" title="Extra FX: the camera pans and zooms onto each step, everything around the highlighted element is dimmed, and clicks get a ripple. The title card, closing card and audio stay the same.">
+          <input type="checkbox" id="fxToggle">
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+          Extra FX
+        </label>
+      </div>
     </div>
     <div class="module-pick" id="modulePick" hidden>
       <label for="moduleSelect">Module</label>

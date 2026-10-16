@@ -2000,7 +2000,7 @@ function updateRenderButtons() {
   const hasSteps = (state.steps?.length || 0) > 0;
   const disableRender = !hasSteps || isRenderingActive;
   $('#renderBtn').disabled = disableRender;
-  document.querySelectorAll('#renderOptions .seg-btn, #driveToggle').forEach((el) => (el.disabled = isRenderingActive));
+  document.querySelectorAll('#renderOptions .seg-btn, #driveToggle, #fxToggle').forEach((el) => (el.disabled = isRenderingActive));
   updateRenderOptions();
   $('#downloadBtn').disabled = !hasSteps;
   $('#saveScriptBtn').disabled = !hasSteps || isSavingScript;
@@ -2047,7 +2047,8 @@ function updateRenderBarSummary() {
   if (!bar.classList.contains('collapsed')) { el.textContent = 'Render options'; return; }
   const out = document.querySelector('#renderOptions .seg-btn.active, #renderOptions .seg-btn[aria-checked="true"]')?.textContent?.trim();
   const sel = (id) => { const s = $(id); return s && s.selectedIndex >= 0 ? s.options[s.selectedIndex]?.textContent?.trim() : ''; };
-  const parts = [out, !$('#modulePick')?.hidden && sel('#moduleSelect'), sel('#voiceSelect')].filter(Boolean);
+  const fxOn = $('#fxToggle')?.checked && !$('#fxSwitchWrap')?.hidden;
+  const parts = [out, !$('#modulePick')?.hidden && sel('#moduleSelect'), sel('#voiceSelect'), fxOn && 'Extra FX'].filter(Boolean);
   el.textContent = parts.length ? `Render · ${parts.join(' · ')}` : 'Render options';
 }
 $('#renderBarToggle')?.addEventListener('click', () => {
@@ -2382,7 +2383,7 @@ async function previewNarration(btn, statusEl, text) {
 }
 
 // ---- Rendered-video preview: watch the last render while editing steps ----
-// Steps map to video time by their screenshot (step.media.pre ↔ slide.src), not by index, so
+// Steps map to video time by their screenshot (stepShot(step) ↔ slide.src), not by index, so
 // reordering or deleting a step doesn't point the player at the wrong moment.
 const videoPreview = { name: null, timeline: null, bySrc: {}, loadedFor: null, collapsed: false };
 
@@ -2445,16 +2446,29 @@ function updateVideoPreviewStale() {
   const el = $('#videoPreviewStale');
   if (!el || !videoPreview.timeline) return;
   const rendered = videoPreview.timeline.steps;
-  const current = state.steps.filter((s) => s.capture !== false && s.media?.pre);
+  const current = state.steps.filter((s) => s.capture !== false && stepShot(s));
   const changed = rendered.length !== current.length || current.some((s, i) => {
     const r = rendered[i];
-    return !r || r.src !== s.media.pre || (r.narration || '').trim() !== (s.narration || '').trim();
+    return !r || r.src !== stepShot(s) || (r.narration || '').trim() !== (s.narration || '').trim();
   });
-  el.hidden = !changed;
+  // Extra FX switched since this render (renders from before the switch existed had none).
+  const fxChanged = !!videoPreview.timeline.fx !== !!(typeof renderChoice !== 'undefined' && renderChoice.fx);
+  el.textContent = changed ? 'Steps changed since this render. Re-render to see the edits.'
+    : 'Extra FX was switched since this render. Re-render to see the change.';
+  el.hidden = !changed && !fxChanged;
 }
 
 function stepVideoSpan(step) {
-  return step?.media?.pre ? videoPreview.bySrc[step.media.pre] || null : null;
+  const shot = stepShot(step);
+  return shot ? videoPreview.bySrc[shot] || null : null;
+}
+
+// A step's screenshot file, i.e. its slide `src` in the rendered timeline. Must match toScript():
+// a step recorded in this session carries only captureId (toScript() turns it into media.pre when it
+// saves or renders), while a script loaded from the library carries media.pre. Matching on media.pre
+// alone left every freshly recorded step without its clip, time chip and playing highlight.
+function stepShot(step) {
+  return step?.captureId ? `step_${step.captureId}.png` : (step?.media?.pre || null);
 }
 
 function fmtTime(t) {
@@ -2483,7 +2497,7 @@ function syncPlayingStep() {
   const cards = [...document.querySelectorAll('#steps .step')];
   let label = '';
   state.steps.forEach((step, i) => {
-    const on = !!cur && step.media?.pre === cur.src;
+    const on = !!cur && stepShot(step) === cur.src;
     cards[i]?.classList.toggle('playing', on);
     // Progress through this step's span, drawn as a bar along the bottom of the playing card.
     if (on) cards[i]?.style.setProperty('--step-progress', `${Math.min(100, Math.max(0, ((t - cur.start) / Math.max(0.1, cur.end - cur.start)) * 100)).toFixed(1)}%`);
@@ -2527,8 +2541,8 @@ function renderSteps() {
     const actionClass = (step.action || 'click').toLowerCase();
 
     let thumbUrl = step.thumb || null;
-    if (!thumbUrl && recId && step.media?.pre) {
-      thumbUrl = `http://127.0.0.1:8787/capture/${recId}/slide/${step.media.pre}`;
+    if (!thumbUrl && recId && stepShot(step)) {
+      thumbUrl = `http://127.0.0.1:8787/capture/${recId}/slide/${stepShot(step)}`;
     }
 
     const vspan = stepVideoSpan(step);
@@ -2664,6 +2678,9 @@ function toScript() {
     recording: { id: state.recordingId || state.script?.recording?.id, recordedAt: now },
     captionsFromNarration: false,
     voice: (typeof currentVoice === 'function' && currentVoice()) || undefined,
+    // Extra FX switch in the render bar (previews follow it too, so an unchanged preview can still
+    // become the final video). Omitted when off so plain renders keep their old render keys.
+    ...(typeof renderChoice !== 'undefined' && renderChoice.fx ? { fx: true } : {}),
     steps: state.steps.map((s) => ({
       index: s.index,
       action: s.action,
@@ -3234,9 +3251,10 @@ $('#closeLoadScriptModalBtn').onclick = closeLoadScriptModal;
 $('#loadScriptModal').onclick = (e) => { if (e.target.id === 'loadScriptModal') closeLoadScriptModal(); };
 $('#loadScriptSearch').oninput = renderLoadScriptList;
 $('#scriptName').onchange = (e) => send({ type: 'PANEL_UPDATE_SCRIPT', patch: { name: e.target.value } });
-// ---- One Render button + choices: what to make (Video / Article / Both) and whether to upload ----
+// ---- One Render button + choices: what to make (Video / Article / Both), whether to upload, and
+// Extra FX (camera moves, dimmed spotlight, click ripples on the walkthrough slides; off by default).
 // Choices persist across sessions. The note under them only appears when something will be replaced.
-var renderChoice = { out: 'both', drive: true };
+var renderChoice = { out: 'both', drive: true, fx: false };
 var publishLinks = { name: null, drive: null, pylon: null };
 chrome.storage.local.get(['renderChoice'], (r) => {
   if (r?.renderChoice) Object.assign(renderChoice, r.renderChoice);
@@ -3245,6 +3263,10 @@ chrome.storage.local.get(['renderChoice'], (r) => {
 function saveRenderChoice() { chrome.storage.local.set({ renderChoice: { ...renderChoice } }); updateRenderOptions(); }
 document.querySelectorAll('#renderOptions .seg-btn').forEach((b) => (b.onclick = () => { renderChoice.out = b.dataset.out; saveRenderChoice(); }));
 $('#driveToggle').onchange = (e) => { renderChoice.drive = e.target.checked; saveRenderChoice(); };
+$('#fxToggle').onchange = (e) => {
+  renderChoice.fx = e.target.checked; saveRenderChoice();
+  if (typeof updateVideoPreviewStale === 'function') updateVideoPreviewStale();
+};
 
 function updateRenderOptions() {
   if (!renderChoice || !$('#renderOptions')) return;
@@ -3253,9 +3275,11 @@ function updateRenderOptions() {
     const on = b.dataset.out === renderChoice.out;
     b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
   });
-  // Drive only applies when a video is being made.
+  // Drive and Extra FX only apply when a video is being made.
   $('#driveSwitchWrap').hidden = !makesVideo;
   $('#driveToggle').checked = renderChoice.drive;
+  $('#fxSwitchWrap').hidden = !makesVideo;
+  $('#fxToggle').checked = !!renderChoice.fx;
   $('#renderBtn').textContent = { video: 'Render video', pylon: 'Create article', both: 'Render video + article' }[renderChoice.out];
   const notes = [];
   if (makesVideo && renderChoice.drive && publishLinks.drive)

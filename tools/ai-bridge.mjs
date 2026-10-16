@@ -100,6 +100,7 @@ async function prepareAcademyPlans({ fresh = false, modules = null, rehearseOnly
     const have = readAcademyPlans();
     const todo = [];
     for (const m of data.modules) {
+      if (m.noPlans) continue; // Onboarding: cross-module checklist, its lessons are planned on their module tabs
       if (modules && !modules.some((x) => x.toLowerCase() === m.module.toLowerCase())) continue;
       for (const l of m.lessons) {
         if (l.link) continue;
@@ -760,9 +761,9 @@ async function narrateRecordedSteps(script, log) {
   try {
     let lines = null;
     try {
-      lines = JSON.parse((await runClaude(buildPrompt(script.steps, script.name), buildPromptPlain(script.steps, script.name))).match(/\[[\s\S]*\]/)?.[0] || '[]');
+      lines = parseNarrationLines(await runClaude(buildPrompt(script.steps, script.name), buildPromptPlain(script.steps, script.name)), script.steps.length, narrationStepLines(script.steps));
     } catch (claudeErr) {
-      log(`  (Claude narration failed, falling back to gemini-3.8-flash…)`);
+      log(`  (Claude narration unusable: ${String(claudeErr?.message || claudeErr).slice(0, 120)}; falling back to gemini-3.8-flash…)`);
       lines = await runGemini(script.steps, script.name);
     }
     if (Array.isArray(lines)) {
@@ -1400,6 +1401,92 @@ Return ONLY a JSON object, no markdown fence, no other text:
   return { instruction: String(out.instruction).trim(), verified: out.verified === true, file: out.file || null, quote: out.quote || null, reason: out.reason || null };
 }
 
+/** The numbered step list every narration prompt shows the model ("6. [click] button \"Save\""). */
+function narrationStepLines(steps) {
+  return steps.map((s, i) => {
+    const t = s.target || {};
+    if (s.action === 'navigate') return `${i + 1}. [navigate] arrives on route ${s.route || s.value}`;
+    if (s.action === 'press') return `${i + 1}. [press ${s.key}]`;
+    if (s.action === 'type') return `${i + 1}. [type] enters "${s.value}" into ${t.label || t.placeholder || t.name || 'a field'}${t.heading ? ` (section: ${t.heading})` : ''}`;
+    return `${i + 1}. [click] ${t.role || 'element'} "${t.name || t.text || ''}"${t.heading ? ` (section: ${t.heading})` : ''}${t.inDialog ? ' (in a dialog)' : ''}`;
+  });
+}
+
+/** The step narration writer's answer format (all three prompts share it). Every line carries the
+ *  number of the step it was written for plus a word-for-word copy of that step's list entry, so the
+ *  reply can be checked. Lines used to come back as a bare array matched to steps by position: a model
+ *  that dropped a silent "" moved every later line early, and models also tend to write each line as a
+ *  lead-in to the NEXT action. Either way the narration ran ahead of the screen. */
+function narrationOutputSpec(n) {
+  return `Output ONLY a JSON array with one object per numbered step (${n} objects, steps 1 to ${n} in order), no other text.
+Each object is {"step": <number>, "does": "<that step's entry from the list above, copied word for word>", "line": "<the narration>"}.
+TIMING, the most important rule: a line is heard while ITS OWN step's screen is on, with that step's control highlighted and before it is used. So a line may only be about its own step: what that control is for and why we use it here. Never describe what the next step does or what shows up after this one; that line belongs on the next step's object. If a line would set up the next step, move it there and leave this step's line "".
+  BAD:  {"step": 2, "does": "2. [click] button \\"New rule\\"", "line": "We'll pick the rule type that fits."}   (that is step 3's action)
+  GOOD: {"step": 2, "does": "2. [click] button \\"New rule\\"", "line": "Let's add a new rule for this team."}
+For a silent step keep its object with "line": "". Never leave a step out.
+Example format:
+[
+  {"step": 1, "does": "1. [navigate] arrives on route /controls", "line": "We'll start in the Controls list, where your active compliance rules live."},
+  {"step": 2, "does": "2. [click] button \\"Edit\\"", "line": "Selecting Edit opens this control up for changes."},
+  {"step": 3, "does": "3. [type] enters \\"Covers trade review\\" into Description", "line": "Here we'll update the description to reflect what the control actually covers."},
+  {"step": 4, "does": "4. [click] button \\"Next\\"", "line": ""},
+  {"step": 5, "does": "5. [click] button \\"Save\\"", "line": "Saving locks in the updated procedures right away."}
+]`;
+}
+
+/** A narration reply -> exactly n lines, each on the step it was written for. Step-numbered objects
+ *  are placed by number (a step left out stays silent). When the prompt's numbered step list is passed
+ *  as `entries`, each object's copied "does" entry must be its own step's: a reply whose numbering
+ *  drifted from the steps it describes throws. A bare list of strings can only be matched by position,
+ *  which is safe only with exactly one entry per step. Every throw makes the caller fall back to the
+ *  other model instead of putting narration on the wrong screens. */
+function parseNarrationLines(reply, n, entries = null) {
+  const text = String(reply ?? '').trim();
+  // Candidate JSON texts: the whole reply, each code fence, and every balanced [...] that opens like a
+  // JSON array, so prose around the JSON (even prose with brackets, like "[navigate]") can't break it.
+  const cands = [text];
+  for (const m of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) cands.push(m[1]);
+  for (let i = text.indexOf('['); i !== -1; i = text.indexOf('[', i + 1)) {
+    if (!/^\[\s*[{"\]]/.test(text.slice(i, i + 40))) continue;
+    let depth = 0, inStr = false, esc = false;
+    for (let j = i; j < text.length; j++) {
+      const c = text[j];
+      if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === '[' || c === '{') depth++;
+      else if ((c === ']' || c === '}') && --depth === 0) { cands.push(text.slice(i, j + 1)); break; }
+    }
+  }
+  let arr = null;
+  for (const t of cands) {  // the longest array wins; on a tie the later one (a model's own correction)
+    let v;
+    try { v = JSON.parse(t); } catch { continue; }
+    if (v && !Array.isArray(v) && typeof v === 'object') v = v.steps || v.lines || v.narration || null;
+    if (Array.isArray(v) && (!arr || v.length >= arr.length)) arr = v;
+  }
+  if (!Array.isArray(arr)) throw new Error(`the narration reply was not a JSON array (it began: "${text.slice(0, 60).replace(/\s+/g, ' ')}")`);
+  if (arr.some((x) => x && typeof x === 'object')) {
+    const norm = (s) => String(s || '').toLowerCase().replace(/\\"/g, '"').replace(/["'\s]+/g, ' ').trim();
+    const bare = (s) => s.replace(/^\d+\.\s*/, '');
+    const known = entries ? entries.map((e) => bare(norm(e))) : null;
+    const lines = new Array(n).fill(null);
+    const drift = [];
+    for (const x of arr) {
+      const k = Number(x?.step);
+      if (!Number.isInteger(k) || k < 1 || k > n || lines[k - 1] !== null) continue;
+      const does = norm(x.does);
+      const num = does.match(/^(\d+)\./);
+      if ((num && Number(num[1]) !== k) || (known && bare(does) && bare(does) !== known[k - 1] && known.includes(bare(does)))) drift.push(k);
+      lines[k - 1] = String(x.line ?? x.narration ?? '').trim();
+    }
+    if (drift.length) throw new Error(`the narration reply's step numbers drifted from the steps it describes (steps ${drift.slice(0, 6).join(', ')})`);
+    if (lines.every((l) => l === null)) throw new Error('the narration reply had no usable step numbers');
+    return lines.map((l) => l || '');
+  }
+  if (arr.length !== n) throw new Error(`the narration reply had ${arr.length} lines for ${n} steps, so they could not be matched to steps`);
+  return arr.map((x) => String(x ?? '').trim());
+}
+
 /**
  * Post-process narration lines to eliminate robotic command clichés and
  * ensure natural storytelling flow with breathing room on routine transitions.
@@ -1459,13 +1546,7 @@ async function runGemini(steps, scriptName) {
   const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
   if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
 
-  const lines = steps.map((s, i) => {
-    const t = s.target || {};
-    if (s.action === 'navigate') return `${i + 1}. [navigate] arrives on route ${s.route || s.value}`;
-    if (s.action === 'press') return `${i + 1}. [press ${s.key}]`;
-    if (s.action === 'type') return `${i + 1}. [type] enters "${s.value}" into ${t.label || t.placeholder || t.name || 'a field'}${t.heading ? ` (section: ${t.heading})` : ''}`;
-    return `${i + 1}. [click] ${t.role || 'element'} "${t.name || t.text || ''}"${t.heading ? ` (section: ${t.heading})` : ''}${t.inDialog ? ' (in a dialog)' : ''}`;
-  }).join('\n');
+  const lines = narrationStepLines(steps).join('\n');
 
   const prompt = `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
 Below is the ordered sequence of recorded UI actions on screen:
@@ -1503,15 +1584,7 @@ CRITICAL RULES — NEVER BE ROBOTIC:
 5. PACING:
    - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
 
-Output ONLY a JSON array of strings, exactly one per numbered step (${steps.length} items total), no other text.
-Example format:
-[
-  "We'll start in the Controls list, where your active compliance rules live.",
-  "Selecting Edit opens this control up for changes.",
-  "Here we'll update the description to reflect what the control actually covers.",
-  "",
-  "Saving locks in the updated procedures right away."
-]`;
+${narrationOutputSpec(steps.length)}`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
   const resp = await fetch(url, {
@@ -1527,19 +1600,11 @@ Example format:
   if (!resp.ok) throw new Error(data.error?.message || `Gemini API returned HTTP ${resp.status}`);
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Gemini returned an empty response');
-  const arr = JSON.parse(text);
-  if (!Array.isArray(arr)) throw new Error('Gemini output was not a JSON array');
-  return sanitizeNarrationLines(arr);
+  return sanitizeNarrationLines(parseNarrationLines(text, steps.length, narrationStepLines(steps)));
 }
 
 function buildPrompt(steps, scriptName) {
-  const lines = steps.map((s, i) => {
-    const t = s.target || {};
-    if (s.action === 'navigate') return `${i + 1}. [navigate] arrives on route ${s.route || s.value}`;
-    if (s.action === 'press') return `${i + 1}. [press ${s.key}]`;
-    if (s.action === 'type') return `${i + 1}. [type] enters "${s.value}" into ${t.label || t.placeholder || t.name || 'a field'}${t.heading ? ` (section: ${t.heading})` : ''}`;
-    return `${i + 1}. [click] ${t.role || 'element'} "${t.name || t.text || ''}"${t.heading ? ` (section: ${t.heading})` : ''}${t.inDialog ? ' (in a dialog)' : ''}`;
-  }).join('\n');
+  const lines = narrationStepLines(steps).join('\n');
 
   return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
 Below is the exact, ordered sequence of recorded UI actions for the web app:
@@ -1582,27 +1647,13 @@ CRITICAL RULES — NEVER BE ROBOTIC:
 5. PACING:
    - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
 
-Output ONLY a JSON array of strings, exactly one per numbered step (${steps.length} items total), no other text.
-Example format:
-[
-  "We'll start in the Controls list, where your active compliance rules live.",
-  "Selecting Edit opens this control up for changes.",
-  "Here we'll update the description to reflect what the control actually covers.",
-  "",
-  "Saving locks in the updated procedures right away."
-]`;
+${narrationOutputSpec(steps.length)}`;
 }
 
 // Twin of buildPrompt() with the codebase-tools paragraph removed — see runClaude()'s geminiPrompt
 // param for why a Gemini call with no tools declared needs this instead of the Claude version.
 function buildPromptPlain(steps, scriptName) {
-  const lines = steps.map((s, i) => {
-    const t = s.target || {};
-    if (s.action === 'navigate') return `${i + 1}. [navigate] arrives on route ${s.route || s.value}`;
-    if (s.action === 'press') return `${i + 1}. [press ${s.key}]`;
-    if (s.action === 'type') return `${i + 1}. [type] enters "${s.value}" into ${t.label || t.placeholder || t.name || 'a field'}${t.heading ? ` (section: ${t.heading})` : ''}`;
-    return `${i + 1}. [click] ${t.role || 'element'} "${t.name || t.text || ''}"${t.heading ? ` (section: ${t.heading})` : ''}${t.inDialog ? ' (in a dialog)' : ''}`;
-  }).join('\n');
+  const lines = narrationStepLines(steps).join('\n');
 
   return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
 Below is the exact, ordered sequence of recorded UI actions for the web app:
@@ -1640,15 +1691,7 @@ CRITICAL RULES — NEVER BE ROBOTIC:
 5. PACING:
    - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
 
-Output ONLY a JSON array of strings, exactly one per numbered step (${steps.length} items total), no other text.
-Example format:
-[
-  "We'll start in the Controls list, where your active compliance rules live.",
-  "Selecting Edit opens this control up for changes.",
-  "Here we'll update the description to reflect what the control actually covers.",
-  "",
-  "Saving locks in the updated procedures right away."
-]`;
+${narrationOutputSpec(steps.length)}`;
 }
 
 // A recipe's own log() calls double as its slides' captions (see tools/stage-lib.mjs) — accurate,
@@ -2276,7 +2319,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, drive, pylon });
   }
 
-  // GET /video/<name>/timeline -> { ok, video: bool, duration, steps: [{ src, step, start, end, narration }] }
+  // GET /video/<name>/timeline -> { ok, video: bool, duration, fx, steps: [{ src, step, start, end, narration }] }
   // GET /video/<name>.mp4      -> the rendered MP4 (Range-aware so <video> can seek)
   const videoTimelineMatch = req.method === 'GET' && u.pathname.match(/^\/video\/([^/]+)\/timeline$/);
   if (videoTimelineMatch) {
@@ -2304,7 +2347,7 @@ const server = http.createServer(async (req, res) => {
         narration: s.narration || '',
       }));
       const mtime = fs.statSync(mp4).mtimeMs;
-      return sendJson(res, 200, { ok: true, video: true, duration: asm.duration, mtime, steps });
+      return sendJson(res, 200, { ok: true, video: true, duration: asm.duration, mtime, fx: !!asm.fx, steps });
     } catch (e) {
       return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
     }
@@ -3609,8 +3652,7 @@ const server = http.createServer(async (req, res) => {
 
         try {
           const result = await runClaudeCli(buildPrompt(steps, scriptName));
-          const match = result.match(/\[[\s\S]*\]/);
-          lines = JSON.parse(match ? match[0] : result);
+          lines = parseNarrationLines(result, steps.length, narrationStepLines(steps));
         } catch (claudeErr) {
           fallbackReason = String(claudeErr?.message || claudeErr);
           console.warn(`Claude CLI failed (${fallbackReason}), falling back to gemini-3.8-flash...`);
@@ -3738,6 +3780,8 @@ const server = http.createServer(async (req, res) => {
         // No pick: Josh when this machine has an ElevenLabs key, else the .env provider chain.
         script.voice = narrationVoiceValue(script.voice) || (repoEnv('ELEVENLABS_API_KEY') ? DEFAULT_NARRATION_VOICE : undefined);
         render.voice = script.voice || null;
+        // Extra FX (render bar switch): saved on the script so CLI re-renders keep the same look.
+        if (script.fx) script.fx = true; else delete script.fx;
         const rawTitle = (script.title || script.name || 'Untitled walkthrough').trim();
         const humanTitle = formatHumanTitle(rawTitle);
         const name = safeName(humanTitle);
@@ -4011,15 +4055,18 @@ const server = http.createServer(async (req, res) => {
 const render = { running: false, name: null, mode: 'both', phase: 'idle', log: [], outDir: null, video: null, interactive: null, report: null, error: null, startedAt: null, finishedAt: null, pylon: null };
 
 // Everything in a script that changes the rendered MP4: title, module, and each captured step's
-// screenshot, narration, caption and highlight box. Two renders with the same key produce the same
-// video, so a final render right after an unchanged preview can reuse it instead of re-rendering.
+// screenshot, narration, caption and highlight box, plus the voice and the Extra FX switch. Two renders
+// with the same key produce the same video, so a final render right after an unchanged preview can
+// reuse it instead of re-rendering. Extra FX joins the key only when on, so keys of plain renders made
+// before the switch existed still match.
 function renderKeyForScript(script) {
   const steps = (script.steps || []).filter((s) => s.capture !== false && s.media?.pre).map((s) => {
     const g = s.target?.hint?.bbox ? s.target.hint : (s.target || {});
     return [s.media.pre, (s.narration || '').trim(), (s.caption || '').trim(), g.bbox || null, g.viewport || null];
   });
   const payload = JSON.stringify([script.title || script.name, canonicalModule(script.module) || script.module || null,
-    !!script.captionsFromNarration, script.recording?.id || null, steps, narrationVoiceValue(script.voice) || null]);
+    !!script.captionsFromNarration, script.recording?.id || null, steps, narrationVoiceValue(script.voice) || null,
+    ...(script.fx ? ['fx:1'] : [])]);
   return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 24);
 }
 

@@ -2,10 +2,10 @@
 Usage: .venv/bin/python renderer/assemble.py out/<name> [--music assets/music_bed.wav] [--voice en-US-AndrewNeural]
 """
 from __future__ import annotations
-import hashlib, json, os, subprocess, sys, textwrap, shutil, html, re
+import hashlib, json, math, os, subprocess, sys, textwrap, shutil, html, re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageStat
 from title_card import generate_title_video, generate_support_card_video
 
 out = Path(sys.argv[1]); args = sys.argv[2:]
@@ -202,83 +202,356 @@ def highlight_png(target, sw, sh, path, size=None, k=1.0):
 CAM_MOVE, CAM_DRIFT, CAM_ZMAX, CAM_SS = 2.2, 0.035, 1.9, 2  # CAM_SS: supersample factor of the source canvas
 CAPTION_SAFE = 0.74  # keep the target above the caption band (fraction of frame height)
 
+# ---------- Extra FX (report "fx": true, the render bar's "Extra FX" switch) ----------
+# Camera mode, planned per page (fx_plan): a new page opens on the whole page and pushes in once, then
+# holds one zoom while the steps on it only move the highlight, gliding over when the next step is in
+# another part of the page; it zooms back out only for a new page. Everything around the step's target
+# is dimmed (soft-edged spotlight under the usual purple callout + pointer), click steps get a ripple,
+# and the dissolve between two different pages passes through a light defocus instead of a sharp
+# double exposure. Visual only and slides only: the logo, title and support cards and the audio are
+# exactly what a plain render makes, and so are the knowledge-base article screenshots.
+FX = bool(rep.get('fx')) or '--fx' in args
+CAMERA = FX or bool(rep.get('camera')) or '--camera' in args
+FX_MOVE = 1.5          # seconds for a new page's push-in
+FX_DIM = 0.32          # how dark the spotlight makes the rest of the slide
+FX_BLUR = 6.0          # peak defocus (px at 1080p) midway through a dissolve between different screens
+FX_MAX_UPSCALE = 1.6   # never magnify the capture past this (low-res captures go soft)
+
+def fx_big(t, sw, sh):
+    """Same rule as the plain render: a target this big is a whole panel, so it gets no callout."""
+    return bool(t) and t.get('width', 0) > sw * 0.55 and t.get('height', 0) > sh * 0.3
+
 def cam_clamp(v, sw, sh):
     cx, cy, z = v; z = max(1.0, z); vw, vh = sw / z, sh / z
     return (min(max(cx, vw / 2), sw - vw / 2), min(max(cy, vh / 2), sh - vh / 2), z)
 
 def cam_fit(t, sw, sh):
     """End view that frames the target with margin (above the caption band when captions are on)."""
-    if not t:
+    if not t or (FX and fx_big(t, sw, sh)):
         return (sw / 2, sh / 2, 1.0)
     safe = 1.0 if (rep.get('no_captions') or '--no-captions' in args) else CAPTION_SAFE
     tw, th = t['width'] * 1.25 + 60, t['height'] * 1.25 + 60
     z = min(CAM_ZMAX, sw / tw, (sh * (safe - 0.06)) / th)
+    if FX:
+        z = min(z, sw * FX_MAX_UPSCALE / W)
     z = max(1.0, z); vh = sh / z
     cx = t['x'] + t['width'] / 2
     cy = t['y'] + t['height'] / 2 + vh * (0.5 - safe / 2)  # centre the target in the usable band
     return cam_clamp((cx, cy, z), sw, sh)
 
 def cam_views(slides_):
-    prev_end, prev_src = None, None
+    prev_end, prev_src, prev_s = None, None, None
     for s in slides_:
         src = (out / 'slides' / s['file']).read_bytes()
         sw, sh = (s.get('viewport') or {}).get('width', 1600), (s.get('viewport') or {}).get('height', 900)
         c = s.get('camera') or {}
         end = cam_clamp(tuple(c['to']), sw, sh) if 'to' in c else cam_fit(s.get('target'), sw, sh)
+        same = prev_end is not None and src == prev_src
         if 'from' in c:
             start = cam_clamp(tuple(c['from']), sw, sh)
-        elif prev_end and src == prev_src:
+        elif same:
             start = prev_end
+        elif FX:  # fresh screen: show the whole page first, then push in
+            start = cam_clamp((sw / 2, sh / 2, 1.0), sw, sh)
         else:  # fresh screen: open a touch wide of the end view, from the page centre
             start = cam_clamp(((sw / 2 + end[0]) / 2, (sh / 2 + end[1]) / 2, max(1.0, end[2] * 0.82)), sw, sh)
         s['_cam'] = (start, end, (sw, sh))
-        prev_end, prev_src = end, src
+        # Captions hand over instead of overlapping: out in the first half of a dissolve, in during
+        # the second. The title-card and support-card dissolves (first/last slide) are left as they are.
+        cap_text = (s.get('caption') or s.get('narration') or '').strip()
+        s['_cap_edges'] = (prev_s is not None and cap_text != prev_s['_cap_text'], False)
+        if prev_s is not None and cap_text != prev_s['_cap_text']:
+            prev_s['_cap_edges'] = (prev_s['_cap_edges'][0], True)
+        s['_cap_text'] = cap_text
+        prev_end, prev_src, prev_s = end, src, s
+
+def fx_spotlight_png(target, sw, sh, size, k, path):
+    """Extra FX: dim everything except a soft-edged cutout around the target. The purple callout and
+    pointer (highlight_png) go on top of it."""
+    ow, oh = size
+    sx, sy = ow / sw, oh / sh
+    x0, y0 = target['x'] * sx, target['y'] * sy
+    x1, y1 = x0 + target['width'] * sx, y0 + target['height'] * sy
+    pad, feather = 16 * k, 9 * k
+    mask = Image.new('L', (ow, oh), int(round(255 * FX_DIM)))
+    m = int(pad + 3 * feather + 2)  # cut the hole on a local crop: blurring the whole canvas is slow
+    bx0, by0, bx1, by1 = max(0, int(x0 - m)), max(0, int(y0 - m)), min(ow, int(x1 + m)), min(oh, int(y1 + m))
+    if bx1 > bx0 and by1 > by0:
+        hole = Image.new('L', (bx1 - bx0, by1 - by0), 0)
+        ImageDraw.Draw(hole).rounded_rectangle([x0 - pad - bx0, y0 - pad - by0, x1 + pad - bx0, y1 + pad - by0],
+                                               radius=14 * k, fill=255)
+        hole = hole.filter(ImageFilter.GaussianBlur(feather))
+        mask.paste(ImageChops.subtract(mask.crop((bx0, by0, bx1, by1)), hole), (bx0, by0))
+    img = Image.new('RGBA', (ow, oh), (18, 13, 44, 0))
+    img.putalpha(mask)
+    img.save(path)
+
+def fx_ripple(frame, x, y, dt):
+    """Extra FX click ripple, drawn in output pixels: a short core flash, then two expanding rings."""
+    R, SS = 64, 3
+    m = Image.new('L', (2 * R * SS, 2 * R * SS), 0)
+    d = ImageDraw.Draw(m)
+    c = R * SS
+    u = dt / 0.45
+    if 0 <= u < 1:
+        r = 17 * SS
+        d.ellipse([c - r, c - r, c + r, c + r], fill=int(255 * 0.30 * (1 - u)))
+    for delay, rmax, width, amp in ((0.0, 58.0, 3.2, 0.95), (0.13, 36.0, 2.6, 0.75)):
+        u = (dt - delay) / 0.62
+        if 0 < u < 1:
+            r = (10 + (rmax - 10) * (1 - (1 - u) ** 3)) * SS
+            d.ellipse([c - r, c - r, c + r, c + r], outline=int(255 * amp * (1 - u) ** 1.4), width=max(1, int(width * SS)))
+    m = m.resize((2 * R, 2 * R), Image.LANCZOS)
+    x0, y0 = int(round(x)) - R, int(round(y)) - R
+    cx0, cy0 = max(0, x0), max(0, y0)
+    cx1, cy1 = min(frame.width, x0 + 2 * R), min(frame.height, y0 + 2 * R)
+    if cx1 > cx0 and cy1 > cy0:
+        frame.paste((91, 70, 214), (cx0, cy0, cx1, cy1), m.crop((cx0 - x0, cy0 - y0, cx1 - x0, cy1 - y0)))
+
+FX_SCREEN_MAD = 14.0    # mean grey difference (0-255, 160x90 thumbnails) that makes a new screen even on the same route
+FX_AREA_MIN_Z = 1.15    # steps share an area while all their targets still fit one view zoomed in at least this much
+FX_PAN = 1.1            # seconds for the glide between two areas of the same screen
+FX_SCREEN_DRIFT = 0.04  # slow push across a whole screen (one continuous path, so dissolves inside it line up)
+
+def fx_union(ts):
+    x0, y0 = min(t['x'] for t in ts), min(t['y'] for t in ts)
+    x1, y1 = max(t['x'] + t['width'] for t in ts), max(t['y'] + t['height'] for t in ts)
+    return {'x': x0, 'y': y0, 'width': x1 - x0, 'height': y1 - y0}
+
+def fx_area_zoom(ts, sw, sh):
+    """Closest zoom (within the Extra FX caps) that frames every target in ts, above the caption band.
+    A lone target gets the single-step framing (cam_fit); several get tighter shared margins."""
+    if len(ts) == 1:
+        return cam_fit(ts[0], sw, sh)[2]
+    u = fx_union(ts)
+    safe = 1.0 if (rep.get('no_captions') or '--no-captions' in args) else CAPTION_SAFE
+    return max(1.0, min(CAM_ZMAX, sw / (u['width'] + 0.08 * sw), (sh * (safe - 0.06)) / (u['height'] + 0.11 * sh),
+                        sw * FX_MAX_UPSCALE / W))
+
+def fx_area_view(ts, z, sw, sh):
+    """The view at zoom z that centres the targets in the band above the captions."""
+    u = fx_union(ts)
+    safe = 1.0 if (rep.get('no_captions') or '--no-captions' in args) else CAPTION_SAFE
+    return cam_clamp((u['x'] + u['width'] / 2, u['y'] + u['height'] / 2 + (sh / z) * (0.5 - safe / 2), z), sw, sh)
+
+def fx_view_at(keys, t):
+    """Camera keyframes [(t, (cx, cy, z)), ...], t in seconds from the screen's first frame -> the
+    eased (in-out cubic) view at t."""
+    io = lambda v: 4 * v ** 3 if v < 0.5 else 1 - (-2 * v + 2) ** 3 / 2
+    if t <= keys[0][0]:
+        return tuple(keys[0][1])
+    for (ta, va), (tb, vb) in zip(keys, keys[1:]):
+        if t <= tb:
+            u = io((t - ta) / (tb - ta)) if tb > ta else 1.0
+            return tuple(a + (b - a) * u for a, b in zip(va, vb))
+    return tuple(keys[-1][1])
+
+def fx_plan(slides_):
+    """Extra FX camera, planned per screen rather than per step.
+    - Screen: consecutive slides on the same route (and size) that still look alike. Typing into a
+      field, opening a dropdown or a dialog over the page all stay on one screen.
+    - Area: consecutive targets that fit one view zoomed in at least FX_AREA_MIN_Z (a form's name,
+      date, owner and teammate fields...). The camera frames the area once and the steps inside it
+      only move the purple highlight.
+    - A screen opens on the whole page, pushes in once, then keeps that one zoom (the closest that
+      fits every area) and glides between areas. Zooming back out happens only on a new screen.
+    - Each screen's camera is one path in output frames, so both sides of every dissolve inside it
+      show exactly the same framing. Slide i's first frame is where xfade puts it: ceil(offset*FPS)."""
+    off, frames = 0.0, []
+    for i in range(len(slides_)):
+        if i:
+            off += slides_[i - 1]['sdur'] - XF
+        frames.append(math.ceil(round(off, 3) * FPS - 1e-6))
+    screens, prev, prev_th = [], None, None
+    for s, f in zip(slides_, frames):
+        p = out / 'slides' / s['file']
+        th = None if p.suffix == '.mp4' else Image.open(p).convert('L').resize((160, 90), Image.BILINEAR)
+        new = prev is None or th is None or prev_th is None or s.get('viewport') != prev.get('viewport')
+        if not new:
+            r0, r1 = prev.get('route'), s.get('route')
+            new = bool(r0 and r1 and r0 != r1) or ImageStat.Stat(ImageChops.difference(prev_th, th)).mean[0] > FX_SCREEN_MAD
+        if new:
+            screens.append([])
+        screens[-1].append((s, f))
+        prev, prev_th = s, th
+    plan = []
+    for sc in screens:
+        s0, F0 = sc[0]
+        sw, sh = (s0.get('viewport') or {}).get('width', 1600), (s0.get('viewport') or {}).get('height', 900)
+        tz = lambda a: fx_area_zoom([x['target'] for x in a], sw, sh)
+        areas = []  # in order; a slide without a usable target joins none and keeps the current view
+        for s, _ in sc:
+            tg = s.get('target')
+            if not tg or fx_big(tg, sw, sh):
+                continue
+            if areas and tz(areas[-1] + [s]) >= min(FX_AREA_MIN_Z, min(cam_fit(x['target'], sw, sh)[2] for x in areas[-1] + [s])) - 1e-6:
+                areas[-1].append(s)
+            else:
+                areas.append([s])
+        z = min((tz(a) for a in areas), default=1.0)
+        merged = []  # at the screen's zoom, neighbouring areas that now fit one view need no glide between them
+        for a in areas:
+            if merged and tz(merged[-1] + a) >= z - 1e-6:
+                merged[-1] += a
+            else:
+                merged.append(list(a))
+        areas = merged
+        first_of = {id(a[0]): a for a in areas}
+        wide = cam_clamp((sw / 2, sh / 2, 1.0), sw, sh)
+        cur, keys, last = wide, [(0.0, wide)], 0.0
+        for s, f in sc:
+            t0 = (f - F0) / FPS
+            move, push, a = None, False, first_of.get(id(s))
+            if a is not None:
+                v = fx_area_view([x['target'] for x in a], z, sw, sh)
+                if abs(v[0] - cur[0]) > 1 or abs(v[1] - cur[1]) > 1 or abs(v[2] - cur[2]) > 1e-3:
+                    push = cur == wide
+                    dur = min(FX_MOVE, max(0.8, s['sdur'] * 0.4)) if push else min(FX_PAN, max(0.6, s['sdur'] * 0.4))
+                    ts0 = max(t0, last)
+                    keys += [(ts0, cur), (ts0 + dur, v)]
+                    move, last, cur = (round(ts0 - t0, 4), round(dur, 4)), ts0 + dur, v
+            s['_fx'] = {'off': f - F0, 'first': s is s0, 'move': move, 'push': push,
+                        'blur_in': s is s0 and s is not slides_[0], 'blur_out': s is sc[-1][0] and s is not slides_[-1]}
+        span = round((sc[-1][1] - F0) / FPS + sc[-1][0]['sdur'], 4)
+        for s, _ in sc:
+            s['_fx'].update({'keys': keys, 'span': span})
+        plan.append({'start': round(F0 / FPS, 3), 'slides': [s['slide'] for s, _ in sc], 'zoom': round(z, 3),
+                     'areas': [[x['slide'] for x in a] for a in areas],
+                     'keys': [[round(t, 3), round(v[0], 1), round(v[1], 1), round(v[2], 3)] for t, v in keys]})
+    return plan
+
+def cam_view_at(s, tt):
+    """The camera view (cx, cy, z), in slide pixels, for slide s at tt seconds into its own segment."""
+    (start, end, (sw, sh)) = s['_cam']
+    if FX:  # the screen's one camera path, frame-exact so both sides of a dissolve match
+        P = s['_fx']
+        ta = (P['off'] + round(tt * FPS)) / FPS
+        cx, cy, z = fx_view_at(P['keys'], ta)
+        return cam_clamp((cx, cy, z * (1 + FX_SCREEN_DRIFT * ta / max(1.0, P['span']))), sw, sh)
+    u = 0.5 - 0.5 * math.cos(math.pi * min(max(tt / CAM_MOVE, 0.0), 1.0))
+    cx = start[0] + (end[0] - start[0]) * u
+    cy = start[1] + (end[1] - start[1]) * u
+    z = start[2] + (end[2] - start[2]) * u
+    z *= 1 + CAM_DRIFT * max(0.0, tt - CAM_MOVE) / max(0.1, s['sdur'] - CAM_MOVE)  # slow push after arrival
+    return cam_clamp((cx, cy, z), sw, sh)
+
+CAP_CLEAR = 64  # output px a step's callout occupies below its target (padding, pointer, glow)
+
+def cam_caption_top(s):
+    """The camera frames the step's target above the caption band, but a target low on the page stays
+    low: the view stops at the page's bottom edge. Then the caption goes to the top instead, when the
+    callout (target + pointer) would otherwise run under the bottom caption at the settled view."""
+    t = s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None
+    cap = s.get('caption') or s.get('narration')
+    if not t or not cap or rep.get('no_captions') or '--no-captions' in args or str(s.get('file', '')).endswith('.mp4'):
+        return False
+    pos = s.get('caption_pos') or rep.get('caption_pos') or ('left' if '--caption-left' in args else 'center')
+    cp = tmp / f"cap{s['slide']:02d}.png"; caption_png(cap, cp, pos=pos)
+    sh = s['_cam'][2][1]
+    _, cy, z = cam_view_at(s, s['sdur'] * 0.6)
+    vh = sh / z
+    bottom = (t['y'] + t['height'] - (cy - vh / 2)) / vh * H
+    return bottom + CAP_CLEAR > H - 56 - Image.open(cp).height
 
 def render_camera_segment(s, seg, cap_png):
     src = out / 'slides' / s['file']
     (start, end, (sw, sh)) = s['_cam']
+    view_at = lambda tt: cam_view_at(s, tt)
+    if FX:
+        P = s['_fx']
+        zk = view_at(s['sdur'] * 0.6)[2]
+    else:
+        lit_at = CAM_MOVE * 0.75
+        zk = end[2]
     CW, CH = W * CAM_SS, H * CAM_SS
     base = Image.open(src).convert('RGB').resize((CW, CH), Image.LANCZOS)
-    hl = None
-    if NEEDS_DRAWN_HIGHLIGHT and s.get('target'):
+    target = s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None
+    if FX and fx_big(target, sw, sh):
+        target = None
+    lit = None  # the slide with the callout (and, in Extra FX, the dimmed spotlight) baked in
+    if target:
+        k = CW / W / max(zk, 1.0)
         hp = tmp / f"hl{s['slide']:02d}.png"
-        highlight_png(s['target'], sw, sh, hp, size=(CW, CH), k=CW / W / max(end[2], 1.0) * 1.0)
+        highlight_png(target, sw, sh, hp, size=(CW, CH), k=k)
         hl = Image.open(hp).convert('RGBA')
         ann = out / 'annotated'; ann.mkdir(exist_ok=True)
-        still = base.copy(); still.paste(hl, (0, 0), hl); still.resize((W, H), Image.LANCZOS).save(ann / s['file'])
+        lit = base.copy()
+        if FX:
+            # The article's screenshot stays exactly the plain render's still (callout, no dimming).
+            hs = tmp / f"hls{s['slide']:02d}.png"; highlight_png(target, sw, sh, hs)
+            ov = Image.open(hs).convert('RGBA')
+            still = Image.open(src).convert('RGB').resize((W, H), Image.LANCZOS); still.paste(ov, (0, 0), ov)
+            still.save(ann / s['file'])
+            sp = tmp / f"spot{s['slide']:02d}.png"; fx_spotlight_png(target, sw, sh, (CW, CH), k, sp)
+            spot = Image.open(sp); lit.paste(spot, (0, 0), spot)
+        else:
+            still = base.copy(); still.paste(hl, (0, 0), hl); still.resize((W, H), Image.LANCZOS).save(ann / s['file'])
+        lit.paste(hl, (0, 0), hl)
     cap = Image.open(cap_png).convert('RGBA') if cap_png else None
+    cap_y = (56 if s.get('_cap_top') else H - cap.height - 56) if cap is not None else 0
     fx, fy = CW / sw, CH / sh
     n = int(round(s['sdur'] * FPS))
     proc = subprocess.Popen(['ffmpeg', '-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}',
                              '-r', str(FPS), '-i', '-', '-pix_fmt', 'yuv420p', *SEG_ENCODE, str(seg)], stdin=subprocess.PIPE)
-    ease = lambda u: 0.5 - 0.5 * __import__('math').cos(__import__('math').pi * min(max(u, 0.0), 1.0))
+    if FX:
+        mv = P['move']
+        # The first highlight on a screen lands as the push-in arrives (or once the dissolve into a new
+        # screen has finished); after that the next highlight is already up, so the dissolve between
+        # two steps simply hands it from one element to the next while the camera holds or glides.
+        if P['push']:
+            lit_from = mv[0] + mv[1] * 0.55
+        elif P['first']:
+            lit_from = XF * 0.6
+        else:
+            lit_from = None
+        ripple_at = None
+        if target and (s.get('action') or '') == 'click':
+            ripple_at = (mv[0] + mv[1] * 0.85) if mv else (lit_from + 0.35 if lit_from is not None else XF * 0.75)
+        blur_in, blur_out = P['blur_in'], P['blur_out']
+        cap_in, cap_out = s.get('_cap_edges', (False, False))
+    else:
+        lit_from, ripple_at = lit_at, None
+        blur_in = blur_out = cap_in = cap_out = False
     for i in range(n):
         tt = i / FPS
-        u = ease(tt / CAM_MOVE)
-        cx = start[0] + (end[0] - start[0]) * u
-        cy = start[1] + (end[1] - start[1]) * u
-        z = start[2] + (end[2] - start[2]) * u
-        z *= 1 + CAM_DRIFT * max(0.0, tt - CAM_MOVE) / max(0.1, s['sdur'] - CAM_MOVE)  # slow push after arrival
-        cx, cy, z = cam_clamp((cx, cy, z), sw, sh)
+        cx, cy, z = view_at(tt)
         vw, vh = sw / z, sh / z
         box = ((cx - vw / 2) * fx, (cy - vh / 2) * fy, (cx + vw / 2) * fx, (cy + vh / 2) * fy)
-        frame = base.resize((W, H), Image.BICUBIC, box=box)
-        if hl is not None:
-            a = min(max((tt - CAM_MOVE * 0.75) / 0.45, 0.0), 1.0)
-            if a > 0:
-                layer = hl.resize((W, H), Image.BICUBIC, box=box)
-                if a < 1:
-                    r, g, b, al = layer.split(); layer.putalpha(al.point(lambda p: int(p * a)))
-                frame.paste(layer, (0, 0), layer)
+        a = 0.0 if lit is None else (1.0 if lit_from is None else min(max((tt - lit_from) / 0.45, 0.0), 1.0))
+        if a <= 0:
+            frame = base.resize((W, H), Image.BICUBIC, box=box)
+        elif a >= 1:
+            frame = lit.resize((W, H), Image.BICUBIC, box=box)
+        else:
+            frame = Image.blend(base.resize((W, H), Image.BICUBIC, box=box), lit.resize((W, H), Image.BICUBIC, box=box), a)
+        if ripple_at is not None and 0 <= tt - ripple_at <= 0.9:
+            tx = (target['x'] + target['width'] / 2) * fx
+            ty = (target['y'] + target['height'] / 2) * fy
+            fx_ripple(frame, (tx - box[0]) * W / (box[2] - box[0]), (ty - box[1]) * H / (box[3] - box[1]), tt - ripple_at)
+        if blur_in or blur_out:  # the dissolve spans the first/last XF seconds; blur peaks at its middle
+            bl = 0.0
+            if blur_in and tt < XF:
+                bl = FX_BLUR * math.sin(math.pi * tt / XF)
+            if blur_out and tt > s['sdur'] - XF:
+                bl = max(bl, FX_BLUR * math.sin(math.pi * min(1.0, (tt - (s['sdur'] - XF)) / XF)))
+            if bl > 0.3:
+                frame = frame.filter(ImageFilter.GaussianBlur(bl))
         if cap is not None:
-            frame.paste(cap, (0, H - cap.height - 56), cap)
+            ca = 1.0
+            if cap_in and tt < XF:
+                ca = min(ca, max(0.0, (tt / XF - 0.5) / 0.5))
+            if cap_out and tt > s['sdur'] - XF:
+                ca = min(ca, max(0.0, 1.0 - ((tt - (s['sdur'] - XF)) / XF) / 0.5))
+            if ca >= 1:
+                frame.paste(cap, (0, cap_y), cap)
+            elif ca > 0:
+                faded = cap.copy(); faded.putalpha(cap.getchannel('A').point(lambda p: int(p * ca)))
+                frame.paste(faded, (0, cap_y), faded)
         proc.stdin.write(frame.tobytes())
     proc.stdin.close()
     if proc.wait() != 0:
         raise RuntimeError(f'camera segment encode failed for slide {s["slide"]}')
     return seg
-
-CAMERA = bool(rep.get('camera')) or '--camera' in args
 
 # ---------- 3. per-slide video segment (cached by everything that determines its pixels) ----------
 # Like narration, segments live in out/_cache/ so they survive render.sh's rm -rf of out/<name>/.
@@ -318,6 +591,9 @@ def fit_slide_to_frame(s):
             ox = (sw - vpw) // 2
             s['target'] = {**s['target'], 'x': s['target']['x'] + ox}
             s['_target_shifted'] = True
+            # Already padded by an earlier assemble of this folder: the report still has the pre-pad
+            # viewport, but camera mode / Extra FX and the interactive hotspots need the image's own size.
+            s['viewport'] = {'width': sw, 'height': sh}
         return
     if sw / sh < target_ratio:
         nw, nh = round(sh * target_ratio), sh
@@ -338,6 +614,32 @@ for s in slides:
     fit_slide_to_frame(s)
 if CAMERA:
     cam_views(slides)  # after padding, so views use the final slide size and shifted targets
+if FX:
+    fx_camera_plan = fx_plan(slides)
+if CAMERA:
+    for s in slides:
+        s['_cap_top'] = cam_caption_top(s)
+    # A caption that carries over unchanged into the next slide keeps one position (no jump mid-line).
+    i = 0
+    while i < len(slides):
+        j = i
+        while j + 1 < len(slides) and slides[i]['_cap_text'] and slides[j + 1]['_cap_text'] == slides[i]['_cap_text']:
+            j += 1
+        if any(slides[k]['_cap_top'] for k in range(i, j + 1)):
+            for k in range(i, j + 1):
+                slides[k]['_cap_top'] = True
+        i = j + 1
+if FX and os.environ.get('FX_PLAN_DUMP'):  # QA aid: the camera per screen, and each step's caption vs. target
+    def _target_px(s):
+        t = s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None
+        if not t:
+            return None
+        sw, sh = s['_cam'][2]; cx, cy, z = cam_view_at(s, s['sdur'] * 0.6); vw, vh = sw / z, sh / z
+        return [round((t['x'] - cx + vw / 2) / vw * W), round((t['y'] - cy + vh / 2) / vh * H),
+                round((t['x'] + t['width'] - cx + vw / 2) / vw * W), round((t['y'] + t['height'] - cy + vh / 2) / vh * H)]
+    Path(os.environ['FX_PLAN_DUMP']).write_text(json.dumps({'screens': fx_camera_plan, 'slides': [
+        {'slide': s['slide'], 'caption': bool(s.get('_cap_text')), 'cap_top': bool(s.get('_cap_top')), 'target_px': _target_px(s)}
+        for s in slides]}, indent=1))
 
 def segment_key(s):
     src = out / 'slides' / s['file']
@@ -348,7 +650,13 @@ def segment_key(s):
              json.dumps(s.get('target') if NEEDS_DRAWN_HIGHLIGHT else None, sort_keys=True)]
     if CAMERA:
         parts += ['camera', inspect.getsource(render_camera_segment), inspect.getsource(cam_fit),
+                  inspect.getsource(cam_view_at), inspect.getsource(cam_caption_top), str((bool(s.get('_cap_top')), CAP_CLEAR)),
                   json.dumps(s['_cam']), str((CAM_MOVE, CAM_DRIFT, CAM_ZMAX, CAM_SS, CAPTION_SAFE))]
+    if FX:
+        parts += ['fx', *(inspect.getsource(f) for f in (fx_spotlight_png, fx_ripple, cam_views, fx_plan, fx_union,
+                                                          fx_area_zoom, fx_area_view, fx_view_at)),
+                  str((FX_MOVE, FX_DIM, FX_BLUR, FX_MAX_UPSCALE, XF, FX_SCREEN_MAD, FX_AREA_MIN_Z, FX_PAN, FX_SCREEN_DRIFT, FPS)),
+                  json.dumps(s['_fx']), json.dumps(s.get('_cap_edges')), s.get('action') or '']
     return hashlib.sha256('\x00'.join(parts).encode()).hexdigest()[:32]
 
 def build_segment(s):
@@ -423,7 +731,14 @@ def _render_segment(s, seg):
     subprocess.run(['ffmpeg', '-y', *inputs, '-filter_complex', fc, '-map', '[v]', '-t', f"{s['sdur']}", '-r', str(FPS),
                     *SEG_ENCODE, str(seg)], check=True, capture_output=True)
 
-segs = [build_segment(s) for s in slides]
+if CAMERA and len(slides) > 1:
+    # Camera / Extra FX segments are drawn frame by frame in Pillow (which releases the GIL while it
+    # resamples), so build them side by side; plain segments stay one ffmpeg call each, in order.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(len(slides), max(2, (os.cpu_count() or 4) // 2))) as pool:
+        segs = list(pool.map(build_segment, slides))
+else:
+    segs = [build_segment(s) for s in slides]
 print(f"segments: {seg_hits} cached, {len(slides) - seg_hits} rendered")
 video = tmp / 'video.mp4'
 if len(segs) == 1:
@@ -699,5 +1014,5 @@ try:
 except Exception:
     content_offset = 0.0
 
-json.dump({'video': str(final), 'duration': round(full_duration, 2), 'content_offset': round(content_offset, 3), 'slides': slides, 'intro': bool(INTRO), 'title_card': bool(title_clip.exists()), 'support_card': bool(support_clip.exists()), 'outro': bool(OUTRO)}, open(out / 'assembly.json', 'w'), indent=1)
-print(f"video {final} ({full_duration:.1f}s, {len(slides)} slides, intro={bool(INTRO)}, title_card={bool(title_clip.exists())}, outro={bool(OUTRO)}) · interactive {web/'index.html'}")
+json.dump({'video': str(final), 'duration': round(full_duration, 2), 'content_offset': round(content_offset, 3), 'slides': slides, 'intro': bool(INTRO), 'title_card': bool(title_clip.exists()), 'support_card': bool(support_clip.exists()), 'outro': bool(OUTRO), 'fx': FX}, open(out / 'assembly.json', 'w'), indent=1)
+print(f"video {final} ({full_duration:.1f}s, {len(slides)} slides, intro={bool(INTRO)}, title_card={bool(title_clip.exists())}, outro={bool(OUTRO)}{', extra fx' if FX else ''}) · interactive {web/'index.html'}")
