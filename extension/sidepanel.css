@@ -380,6 +380,17 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .preview-voice-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:-2px}
 .preview-voice-btn{font-size:11px;padding:5px 10px}
 .preview-voice-status{font-size:10.5px;color:var(--muted)}
+.rephrase-btn{font-size:11px;padding:5px 10px;color:var(--purple2);border-color:var(--purple-border)!important}
+.rephrase-btn:hover{background:var(--purple-soft)}
+.rephrase-box{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--purple-border);background:var(--purple-soft);border-radius:8px}
+.rephrase-modes{display:flex;flex-wrap:wrap;gap:6px}
+.rephrase-modes label{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;background:#fff;border:1px solid var(--purple-border);border-radius:999px;padding:4px 10px;cursor:pointer}
+.rephrase-modes label:has(input:checked){border-color:var(--purple);color:var(--purple);font-weight:600}
+.rephrase-modes input{width:auto;margin:0;accent-color:var(--purple)}
+.rephrase-words{font-size:12px}
+.rephrase-actions{display:flex;gap:6px}
+.rephrase-actions button{font-size:11px;padding:5px 10px}
+.rephrase-undo{color:var(--purple);font-weight:600}
 
 /* Drive link while Drive is still transcoding the upload — amber + a slow pulse on the badge, so it
    reads as "not yet" rather than broken. Still clickable. */

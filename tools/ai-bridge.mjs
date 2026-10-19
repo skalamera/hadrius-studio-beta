@@ -1603,6 +1603,64 @@ ${narrationOutputSpec(steps.length)}`;
   return sanitizeNarrationLines(parseNarrationLines(text, steps.length, narrationStepLines(steps)));
 }
 
+// One narration line, rewritten per the panel's "Rephrase with AI" choice. Plain prompt (no
+// codebase tools) so the same text works for the Gemini fallback inside runClaude().
+const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const hasWord = (text, w) => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(w)}(?:s|es|ed|ing|'s)?(?=$|[^\\p{L}\\p{N}])`, 'iu').test(text);
+// The model sometimes self-corrects mid-reply ({"text": A} ... "corrected:" {"text": B}); the last
+// well-formed object is its final answer. Never fall back to the raw reply, which carries the chatter.
+function lastTextObject(raw) {
+  const found = [...String(raw).matchAll(/\{\s*"text"\s*:\s*"(?:[^"\\]|\\.)*"\s*\}/g)];
+  for (let k = found.length - 1; k >= 0; k--) { try { const t = JSON.parse(found[k][0]).text; if (t) return t; } catch {} }
+  return null;
+}
+
+async function rephraseNarrationLine({ line, mode, words, step, before, after, scriptName }) {
+  const quoted = words.map((w) => `"${w}"`).join(', ');
+  const wordCount = line.split(/\s+/).filter(Boolean).length;
+  const ask = {
+    auto: 'Rephrase it in your own judgment: keep the meaning, make it sound more natural and engaging.',
+    avoid: `Rephrase it WITHOUT using any of these words or phrases (in any form or capitalization): ${quoted}. Keep the meaning.`,
+    use: `Rephrase it so it naturally includes ALL of these words or phrases: ${quoted}. Keep the meaning.`,
+    shorter: `Make it noticeably shorter (the current line is ${wordCount} words; aim for about ${Math.max(3, Math.round(wordCount * 0.6))}). Keep the key point.`,
+    longer: `Make it somewhat longer (the current line is ${wordCount} words; aim for about ${Math.round(wordCount * 1.5) + 2}, still under 28 words), adding useful context about what is happening or why it matters. Do not invent product behavior.`,
+  }[mode];
+  const ctx = [
+    scriptName ? `Video: "${scriptName}"` : '',
+    step ? `On-screen action for this line: ${step}` : '',
+    before ? `Previous narration line: "${String(before).trim()}"` : '',
+    after ? `Next narration line: "${String(after).trim()}"` : '',
+  ].filter(Boolean).join('\n');
+  const prompt = (extra = '') => `You are editing ONE voiceover line in a screen-recorded product walkthrough video.
+${ctx}
+
+Current line: "${line}"
+
+Task: ${ask}
+${extra}
+Rules: it is spoken aloud, so write one or two natural sentences; no em dashes; don't narrate mouse clicks ("click", "tap", "hit"); call the product "the platform", never "Hadrius"; never state specific sample names, emails, or dates; flow naturally from the previous line into the next one. Give a different wording than the current line.
+
+Check your line against the task before replying, then respond with exactly ONE JSON object and nothing else: {"text": "<the new line>"}`;
+
+  const check = (t) => {
+    if (mode === 'avoid') { const hit = words.filter((w) => hasWord(t, w)); if (hit.length) return `Your last attempt still used: ${hit.map((w) => `"${w}"`).join(', ')}. Remove them.`; }
+    if (mode === 'use') { const miss = words.filter((w) => !hasWord(t, w)); if (miss.length) return `Your last attempt was missing: ${miss.map((w) => `"${w}"`).join(', ')}. Include them.`; }
+    return null;
+  };
+  const ask1 = async (extra) => {
+    const raw = await runClaude(prompt(extra));
+    const t0 = lastTextObject(raw);
+    if (!t0) throw new Error('the model did not return a rephrased line');
+    const t = sanitizeNarrationLines([t0])[0] || '';
+    if (!t) throw new Error('the model returned an empty line');
+    return t;
+  };
+  let text = await ask1();
+  let problem = check(text);
+  if (problem) { text = await ask1(`\n${problem}\nAttempt was: "${text}"\n`); problem = check(text); }
+  return { text, ...(problem ? { warning: problem.replace(/^Your last attempt/, 'The rewrite') } : {}) };
+}
+
 function buildPrompt(steps, scriptName) {
   const lines = narrationStepLines(steps).join('\n');
 
@@ -2402,6 +2460,25 @@ const server = http.createServer(async (req, res) => {
         });
       });
       return sendJson(res, 200, { ok: true, url: `http://127.0.0.1:${PORT}/preview/audio/${path.basename(out.path)}`, provider: out.provider, cached: !!out.cached });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+    }
+  }
+
+  // ---- per-step "Rephrase with AI": rewrites one narration line. mode = 'auto' (let AI decide),
+  // 'avoid' / 'use' (with `words`), 'shorter', 'longer'. Word rules are checked on the reply and
+  // the model gets one corrective retry, so an avoided word never slips back in silently ----
+  if (req.method === 'POST' && u.pathname === '/rephrase/narration') {
+    try {
+      const { text, mode = 'auto', words, step, before, after, scriptName } = await readJsonBody(req);
+      const line = String(text || '').trim();
+      if (!line) return sendJson(res, 400, { ok: false, error: 'no narration to rephrase' });
+      if (!['auto', 'avoid', 'use', 'shorter', 'longer'].includes(mode)) return sendJson(res, 400, { ok: false, error: `unknown mode: ${mode}` });
+      const list = (Array.isArray(words) ? words : String(words || '').split(','))
+        .map((w) => String(w).trim()).filter(Boolean).slice(0, 20);
+      if ((mode === 'avoid' || mode === 'use') && !list.length) return sendJson(res, 400, { ok: false, error: `list the word(s) to ${mode}` });
+      const out = await rephraseNarrationLine({ line, mode, words: list, step, before, after, scriptName });
+      return sendJson(res, 200, { ok: true, ...out });
     } catch (e) {
       return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
     }

@@ -2571,7 +2571,22 @@ function renderSteps() {
         </label>
         <div class="preview-voice-row">
           <button class="preview-voice-btn secondary" type="button" title="Hear this line in the render's voice. The audio is cached, so the next render reuses it instead of generating it again.">▶ Preview voice</button>
+          <button class="rephrase-btn secondary" type="button" title="Have AI rewrite this narration line: avoid or use specific words, make it shorter or longer, or let it decide.">✨ Rephrase with AI</button>
           <span class="preview-voice-status"></span>
+        </div>
+        <div class="rephrase-box" hidden>
+          <div class="rephrase-modes" role="radiogroup" aria-label="How to rephrase">
+            <label><input type="radio" name="rephrase-mode-${i}" value="auto" checked> Let AI decide</label>
+            <label><input type="radio" name="rephrase-mode-${i}" value="avoid"> Don't use word(s)</label>
+            <label><input type="radio" name="rephrase-mode-${i}" value="use"> Use word(s)</label>
+            <label><input type="radio" name="rephrase-mode-${i}" value="shorter"> Shorter</label>
+            <label><input type="radio" name="rephrase-mode-${i}" value="longer"> Longer</label>
+          </div>
+          <input class="rephrase-words" type="text" placeholder="Word(s), comma-separated" hidden />
+          <div class="rephrase-actions">
+            <button class="rephrase-go primary" type="button">Rephrase</button>
+            <button class="rephrase-cancel secondary" type="button">Cancel</button>
+          </div>
         </div>
         <label class="step-field-label">
           <span>Caption</span>
@@ -2631,6 +2646,66 @@ function renderSteps() {
       e.preventDefault();
       e.stopPropagation();
       previewNarration(e.currentTarget, card.querySelector('.preview-voice-status'), card.querySelector('.narration').value);
+    };
+
+    // "Rephrase with AI": pick a mode, the bridge rewrites the line, the textarea takes it (saved
+    // like a manual edit) and the status row offers Undo back to the previous wording.
+    const rBox = card.querySelector('.rephrase-box');
+    const rWords = card.querySelector('.rephrase-words');
+    const rStatus = card.querySelector('.preview-voice-status');
+    const rMode = () => card.querySelector('.rephrase-modes input:checked')?.value || 'auto';
+    card.querySelector('.rephrase-btn').onclick = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      rBox.hidden = !rBox.hidden;
+    };
+    card.querySelectorAll('.rephrase-modes input').forEach((r) => {
+      r.onchange = () => {
+        const m = rMode();
+        rWords.hidden = !(m === 'avoid' || m === 'use');
+        rWords.placeholder = m === 'avoid' ? "Word(s) to leave out, comma-separated" : 'Word(s) to include, comma-separated';
+        if (!rWords.hidden) rWords.focus();
+      };
+    });
+    rWords.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); card.querySelector('.rephrase-go').click(); } });
+    card.querySelector('.rephrase-cancel').onclick = (e) => { e.preventDefault(); e.stopPropagation(); rBox.hidden = true; };
+    card.querySelector('.rephrase-go').onclick = async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const goBtn = e.currentTarget;
+      const ta = card.querySelector('.narration');
+      const original = ta.value;
+      if (!original.trim()) { rStatus.textContent = 'Add narration first.'; return; }
+      const mode = rMode();
+      const words = rWords.value.split(',').map((w) => w.trim()).filter(Boolean);
+      if ((mode === 'avoid' || mode === 'use') && !words.length) { rStatus.textContent = 'Enter the word(s) first.'; rWords.focus(); return; }
+      const near = (dir) => { for (let j = i + dir; j >= 0 && j < state.steps.length; j += dir) { const n = String(state.steps[j].narration || '').trim(); if (n) return n; } return ''; };
+      goBtn.disabled = true; ta.disabled = true;
+      goBtn.textContent = 'Rephrasing…';
+      rStatus.textContent = '';
+      try {
+        const r = await api('/rephrase/narration', { method: 'POST', body: JSON.stringify({
+          text: original, mode, words, step: `${step.action} ${targetDesc}`,
+          before: near(-1), after: near(1), scriptName: currentVideoName() || '',
+        }) });
+        ta.value = r.text;
+        update({ narration: r.text });
+        updateVideoPreviewStale();
+        syncCaption();
+        rBox.hidden = true;
+        rStatus.innerHTML = `${r.warning ? esc(r.warning) + ' · ' : 'Rephrased · '}<a href="#" class="rephrase-undo">Undo</a>`;
+        rStatus.querySelector('.rephrase-undo').onclick = (ev) => {
+          ev.preventDefault(); ev.stopPropagation();
+          ta.value = original;
+          update({ narration: original });
+          updateVideoPreviewStale();
+          syncCaption();
+          rStatus.textContent = 'Restored the previous line.';
+        };
+      } catch (err) {
+        rStatus.textContent = `Couldn't rephrase: ${err.message}`;
+      } finally {
+        goBtn.disabled = false; ta.disabled = false;
+        goBtn.textContent = 'Rephrase';
+      }
     };
 
     card.querySelector('.up').onclick = async (e) => {

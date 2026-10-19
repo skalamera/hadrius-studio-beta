@@ -766,7 +766,10 @@ for k, s in enumerate(slides):
     if s['audio']:
         inputs += ['-i', s['audio']]; d = int((t + (XF if k else 0.15)) * 1000)
         eq = (s.get('audio_filter') or '') and s['audio_filter'] + ','
-        filt.append(f"[{idx}:a]aresample=48000,{eq}loudnorm=I={VOICE_LUFS}:TP=-1.5:LRA=11,aresample=48000,adelay={d}|{d}[a{idx}]"); voice_in.append(f"[a{idx}]"); idx += 1
+        # first_pts=0 turns the adelay gap into real leading silence. Without it the voice bus (and so
+        # content.mp4's audio track) STARTS at the first line's delay as a stream offset; the step-5
+        # stitch drops that offset, so a video whose first slide is silent played every line ~1.9s early.
+        filt.append(f"[{idx}:a]aresample=48000,{eq}loudnorm=I={VOICE_LUFS}:TP=-1.5:LRA=11,aresample=48000,adelay={d}|{d},aresample=async=1:first_pts=0[a{idx}]"); voice_in.append(f"[a{idx}]"); idx += 1
     t += s['sdur'] - (XF if k < len(slides) - 1 else 0)
 mix_in = []
 if voice_in:

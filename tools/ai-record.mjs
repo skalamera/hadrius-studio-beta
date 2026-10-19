@@ -148,6 +148,9 @@ const DOM_HELPERS_JS = `
     const cs = getComputedStyle(el);
     return cs.visibility !== 'hidden' && cs.display !== 'none';
   };
+  // A design-system radio/checkbox drawn as <label> wrapping an sr-only <input> (Pantheon RadioItem):
+  // returns that hidden input, so the label can stand in for it as the click target.
+  const hiddenChoice = (el) => { if (el.tagName !== 'LABEL') return null; const inp = el.querySelector('input[type="radio"],input[type="checkbox"]'); return inp && !visible(inp) ? inp : null; };
   // Calendar day cell → { today, day } so replay picks the date by meaning, not by its literal label (see content.js dateHint).
   // Trailing suffix allowed: react-day-picker and similar libs append ", Selected" to the selected
   // day's aria-label — without it the one cell that actually needs {today|day} resolution silently stopped matching.
@@ -215,7 +218,11 @@ export const SNAPSHOT_FN = new Function(`
   // radio circle next to a big clickable label — the label was invisible to the agent, which
   // left it poking at the circle and failing). Only labels FOR something count; a label wrapping
   // its own input is reachable through the input already.
-  const labelWanted = (el) => el.tagName !== 'LABEL' || (el.htmlFor && getComputedStyle(el).cursor === 'pointer');
+  // Same gap, other markup: a design-system radio/checkbox drawn as <label> wrapping an sr-only
+  // <input> (Pantheon RadioItem, no htmlFor). The 1px input fails visible() and the label has no
+  // htmlFor, so the agent saw only the radiogroup ("one two") and blamed the app when clicking the
+  // group did nothing. List the wrapping label instead, reported as the input's role and state.
+  const labelWanted = (el) => el.tagName !== 'LABEL' || ((el.htmlFor || hiddenChoice(el)) && getComputedStyle(el).cursor === 'pointer');
   // The GENERAL form of the calendar-cell / task-chip / tests-table-row gap: modern list rows are
   // plain <div onClick> with cursor:pointer and zero semantics. The reliable signal is the CURSOR
   // BOUNDARY — the element styled pointer whose parent is not. That is exactly the node the
@@ -233,7 +240,7 @@ export const SNAPSHOT_FN = new Function(`
     const t = (el.innerText || '').trim();
     return t.length >= 2;
   };
-  const semantic = new Set(Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr,td,div[title],label[for]')));
+  const semantic = new Set(Array.from(document.querySelectorAll('button,a,input,textarea,select,[role],tbody tr,td,div[title],label')));
   const boundaryExtras = Array.from(document.querySelectorAll('div,li,span'))
     .filter((el) => !semantic.has(el) && pointerBoundary(el) && visible(el));
   // pointer-events is the truth about clickability: a Radix MODAL sets pointer-events:none on
@@ -277,16 +284,18 @@ export const SNAPSHOT_FN = new Function(`
     // radio/checkbox click as "no visible change", which fed the retry-then-block-as-dead escalation
     // even when the click had genuinely worked (verbatim what happened to the Form U4 amendment-type
     // radios: aria-checked flipped to true, but the model was told nothing happened and gave up).
-    const stateAttr = el.getAttribute('aria-checked') ?? el.getAttribute('data-state') ?? el.getAttribute('aria-pressed')
+    const choiceInput = hiddenChoice(el);
+    const stateAttr = choiceInput ? String(choiceInput.checked)
+      : el.getAttribute('aria-checked') ?? el.getAttribute('data-state') ?? el.getAttribute('aria-pressed')
       ?? el.getAttribute('aria-selected') ?? el.getAttribute('aria-expanded')
       ?? (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio') ? String(el.checked) : null);
     out.push({
       id: i,
       tag: el.tagName.toLowerCase(),
-      role: roleOf(el),
+      role: choiceInput ? choiceInput.type : roleOf(el),
       name: (elName || '').slice(0, 90),
       datePicker: isDatePickerButton(el) || undefined,
-      disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
+      disabled: choiceInput ? !!choiceInput.disabled : (!!el.disabled || el.getAttribute('aria-disabled') === 'true'),
       inDialog: !!el.closest('[role="dialog"],[role="alertdialog"]'),
       state: stateAttr === null ? undefined : stateAttr,
     });
@@ -328,7 +337,7 @@ const FINGERPRINT_FN = new Function('id', `
   const r = el.getBoundingClientRect();
   return {
     tag: el.tagName.toLowerCase(),
-    role: roleOf(el),
+    role: hiddenChoice(el)?.type || roleOf(el),
     name: accessibleName(el),
     date: dateHint(el),
     text: clean(el.innerText || el.textContent).slice(0, 120),
