@@ -81,6 +81,17 @@ function settleOptsFor(step) {
 // high it delays every step, give a slow step one more chance in the background to settle and
 // silently replace the slide with the fully-loaded version — same captureId, so it overwrites the
 // file already saved rather than adding a duplicate.
+// The highlight box is drawn from step.target.bbox, so measure it at the moment of the screenshot:
+// the page can scroll between the event and the capture (settle wait, a typed field flushed on the
+// next click). Keeps the event-time box when the element is gone or hidden.
+async function remeasureTarget(step, tabId) {
+  if (!step.target || !step.captureId) return;
+  try {
+    const r = await chrome.tabs.sendMessage(tabId, { type: 'KB_MEASURE', captureId: step.captureId });
+    if (r?.ok && r.bbox) { step.target.bbox = r.bbox; step.target.viewport = r.viewport; }
+  } catch (_) {}
+}
+
 async function recaptureIfSettles(step, tabId, recordingId) {
   try {
     const { settled, ms } = await waitForSettled(tabId, { maxMs: 12000, intervalMs: 300, stable: 3 });
@@ -88,6 +99,7 @@ async function recaptureIfSettles(step, tabId, recordingId) {
     if (!settled || !state.recording) return;
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     if (!tab) return;
+    await remeasureTarget(step, tabId);
     const png = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
     step.thumb = png;
     await bridge('POST', `/capture/${encodeURIComponent(recordingId)}/slide`, { captureId: step.captureId, dataUrl: png });
@@ -106,6 +118,7 @@ async function captureStep(step, attempt = 0, settled = null) {
       settled = r.settled;
       console.log(`[capture] step ${step.index} (${step.action} ${step.route || ''}) settled=${settled} after ${r.ms}ms busySeen=${r.busySeen}${r.error ? ` err=${r.error}` : ''}`);
     }
+    await remeasureTarget(step, state.tabId);
     const png = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
     step.thumb = png;
     if (!state.recordingId) state.recordingId = crypto.randomUUID();

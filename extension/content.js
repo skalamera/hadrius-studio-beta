@@ -214,13 +214,34 @@
     document.removeEventListener('keydown', onKeyDown, true);
     document.removeEventListener('focusout', onBlur, true);
   }
-  function emit(step) {
+  // The highlight box is the target's bbox, so it has to describe the page as the screenshot shows
+  // it. A bbox measured at the event drifts whenever the page scrolls before the capture: a type
+  // step's fingerprint is taken at its last keystroke but captured on flush (the next click or blur,
+  // often after the user scrolled), and the background waits for the page to settle first. So keep
+  // each step's element, and let the background re-measure it right before captureVisibleTab
+  // (KB_MEASURE) — otherwise a typed field's box lands on the row above or below it.
+  const stepEls = new Map(); // captureId -> element (most recent 50)
+  function liveGeometry(el) {
+    if (!el || !el.isConnected) return null;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return null; // hidden/unmounted since the event: keep the event's box
+    return {
+      bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+    };
+  }
+  function emit(step, el) {
     if (!chrome.runtime?.id) {
       cleanup();
       return;
     }
     step.index = stepIndex++;
     step.captureId = newCaptureId();
+    if (el && step.target) {
+      Object.assign(step.target, liveGeometry(el) || {});
+      stepEls.set(step.captureId, el);
+      if (stepEls.size > 50) stepEls.delete(stepEls.keys().next().value);
+    }
     step.dpr = window.devicePixelRatio || 1;
     step.url = location.href;
     step.route = location.pathname + location.search;
@@ -237,7 +258,7 @@
     if (!typingBuffer) return;
     const buf = typingBuffer; typingBuffer = null;
     if (buf.focus && buf.text === (buf.initial ?? '')) return; // focused but typed nothing
-    emit({ action: 'type', target: buf.fingerprint, value: buf.text });
+    emit({ action: 'type', target: buf.fingerprint, value: buf.text }, buf.el);
   }
 
   // Click capture — pointerdown fires before the app mutates the DOM (e.g. closes a dropdown)
@@ -250,7 +271,7 @@
     const isTextField = /^(input|textarea)$/i.test(t.tagName) && !['checkbox', 'radio', 'submit', 'button'].includes((t.type || '').toLowerCase());
     if (isTextField || t.isContentEditable) {
       // Don't emit a click for focusing a text field; the type step will carry the target.
-      typingBuffer = { fingerprint: fp, text: t.value || '', initial: t.value || '', startedAt: Date.now(), focus: true };
+      typingBuffer = { fingerprint: fp, el: t, text: t.value || '', initial: t.value || '', startedAt: Date.now(), focus: true };
       return;
     }
     // Clicks on anonymous containers (no role, no text, no id/testid) are almost always
@@ -258,7 +279,7 @@
     // meaningfully, so don't record them — the renderer presses Escape between steps anyway.
     const anonymous = !fp.role && !fp.name && !fp.text && !/^#|\[data-testid/.test(fp.css || '') && !/^(button|a|input|select|textarea|label|summary)$/i.test(t.tagName);
     if (anonymous) return;
-    emit({ action: 'click', target: fp });
+    emit({ action: 'click', target: fp }, t);
   }
 
   function onInput(e) {
@@ -268,7 +289,7 @@
     const path = cssPath(t);
     if (typingBuffer && typingBuffer.fingerprint?.css !== path) flushTyping(); // switched fields
     const fp = fingerprint(t);
-    typingBuffer = { fingerprint: fp, text: t.isContentEditable ? clean(t.textContent) : t.value, startedAt: typingBuffer?.startedAt || Date.now(), initial: typingBuffer?.initial, focus: false };
+    typingBuffer = { fingerprint: fp, el: interactiveTarget(t), text: t.isContentEditable ? clean(t.textContent) : t.value, startedAt: typingBuffer?.startedAt || Date.now(), initial: typingBuffer?.initial, focus: false };
   }
 
   function onKeyDown(e) {
@@ -403,6 +424,9 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     if (msg.type === 'KB_PING') reply({ ok: true });
+    // Re-measure a step's element just before its screenshot (see stepEls). Frames that don't hold
+    // the element stay silent so the frame that does answers.
+    else if (msg.type === 'KB_MEASURE') { const geo = liveGeometry(stepEls.get(msg.captureId)); if (geo) reply({ ok: true, ...geo }); }
     // Same heuristic renderer/replay.mjs's settle()/waitForApp() already use to know a page has
     // really finished rendering (not just finished loading): no spinner/"Saving..." in flight, and
     // enough interactive elements present that this isn't still a bare loading shell. Used after a

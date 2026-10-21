@@ -2484,11 +2484,28 @@ function playStepInVideo(step) {
   const player = $('#videoPreviewPlayer');
   if (!span || !player) return;
   if (videoPreview.collapsed) { videoPreview.collapsed = false; $('#videoPreview').classList.remove('collapsed'); $('#videoPreviewToggle').textContent = 'Hide'; }
-  // Land just past the dissolve into this slide (0.8s between slides, 0.65s out of the title card)
-  // so the first frame shown is the step itself, not the previous slide fading out.
-  player.currentTime = Math.min(span.start + 0.85, Math.max(span.start, span.end - 0.2));
-  player.play().catch(() => {});
+  player.pause();
+  seekThenPlay(player, stepPlayFrom(span));
   $('#videoPreview').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// Where "play this step" should start. assemble.py starts each line 0.8s into its slide (after the
+// dissolve), the first line 0.15s in. Landing past the dissolve (the old start + 0.85) began mid-word,
+// and a cold audio output (Bluetooth especially) swallows the first ~0.5-1s on top of that, so
+// start at the slide itself, and for the first slide back in the title card's fade, so the voice
+// always has a lead-in of silence.
+function stepPlayFrom(span) {
+  const first = videoPreview.timeline?.steps?.[0];
+  const isFirst = first && first.start === span.start;
+  return Math.max(0, span.start - (isFirst ? 0.65 : 0));
+}
+
+// play() issued before the seek lands can start audio late or from the old position; wait for it.
+function seekThenPlay(media, t) {
+  const go = () => media.play().catch(() => {});
+  if (Math.abs(media.currentTime - t) < 0.01) return go();
+  media.addEventListener('seeked', go, { once: true });
+  media.currentTime = t;
 }
 
 // While the video plays, highlight the step on screen and show its number in the header.
@@ -2566,7 +2583,7 @@ function renderSteps() {
       <div class="detail" ${isOpen ? '' : 'hidden'}>
         ${step.route ? `<div class="step-route-badge">Route: ${esc(step.route)}</div>` : ''}
         ${vspan ? `<button class="play-in-video secondary" type="button" title="Jump the rendered video to this step">▶ Play in video (${fmtTime(vspan.start)}–${fmtTime(vspan.end)})</button>` : ''}
-        ${(vspan && videoPreview.src) ? `<div class="thumb-wrap step-clip-wrap"><video class="step-clip" controls playsinline preload="none" ${thumbUrl ? `poster="${thumbUrl}"` : ''} src="${videoPreview.src}#t=${vspan.start.toFixed(2)},${vspan.end.toFixed(2)}"></video></div>`
+        ${(vspan && videoPreview.src) ? `<div class="thumb-wrap step-clip-wrap"><video class="step-clip" controls playsinline preload="none" ${thumbUrl ? `poster="${thumbUrl}"` : ''} src="${videoPreview.src}#t=${stepPlayFrom(vspan).toFixed(2)},${vspan.end.toFixed(2)}"></video></div>`
           : thumbUrl ? `<div class="thumb-wrap"><img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" /><div class="thumb-caption" ${(step.caption || step.narration) ? '' : 'hidden'}>${esc(step.caption || step.narration || '')}</div></div>` : ''}
         <label class="step-field-label">
           <span>Narration</span>
@@ -2615,15 +2632,15 @@ function renderSteps() {
     if (playBtn) playBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); playStepInVideo(step); };
 
     // This step's own clip: the rendered video limited to the step's span. It stops at the span's
-    // end, and pressing play again restarts from the step's first frame (past the dissolve).
+    // end, and pressing play again restarts from just before the step's narration (stepPlayFrom).
     const clip = card.querySelector('.step-clip');
     if (clip && vspan) {
-      const clipStart = Math.min(vspan.start + 0.85, Math.max(vspan.start, vspan.end - 0.2));
+      const clipStart = stepPlayFrom(vspan);
       clip.addEventListener('click', (e) => e.stopPropagation());
       clip.addEventListener('loadedmetadata', () => { clip.currentTime = clipStart; }, { once: true });
       clip.addEventListener('play', () => {
         $('#videoPreviewPlayer')?.pause();
-        if (clip.currentTime < vspan.start || clip.currentTime >= vspan.end - 0.05) clip.currentTime = clipStart;
+        if (clip.currentTime < clipStart - 0.05 || clip.currentTime >= vspan.end - 0.05) clip.currentTime = clipStart;
         card.classList.add('playing');
       });
       clip.addEventListener('timeupdate', () => {
