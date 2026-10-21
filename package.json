@@ -6,7 +6,7 @@
   "description": "Live Hadrius walkthrough recorder with source-grounded plans and automatic AI narration.",
   "scripts": {
     "start": "node tools/ai-bridge.mjs",
-    "check": "node --check tools/deck-studio.mjs && python3 -m py_compile renderer/deck.py && node --check extension/background.js && node --check extension/content.js && node --check extension/sidepanel.js && node --check extension/create.js && node --check tools/ai-bridge.mjs && node --check tools/ai-record.mjs && node --check tools/coverage-scan.mjs && node --check tools/pylon.mjs"
+    "check": "node --check tools/deck-studio.mjs && python3 -m py_compile renderer/deck.py renderer/deck_qa.py && node --check extension/background.js && node --check extension/content.js && node --check extension/sidepanel.js && node --check extension/create.js && node --check tools/ai-bridge.mjs && node --check tools/ai-record.mjs && node --check tools/coverage-scan.mjs && node --check tools/pylon.mjs"
   },
   "dependencies": {
     "playwright": "^1.63.0"

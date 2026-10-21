@@ -546,8 +546,8 @@ Reply with ONLY JSON: {"results": [{"label": "...", "status": "confirmed|correct
       status: 'done', phase: 'Ready', builtAt: now(),
       files: { pptx: path.basename(result.pptx), pdf: result.pdf ? path.basename(result.pdf) : null },
       pdfError: result.pdfError || null, pages: result.pages, thumbs: result.thumbs,
-      verification: { ...labelStats, corrections: corrections.slice(0, 30), markup: result.stats },
-    }, `Done: ${result.pages} pages${result.pdf ? ', PPTX + PDF' : ', PPTX only'}`);
+      verification: { ...labelStats, corrections: corrections.slice(0, 30), markup: result.stats, layout: (result.layout || []).slice(0, 20) },
+    }, `Done: ${result.pages} pages${result.pdf ? ', PPTX + PDF' : ', PPTX only'}${result.layout?.length ? ` (⚠ ${result.layout.length} layout issue(s): ${clip(result.layout[0], 120)})` : ''}`);
     await publish(job);
   }
 

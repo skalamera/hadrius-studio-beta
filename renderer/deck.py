@@ -63,6 +63,78 @@ def font(size, bold=False):
         return ImageFont.load_default()
 
 
+# --------------------------------------------------------------------------- text measurement
+# Text boxes don't grow or shrink on their own (python-pptx writes no autofit, and LibreOffice's PDF export
+# draws overflowing text past the shape), so every layout decision measures the text with the real Arial
+# metrics and wraps it the way PowerPoint/LibreOffice do: greedy, at spaces, bold runs (**...**) in Arial Bold.
+ARIAL = ('/System/Library/Fonts/Supplemental/Arial.ttf', '/System/Library/Fonts/Supplemental/Arial Bold.ttf')
+LINE_EM = 1.35          # line pitch at line_spacing 1.12 (measured 1.342 em in the exported PDFs), slightly padded
+_mfonts: dict = {}
+
+
+def _mfont(bold):
+    if bold not in _mfonts:
+        try:
+            _mfonts[bold] = ImageFont.truetype(ARIAL[1 if bold else 0], 100)
+        except Exception:
+            _mfonts[bold] = font(100, bold)
+    return _mfonts[bold]
+
+
+def _width_pt(s, size, bold):
+    return _mfont(bold).getlength(s) * size / 100
+
+
+def wrap_count(text, width_in, size, bold=False):
+    """Lines `text` takes in a text box `width_in` wide (box margins included) at `size` pt."""
+    avail = (width_in - 0.04) * 72 - 3          # 0.02in margins each side, a little slack for rounding
+    total = 0
+    for para in str(text).split('\n'):
+        words = []                               # each word: [(chunk, bold), ...] (a word can straddle a ** edge)
+        cur, glued = [], False
+        for j, chunk in enumerate(re.split(r'\*\*', para)):
+            b = bold or (j % 2 == 1)
+            parts = chunk.split(' ')
+            for k, part in enumerate(parts):
+                if k > 0:
+                    if cur:
+                        words.append(cur)
+                    cur = []
+                if part:
+                    cur.append((part, b))
+        if cur:
+            words.append(cur)
+        space = _width_pt(' ', size, bold)
+        lines, x = 1, 0.0
+        for w in words:
+            ww = sum(_width_pt(c, size, b) for c, b in w)
+            if x and x + space + ww > avail:
+                lines += 1
+                x = ww
+            else:
+                x = x + space + ww if x else ww
+            while x > avail:                     # a single word wider than the box breaks mid-word
+                lines += 1
+                x -= avail
+        total += lines
+    return total
+
+
+def line_h(size):
+    return size * LINE_EM / 72
+
+
+def text_h(paras, width_in, size, space=6, bold=False):
+    """Height (in) a text() box needs for these paragraphs."""
+    if isinstance(paras, str):
+        paras = [paras]
+    paras = [p for p in paras if p]
+    if not paras:
+        return 0.0
+    n = sum(wrap_count(p, width_in, size, bold) for p in paras)
+    return n * line_h(size) + space * (len(paras) - 1) / 72 + 0.06
+
+
 # --------------------------------------------------------------------------- box resolution
 _ocr_cache: dict[str, list] = {}
 
@@ -327,7 +399,12 @@ class Deck:
         self.prs.slide_height = Inches(7.5)
         self.blank = self.prs.slide_layouts[6]
         self.page = 0
+        self.overflows = []
         self.footer_text = f"{spec.get('title', 'Hadrius guide')}"
+
+    def overflow(self, msg):
+        self.overflows.append(f'slide {len(self.prs.slides)}: {msg}')
+        log(f'layout: {msg}')
 
     def rect(self, sl, x, y, w, h, fill, line=None, shape=MSO_SHAPE.RECTANGLE):
         sh = sl.shapes.add_shape(shape, Inches(x), Inches(y), Inches(w), Inches(h))
@@ -382,7 +459,10 @@ class Deck:
     def header(self, sl, section, title, compact=False):
         if section:
             self.text(sl, 0.5, 0.28 if not compact else 0.22, 12, 0.3, section.upper(), size=10.5, color=PURPLE, bold=True)
-        self.text(sl, 0.5, 0.54 if not compact else 0.45, 12.3, 0.6, title, size=25 if not compact else 21, bold=True)
+        size = 25 if not compact else 21
+        while size > 16 and self.lines_for(title, 12.3, size, bold=True) > 1:
+            size -= 1
+        self.text(sl, 0.5, 0.54 if not compact else 0.45, 12.3, 0.6, title, size=size, bold=True)
 
     def picture(self, sl, path, x, y, w, h, center=False):
         im = Image.open(path)
@@ -396,23 +476,34 @@ class Deck:
         return pw, ph
 
     @staticmethod
-    def lines_for(s, width_in, size):
-        cpl = max(10, int(width_in * 72 / (size * 0.5)))
-        plain = str(s).replace('**', '')
-        return max(1, -(-len(plain) // cpl))
+    def lines_for(s, width_in, size, bold=False):
+        return wrap_count(s, width_in, size, bold)
 
     def list_height(self, items, w, size, gap):
         h = 0
         for num, s in items:
             tw = w - (0.45 if num is not None else 0)
-            h += max(self.lines_for(s, tw, size) * size * 1.27 / 72 + 0.05, 0.36) + gap
-        return h
+            h += max(self.lines_for(s, tw, size) * line_h(size) + 0.06, 0.36) + gap
+        return h - gap if items else 0
+
+    def fit_list(self, items, w, max_h, size=12.5, gap=0.14, min_size=9.5):
+        """Largest (size, gap) at which the list fits max_h, or None if it doesn't fit even at min_size."""
+        while True:
+            if self.list_height(items, w, size, gap) <= max_h:
+                return size, gap
+            if size <= min_size:
+                return None
+            size -= 0.5
+            gap = max(0.06, gap - 0.01)
 
     def steps_list(self, sl, items, x, y, w, max_h, size=12.5, gap=0.14):
         """items: [(number|'•'|None, text)]; shrinks the font until the list fits max_h."""
-        while size > 9.5 and self.list_height(items, w, size, gap) > max_h:
-            size -= 0.5
-            gap = max(0.06, gap - 0.01)
+        fit = self.fit_list(items, w, max_h, size, gap)
+        if fit:
+            size, gap = fit
+        else:
+            size, gap = 9.5, 0.06
+            self.overflow(f'list does not fit {max_h:.2f}in: {str(items[0][1])[:50]}')
         cy = y
         for num, s in items:
             indent = 0.45 if num is not None else 0
@@ -431,16 +522,26 @@ class Deck:
                 r.font.name = FONT
             elif num == '•':
                 self.rect(sl, x + 0.12, cy + 0.12, 0.09, 0.09, PURPLE, shape=MSO_SHAPE.OVAL)
-            hgt = self.lines_for(s, w - indent, size) * size * 1.27 / 72 + 0.05
+            hgt = self.lines_for(s, w - indent, size) * line_h(size) + 0.06
             self.text(sl, x + indent, cy, w - indent, hgt, s, size=size, space=0)
             cy += max(hgt, 0.36) + gap
         return cy
 
-    def tip(self, sl, s, x=0.5, y=6.27, w=8.3, h=0.62):
+    def tip_layout(self, s, w=8.3, max_h=1.5):
+        """(size, box height) for a tip box: 11.5pt down to 9.5pt, the box grows to fit (at least 0.62in)."""
+        for size in (11.5, 11, 10.5, 10, 9.5):
+            h = max(0.62, text_h(s, w - 0.3, size) + 0.16)
+            if h <= max_h:
+                return size, h
+        return 9.5, h
+
+    def tip(self, sl, s, x=0.5, bottom=6.92, w=8.3):
+        size, h = self.tip_layout(s, w)
+        y = bottom - h
         self.rect(sl, x, y, w, h, LIGHT)
         self.rect(sl, x, y, 0.06, h, PURPLE)
-        size = 11.5 if self.lines_for(s, w - 0.3, 11.5) <= 2 else 10
         self.text(sl, x + 0.2, y, w - 0.3, h, s, size=size, anchor=MSO_ANCHOR.MIDDLE)
+        return y
 
     # ------------------------------------------------------------------ slide types
     def cover(self):
@@ -451,8 +552,8 @@ class Deck:
             sl.shapes.add_picture(str(LOGO), Inches(0.9), Inches(0.75), height=Inches(0.72))
         # long titles wrap: shrink a little and push the subtitle down so the two never overlap
         title = sp.get('title') or 'Getting Started Guide'
-        size = 40 if self.lines_for(title, 11.6, 40 * 1.08) <= 1 else 34
-        n = min(3, self.lines_for(title, 11.6, size * 1.08))
+        size = 40 if self.lines_for(title, 11.6, 40, bold=True) <= 1 else 34
+        n = min(3, self.lines_for(title, 11.6, size, bold=True))
         y = 2.0 if n == 1 else 1.75
         th = n * size * 1.2 / 72 + 0.1
         self.text(sl, 0.9, y, 11.6, th, title, size=size, bold=True)
@@ -478,14 +579,16 @@ class Deck:
             self.text(sl, x, y, 0.7, 0.5, f'{i + 1:02d}', size=19, color=PURPLE, bold=True)
             self.text(sl, x + 0.7, y, 5.4, 0.35, sec.get('title', ''), size=14.5, bold=True)
             if sec.get('summary') and row_h >= 0.7:
-                self.text(sl, x + 0.7, y + 0.32, 5.4, 0.42, sec['summary'], size=11, color=GRAY)
+                sz = next((z for z in (11, 10.5, 10, 9.5) if text_h(sec['summary'], 5.4, z) <= row_h - 0.34), None)
+                if sz:
+                    self.text(sl, x + 0.7, y + 0.32, 5.4, row_h - 0.34, sec['summary'], size=sz, color=GRAY)
         self.footer(sl)
 
     def section(self, num, title, blurb):
         sl = self.prs.slides.add_slide(self.blank)
         self.rect(sl, 0, 0, 13.333, 7.5, PURPLE)
         self.text(sl, 0.9, 2.2, 3, 1.2, f'{num:02d}', size=60, color=PALE, bold=True)
-        n = min(3, self.lines_for(title, 11.4, 34 * 1.08))
+        n = min(3, self.lines_for(title, 11.4, 34, bold=True))
         th = n * 34 * 1.2 / 72 + 0.1
         self.text(sl, 0.9, 3.35, 11.4, th, title, size=34, color=WHITE, bold=True)
         if blurb:
@@ -495,24 +598,77 @@ class Deck:
     def concept(self, section, sd, image=None):
         sl = self.prs.slides.add_slide(self.blank)
         self.header(sl, section, sd.get('title', ''))
+        lead = sd.get('lead')
         body = [p for p in (sd.get('body') or []) if p]
-        bullets = [b for b in (sd.get('bullets') or []) if b]
-        if image:
-            self.picture(sl, image, 0.5, 1.45, 7.4, 5.3)
-            x, w = 8.2, 4.63
+        bullets = [('•', b) for b in (sd.get('bullets') or []) if b]
+        top, bottom = 1.5, 6.85
+
+        def layout(w, k):
+            """Heights of the lead, body and bullets at scale k, or None if they don't fit."""
+            lh = text_h(lead, w, 15 * k) if lead else 0
+            bh = text_h(body, w, 13 * k, space=8 * k) if body else 0
+            gaps = 0.16 * (bool(lead) + bool(body) + bool(bullets) - 1) if (lead or body or bullets) else 0
+            room = bottom - top - lh - bh - max(gaps, 0)
+            if room < 0:
+                return None
+            fit = self.fit_list(bullets, w, room, 12.5 * k, 0.1, min_size=9.5) if bullets else (0, 0)
+            return (lh, bh, fit) if fit else None
+
+        # text column options: beside the full-size picture, beside a narrower picture, then (last resort) the
+        # smallest text beside the narrow picture even if it still overflows (reported, never silently clipped)
+        options = [(7.4, 8.2, 4.63), (6.3, 7.1, 5.73)] if image else [(None, 0.5, 12.3)]
+        chosen = None
+        for pic_w, x, w in options:
+            for k in (1.0, 0.95, 0.9, 0.85, 0.8, 0.76):
+                got = layout(w, k)
+                if got:
+                    chosen = (pic_w, x, w, k, got)
+                    break
+            if chosen:
+                break
+        if not chosen:
+            # too much for one slide: move trailing bullets, then trailing body paragraphs, to a "(continued)"
+            # text-only slide until this one fits beside the picture
+            items = [('b', p) for p in body] + [('u', t) for _, t in bullets]
+            rest = []
+            while items and not chosen:
+                rest.insert(0, items.pop())
+                body = [t for kind, t in items if kind == 'b']
+                bullets = [('•', t) for kind, t in items if kind == 'u']
+                for pic_w, x, w in options:
+                    got = layout(w, 0.9)
+                    if got:
+                        chosen = (pic_w, x, w, 0.9, got)
+                        break
+            if chosen and not items and not lead:
+                chosen = None           # nothing would stay on this slide: splitting can't help
+            if not chosen:  # a single block too big for a slide: smallest text, reported
+                body = [p for p in (sd.get('body') or []) if p]
+                bullets = [('•', b) for b in (sd.get('bullets') or []) if b]
+                rest = []
+                pic_w, x, w = options[-1]
+                chosen = (pic_w, x, w, 0.76, (text_h(lead, w, 15 * 0.76) if lead else 0,
+                                              text_h(body, w, 13 * 0.76, space=6) if body else 0, (9.5, 0.06)))
+                self.overflow(f'concept text does not fit: {sd.get("title", "")[:50]}')
+            cont = {'title': f"{sd.get('title', '')} (continued)".replace(' (continued) (continued)', ' (continued)'),
+                    'body': [t for kind, t in rest if kind == 'b'], 'bullets': [t for kind, t in rest if kind == 'u']}
         else:
-            x, w = 0.5, 12.3
-        y = 1.5
-        if sd.get('lead'):
-            self.text(sl, x, y, w, 0.9, sd['lead'], size=15, color=PURPLE_DARK)
-            y += 0.4 + 0.3 * self.lines_for(sd['lead'], w, 15)
+            cont = None
+        pic_w, x, w, k, (lh, bh, fit) = chosen
+        if image:
+            self.picture(sl, image, 0.5, 1.45, pic_w, 5.3)
+        y = top
+        if lead:
+            self.text(sl, x, y, w, lh, lead, size=15 * k, color=PURPLE_DARK)
+            y += lh + 0.16
         if body:
-            size = 13 if sum(self.lines_for(p, w, 13) for p in body) * 0.25 < 6.6 - y else 11
-            self.text(sl, x, y, w, 6.8 - y, body, size=size, space=8)
-            y += sum(self.lines_for(p, w, size) for p in body) * size * 1.3 / 72 + 0.12 * len(body) + 0.1
+            self.text(sl, x, y, w, bh, body, size=13 * k, space=8 * k)
+            y += bh + 0.16
         if bullets:
-            self.steps_list(sl, [('•', b) for b in bullets], x, y, w, 6.85 - y, size=12.5, gap=0.1)
+            self.steps_list(sl, bullets, x, y, w, bottom - y, size=fit[0], gap=fit[1])
         self.footer(sl)
+        if cont and (cont['body'] or cont['bullets']):
+            self.concept(section, cont)
 
     def steps_slide(self, section, sd, style, img, numbers):
         steps = sd['steps']
@@ -525,9 +681,6 @@ class Deck:
             return
         self.header(sl, section, sd.get('title', ''))
         if style == 'standard':
-            has_tip = bool(sd.get('tip'))
-            if img:
-                self.picture(sl, img, 0.5, 1.45, 8.3, 4.67 if has_tip else 5.35)
             items = []
             if sd.get('lead'):
                 items.append((None, sd['lead']))
@@ -538,33 +691,61 @@ class Deck:
                     items.append((k, st['text']))
             for extra in sd.get('after') or []:
                 items.append((None, extra))
-            self.steps_list(sl, items, 9.05, 1.45, 3.8, 5.4)
-            if has_tip:
-                self.tip(sl, sd['tip'])
-        else:  # detailed: smaller image, rich text, outline-only markup
+            # the step list gets a wider column (narrower picture) when it can't fit beside the full-size one
+            pic_w, tx, tw = 8.3, 9.05, 3.8
+            if items and not self.fit_list(items, tw, 5.4):
+                pic_w, tx, tw = 7.3, 8.05, 4.8
+            pic_bottom = 6.85
+            if sd.get('tip'):
+                pic_bottom = self.tip(sl, sd['tip'], w=pic_w) - 0.12
             if img:
-                self.picture(sl, img, 0.5, 1.45, 6.9, 3.95)
+                self.picture(sl, img, 0.5, 1.45, pic_w, pic_bottom - 1.45)
+            self.steps_list(sl, items, tx, 1.45, tw, 5.4)
+        else:  # detailed: smaller image, rich text, outline-only markup
             x, w = 7.65, 5.18
             y = 1.45
             if sd.get('lead'):
-                self.text(sl, x, y, w, 1.0, sd['lead'], size=13.5, color=PURPLE_DARK)
-                y += self.lines_for(sd['lead'], w, 13.5) * 13.5 * 1.3 / 72 + 0.18
+                lh = text_h(sd['lead'], w, 13.5)
+                self.text(sl, x, y, w, lh, sd['lead'], size=13.5, color=PURPLE_DARK)
+                y += lh + 0.14
             items = [(i + 1, st['text']) for i, st in enumerate([s for s in steps if s.get('text')])]
             y = self.steps_list(sl, items, x, y, w, 6.85 - y, size=12, gap=0.1)
             body = [p for p in (sd.get('body') or []) if p]
-            notes_y = 5.6
             notes = body + ([f"**Good to know:** {sd['tip']}"] if sd.get('tip') else [])
+            pic_h = 3.95
+            more = []
             if notes:
-                size = 11.5
-                while size > 9 and sum(self.lines_for(p, 6.5, size) for p in notes) * size * 1.3 / 72 > 1.15:
-                    size -= 0.5
-                nh = min(1.28, sum(self.lines_for(p, 6.5, size) for p in notes) * size * 1.3 / 72 + 0.06 * len(notes) + 0.2)
+                # the notes box sits under the picture and grows to fit its text; the picture gives up height
+                # (down to 2.6in) when the notes need more room. Whatever still doesn't fit continues on a
+                # text-only "(continued)" slide rather than running out of the box.
+                max_nh = 6.9 - 1.45 - 0.15 - 2.6
+                while True:
+                    for size in (11.5, 11, 10.5, 10, 9.5):
+                        nh = text_h(notes, 6.55, size, space=4) + 0.16
+                        if nh <= 1.3:
+                            break
+                    if nh <= max_nh or len(notes) == 1:
+                        break
+                    more.insert(0, notes.pop())
+                if nh > max_nh:                 # one paragraph too long for the box on its own
+                    more.insert(0, notes.pop())
+                    nh = 0
+                pic_h = min(3.95, 6.9 - 1.45 - 0.15 - nh) if notes else 3.95
+            ph = 0
+            if img:
+                _, ph = self.picture(sl, img, 0.5, 1.45, 6.9, pic_h)
+            if notes:
+                notes_y = 1.45 + (ph or pic_h) + 0.15
+                nh = min(nh, 6.92 - notes_y)
                 self.rect(sl, 0.5, notes_y, 6.9, nh, LIGHT)
                 self.rect(sl, 0.5, notes_y, 0.06, nh, PURPLE)
                 self.text(sl, 0.72, notes_y + 0.08, 6.55, nh - 0.1, notes, size=size, space=4)
         if sd.get('notes'):
             sl.notes_slide.notes_text_frame.text = str(sd['notes'])
         self.footer(sl)
+        if style == 'detailed' and more:
+            self.concept(section, {'title': f"{sd.get('title', '')} (continued)".replace(' (continued) (continued)', ' (continued)'),
+                                   'body': more})
 
     def quickref(self, rows):
         rows = rows[:14]
@@ -733,8 +914,21 @@ def main():
     deck.prs.save(str(pptx_path))
     pdf, pdf_error = export_pdf(pptx_path)
     thumbs = thumbnails(pdf, out_dir, images_used)
+    # check what was actually exported: text past the footer, out of its box, onto a screenshot, into other text
+    layout = list(deck.overflows)
+    if pdf:
+        try:
+            sys.path.insert(0, str(Path(__file__).parent))
+            import deck_qa
+            found, _ = deck_qa.check(pptx_path)
+            layout += [f'page {pg}: {msg}' for pg, msg in found]
+        except Exception as e:  # never fail a build over the check itself
+            log(f'layout check skipped: {e}')
+    for m in layout:
+        log(f'LAYOUT {m}')
+    stats['layout_issues'] = len(layout)
     print(json.dumps({'ok': True, 'pptx': str(pptx_path), 'pdf': str(pdf) if pdf else None, 'pdfError': pdf_error,
-                      'pages': len(deck.prs.slides), 'thumbs': thumbs, 'stats': stats}))
+                      'pages': len(deck.prs.slides), 'thumbs': thumbs, 'stats': stats, 'layout': layout}))
 
 
 if __name__ == '__main__':
