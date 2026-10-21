@@ -392,10 +392,14 @@ export async function googleDriveDownloadRecording(recordingId, localDir, fileNa
 // extension's library is ONE folder listing, not a request per deck.
 export const SLIDE_DECKS_FOLDER_ID = '1aMR971LkbSTwMn5psY5wKqsCuvPaGjd5';
 
-async function resumableUpload(accessToken, metadata, filePath, mime) {
+async function resumableUpload(accessToken, metadata, filePath, mime, fileId) {
   const size = fs.statSync(filePath).size;
-  const start = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,webViewLink', {
-    method: 'POST',
+  // With fileId the upload replaces that file's content (files.update), so its link and sharing stay the same.
+  const url = fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=resumable&supportsAllDrives=true&fields=id,webViewLink`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,webViewLink';
+  const start = await fetch(url, {
+    method: fileId ? 'PATCH' : 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime, 'X-Upload-Content-Length': String(size) },
     body: JSON.stringify(metadata),
   });
@@ -407,12 +411,14 @@ async function resumableUpload(accessToken, metadata, filePath, mime) {
   return file;
 }
 
-/** Upload a finished deck. files: [{ path, kind: 'pptx'|'pdf'|'cover' }]. Replaces an earlier upload of the same deckId. */
+/** Upload a finished deck. files: [{ path, kind: 'pptx'|'pdf'|'cover' }]. A rebuild of the same deckId updates
+ *  the earlier upload's files in place, so links people already shared keep opening the current version. */
 export async function googleDriveUploadDeck(deckId, files, meta) {
   if (!googleDriveConfigured()) throw new Error('Google Drive is not connected on this machine');
   const accessToken = await getAccessToken();
   const existing = await googleDriveListDeckFiles({ deckId });
   const out = {};
+  const kept = new Set();
   const MIME = { pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', pdf: 'application/pdf', cover: 'image/png' };
   for (const f of files) {
     if (!f?.path || !fs.existsSync(f.path)) continue;
@@ -422,12 +428,19 @@ export async function googleDriveUploadDeck(deckId, files, meta) {
       appProperties: { hadriusDeck: '1', deckId, kind: f.kind },
       ...(f.kind === 'pptx' ? { description: JSON.stringify(meta).slice(0, 20000) } : {}),
     };
-    const file = await resumableUpload(accessToken, metadata, f.path, MIME[f.kind]);
+    const prev = existing.find((e) => e.appProperties?.kind === f.kind && !kept.has(e.id));
+    let file = null;
+    if (prev) {
+      const { parents, ...update } = metadata;          // parents can't be set by files.update
+      file = await resumableUpload(accessToken, update, f.path, MIME[f.kind], prev.id).catch(() => null);
+    }
+    if (!file?.id) file = await resumableUpload(accessToken, metadata, f.path, MIME[f.kind]);
+    kept.add(file.id);
     out[f.kind] = { id: file.id, url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view` };
   }
-  // Drop the previous upload of this deck (a rebuild), but only once the new files are in.
+  // Drop whatever is left of the previous upload of this deck, but only once the new files are in.
   for (const old of existing) {
-    if (Object.values(out).some((n) => n.id === old.id)) continue;
+    if (kept.has(old.id)) continue;
     await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(old.id)}?supportsAllDrives=true`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => {});
   }
   return out;

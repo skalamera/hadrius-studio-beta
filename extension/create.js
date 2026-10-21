@@ -311,10 +311,12 @@
     const m = v.markup || {};
     const inCode = (v.cited || 0) + (v.confirmed || 0);
     const boxed = (m.boxed_dom || 0) + (m.boxed_ocr || 0);
+    const dropped = (m.box_blank || 0) + (m.box_conflict || 0);
     const unv = v.unverified || [];
     $('#crVerify').innerHTML = `
       <div>✓ <b>${v.labels || 0} UI labels checked</b>: ${v.recorded || 0} captured from the live product, ${inCode} confirmed in the frontend code${v.corrected ? `, <b>${v.corrected} corrected</b> to match the code` : ''}.</div>
-      <div>✓ <b>${boxed} screenshot callouts</b> placed from recorded element positions${m.boxed_ocr ? ` (${m.boxed_ocr} by on-screen text)` : ''}. Steps without a reliable position get no box rather than a wrong one.</div>
+      <div>✓ <b>${boxed} screenshot callouts</b> placed from recorded element positions${m.boxed_ocr ? ` (${m.boxed_ocr} by on-screen text)` : ''}, each checked against its screenshot. Steps without a reliable position get no box rather than a wrong one.</div>
+      ${dropped || m.stale ? `<div>✓ ${[dropped ? `${dropped} recorded position${dropped === 1 ? '' : 's'} didn't match the screenshot and got no box` : '', m.stale ? `${m.stale} outdated screenshot${m.stale === 1 ? ' was' : 's were'} left out` : ''].filter(Boolean).join('; ')}.</div>` : ''}
       ${unv.length ? `<div class="cr-danger-text">⚠ ${unv.length} label${unv.length === 1 ? '' : 's'} couldn't be confirmed and ${unv.length === 1 ? 'is' : 'are'} shown as plain text: ${unv.slice(0, 6).map(esc).join(', ')}</div>` : ''}
       ${(v.corrections || []).length ? `<details><summary>What Claude corrected</summary><ul>${v.corrections.slice(0, 12).map((c) => `<li>"${esc(c.was)}" → "${esc(c.now)}"</li>`).join('')}</ul></details>` : ''}`;
     const thumbs = d.thumbs || [];

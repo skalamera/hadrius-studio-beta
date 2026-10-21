@@ -10,16 +10,26 @@ red box comes from data, never from a guess:
   2. macOS Vision OCR of the screenshot, boxing the step's target label when it appears exactly
      once (icon-only controls and ambiguous labels get no box rather than a wrong one).
 
-A slide can group several steps on one screen. The slide shows the LAST step's screenshot and a
-step only gets a numbered box if its own capture and that screenshot look the same inside the box
-(a menu that has closed, a dialog that covers it, or a scrolled page fails the check). Numbers in
-the text always match the badges drawn, because both are assigned here.
+Every box is checked against its own screenshot before it is drawn: a box over blank space (the
+capture is stale or the page had scrolled) is dropped, and a box sitting on other text while the
+step's label is clearly elsewhere on screen moves to the label (clicks) or is dropped (typing).
+A capture that is byte-identical to an earlier step's capture from more than a second before, and
+doesn't show the step's element where the recorder says it was, is stale (the recorder reused an old
+screenshot): it gets no box and is never used as a slide picture. A text field found only by OCR of
+its placeholder is boxed along the field's own border.
+
+A slide can group several steps on one screen. The slide shows the last boxed step's screenshot
+and an earlier step only keeps its box there if the element's edges are still in the same place on
+that screenshot (a closed menu, a dialog that covers it, or a scrolled page fails the check);
+otherwise the step starts a "(continued)" slide with its own screenshot. Numbers in the text always
+match the badges drawn, because both are assigned here.
 
 Usage: deck.py <spec.json>   ->  prints a JSON result line {pptx, pdf, thumbs, stats}
 """
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -178,43 +188,209 @@ def ocr_box(path, label):
     return [x0 - 8, y0 - 6, x1 + 8, y1 + 6]
 
 
-def step_box(step, img_size):
-    """Box for a step in its OWN capture's pixel space, with where it came from."""
+def content_ok(img: Image.Image, box, edge=False) -> bool:
+    """Something is drawn inside the box (text, a border, an icon, a toggle). A recorded box over blank page or
+    a flat dialog backdrop means the screenshot doesn't show the element there (stale capture, scrolled page).
+    Calibrated on real decks: boxes on the element have a grey-level range of 89+, blank ones 0-27; pale
+    controls (an "off" toggle) have a small range but fill a large share of the box. `edge` (text fields) widens
+    the crop by 8 CSS px: a recorded input is often just the borderless text area inside the visible field, so
+    an empty one is blank inside while its border sits a few px outside."""
+    p = int(round(8 * img.size[0] / 1600.0)) if edge else 0
+    x0, y0, x1, y1 = [int(round(v)) for v in box]
+    c = img.crop((max(0, x0 - p), max(0, y0 - p), min(img.size[0], x1 + p), min(img.size[1], y1 + p))).convert('L')
+    if c.size[0] < 2 or c.size[1] < 2:
+        return False
+    lo, hi = c.getextrema()
+    if hi - lo >= 48:
+        return True
+    px = c.tobytes()
+    med = sorted(px)[len(px) // 2]
+    return sum(1 for v in px if abs(v - med) > 10) / len(px) >= 0.06
+
+
+def _label_match(t, want):
+    return t == want or (len(t) <= len(want) + 4 and difflib.SequenceMatcher(None, t, want).ratio() >= 0.88)
+
+
+def _gap(a, b):
+    """Distance between two boxes (0 if they touch or overlap)."""
+    dx = max(0, max(a[0], b[0]) - min(a[2], b[2]))
+    dy = max(0, max(a[1], b[1]) - min(a[3], b[3]))
+    return (dx * dx + dy * dy) ** 0.5
+
+
+def label_elsewhere(step, box, img_size):
+    """The OCR box of the step's label if the DOM box sits on OTHER text while the label shows exactly once,
+    well away from it (the recorder's box belongs to a different element than the screenshot shows)."""
+    want = norm(step.get('label'))
+    if len(want) < 3 or len(want.split()) > 5:
+        return None
+    lines = [(norm(t), b) for t, b in ocr_lines(step['image'])]
+    hits = [b for t, b in lines if t and any(_label_match(c, want) for c in {t, ' '.join(t.split()[1:])} if c)]
+    if len(hits) != 1:
+        return None
+    s = img_size[0] / 1600.0
+    if _gap(hits[0], box) <= 90 * s:  # a field label above its input, a checkbox's text beside it
+        return None
+    inside = [t for t, b in lines if t and _overlap_frac(b, box) > 0.5]
+    if not inside or any(want in t or t in want for t in inside):
+        return None
+    x0, y0, x1, y1 = hits[0]
+    return [x0 - 8, y0 - 6, x1 + 8, y1 + 6]
+
+
+def _overlap_frac(b, box):
+    ix = max(0, min(b[2], box[2]) - max(b[0], box[0]))
+    iy = max(0, min(b[3], box[3]) - max(b[1], box[1]))
+    return ix * iy / max(1.0, (b[2] - b[0]) * (b[3] - b[1]))
+
+
+TYPING = ('type', 'fill')
+VALUE_ROLES = {'combobox', 'textbox', 'searchbox', 'spinbutton', 'slider'}
+
+
+def _is_field(step):
+    return step.get('action') in TYPING or str(step.get('role') or '').lower() in VALUE_ROLES
+
+
+def _field_box(img: Image.Image, box):
+    """A text field found by OCR of its placeholder ("Title") gets boxed around the placeholder text only, which
+    looks wrong once the field holds a longer value ("Compliance Testi|ng"). Find the field's own border instead:
+    flood-fill its background from just right of the text and take the filled area. None unless the fill closes
+    (the field has a visible border), stays field-sized and keeps the text at its top-left, as a field's
+    content is; then the OCR box stays as it was."""
+    W, H = img.size
+    s = W / 1600.0
+    tx0, ty0, tx1, ty1 = box[0] + 8, box[1] + 6, box[2] - 8, box[3] - 6       # ocr_box() pads 8/6
+    max_w, max_h = 1000 * s, 220 * s
+    cx0, cy0 = max(0, int(tx0 - 60 * s)), max(0, int(ty0 - 40 * s))
+    cx1, cy1 = min(W, int(tx0 + max_w)), min(H, int(ty0 + max_h))
+    c = img.crop((cx0, cy0, cx1, cy1)).convert('L')
+    cw, ch = c.size
+    px = c.load()
+    sx, sy = int(tx1 + 6 * s) - cx0, int((ty0 + ty1) / 2) - cy0
+    if not (0 <= sx < cw and 0 <= sy < ch):
+        return None
+    bg = px[sx, sy]
+    seen = bytearray(cw * ch)
+    seen[sy * cw + sx] = 1
+    stack, n = [(sx, sy)], 0
+    minx = maxx = sx
+    miny = maxy = sy
+    while stack:
+        x, y = stack.pop()
+        n += 1
+        minx, maxx, miny, maxy = min(minx, x), max(maxx, x), min(miny, y), max(maxy, y)
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if not (0 <= nx < cw and 0 <= ny < ch):
+                return None                      # ran out of the search area: no closed border
+            i = ny * cw + nx
+            if not seen[i] and abs(px[nx, ny] - bg) <= 8:
+                seen[i] = 1
+                stack.append((nx, ny))
+    fx0, fy0, fx1, fy1 = cx0 + minx, cy0 + miny, cx0 + maxx + 1, cy0 + maxy + 1
+    if not (fx0 <= tx0 + 2 * s and fx1 >= tx1 and fy0 <= ty0 + 2 * s and fy1 >= ty1 - 2 * s):
+        return None                              # the fill didn't flow around the text
+    if tx0 - fx0 > 48 * s or ty0 - fy0 > 24 * s or n < 0.6 * (fx1 - fx0) * (fy1 - fy0):
+        return None                              # text not at the top-left, or not a mostly empty rectangle
+    p = 2 * s
+    return [max(0, fx0 - p), max(0, fy0 - p), min(W, fx1 + p), min(H, fy1 + p)]
+
+
+def step_box(step, img_size, why=None):
+    """Box for a step in its OWN capture's pixel space, with where it came from. `why` (a dict) collects
+    the reason a recorded box was dropped or moved, for the build stats."""
+    why = why if why is not None else {}
+    img = load(step['image']) if step.get('image') else None
     bb, vp = step.get('bbox'), step.get('viewport')
-    if bb and vp and vp.get('w') and bb.get('w', 0) > 2 and bb.get('h', 0) > 2:
+    if bb and vp and vp.get('w') and bb.get('w', 0) > 2 and bb.get('h', 0) > 2 and img is not None:
         k = img_size[0] / float(vp['w'])
         x0, y0 = bb['x'] * k, bb['y'] * k
         x1, y1 = (bb['x'] + bb['w']) * k, (bb['y'] + bb['h']) * k
         x0, y0 = max(0, x0), max(0, y0)
         x1, y1 = min(img_size[0], x1), min(img_size[1], y1)
         if x1 - x0 > 4 and y1 - y0 > 4:
-            return [x0, y0, x1, y1], 'dom'
+            box = [x0, y0, x1, y1]
+            if not content_ok(img, box, edge=_is_field(step)):
+                why['blank'] = why.get('blank', 0) + 1     # the screenshot doesn't show the element there
+            else:
+                moved = label_elsewhere(step, box, img_size) if step.get('label') else None
+                if moved is None:
+                    return box, 'dom'
+                if step.get('action') in TYPING:
+                    why['conflict'] = why.get('conflict', 0) + 1
+                    return None, None
+                why['moved'] = why.get('moved', 0) + 1
+                return moved, 'ocr'
     if step.get('label') and step.get('image'):
         b = ocr_box(step['image'], step['label'])
-        if b:
-            return b, 'ocr'
+        if b and content_ok(img, b):
+            return ((_field_box(img, b) or b) if _is_field(step) else b), 'ocr'
     return None, None
 
 
+def _edges(img: Image.Image, win):
+    g = img.crop(win).convert('L').filter(ImageFilter.FIND_EDGES)
+    return g.point(lambda v: 255 if v > 48 else 0)
+
+
+def _edge_keep(a: Image.Image, b: Image.Image, win):
+    """Share of a's edge pixels with an edge within 1px on b, and the reverse (min of the two). None if either
+    side has no edges at all (nothing to compare)."""
+    ea, eb = _edges(a, win), _edges(b, win)
+    da, db = ea.filter(ImageFilter.MaxFilter(3)), eb.filter(ImageFilter.MaxFilter(3))
+    pa, pb, qa, qb = ea.tobytes(), eb.tobytes(), da.tobytes(), db.tobytes()
+    na = sum(1 for v in pa if v)
+    nb = sum(1 for v in pb if v)
+    if na == 0 or nb == 0:
+        return None
+    keep_a = sum(1 for v, w in zip(pa, qb) if v and w) / na
+    keep_b = sum(1 for v, w in zip(pb, qa) if v and w) / nb
+    return min(keep_a, keep_b)
+
+
+def _mean(img: Image.Image, win):
+    c = img.crop(win).convert('L').resize((16, 16))
+    return sum(c.tobytes()) / 256.0
+
+
 def same_region(a: Image.Image, b: Image.Image, box, loose=False):
-    """True if the box looks the same in both captures (element still visible, not covered)."""
+    """True if the element in `box` (on capture `a`) is still drawn, unchanged and uncovered, in the same place
+    on capture `b`, so a box drawn there on `b` still points at it.
+
+    Compares edges (text strokes, borders, icons) in the box plus a 12px ring, at least 64px tall: 75%+ of each
+    side's edge pixels must have an edge within 1px on the other. Calibrated on 82 labelled shares from four
+    decks: wrong ones (closed dropdown, scrolled dialog, popover over the control, different page, a look-alike
+    checkbox that slid into place) scored <= 0.68, so 0.75 keeps a margin; a right share that scores lower just
+    starts a "(continued)" slide. The box interior must match the same way unless `loose` (typing, toggles,
+    selects: the value inside may change). A window that got much darker or lighter means a modal backdrop now
+    covers the element (or was lifted). Button text that changed in place ("Next" -> "Save and next") is caught
+    by same_text()."""
     if a.size != b.size:
         return False
-    x0, y0, x1, y1 = [int(round(v)) for v in box]
-    pad = 4
-    crop = (max(0, x0 - pad), max(0, y0 - pad), min(a.size[0], x1 + pad), min(a.size[1], y1 + pad))
-    if crop[2] - crop[0] < 4 or crop[3] - crop[1] < 4:
+    W, H = a.size
+    s = W / 1600.0
+    x0, y0, x1, y1 = box
+    m = 12 * s
+    # at least 64 CSS px tall: a small control (a row's checkbox) needs the rows around it in view, or a
+    # look-alike that slid into its place (the header checkbox, once a toolbar pushed the table down) matches
+    cy, hh = (y0 + y1) / 2, max((y1 - y0) / 2 + m, 32 * s)
+    win = (int(max(0, x0 - m)), int(max(0, cy - hh)), int(min(W, x1 + m)), int(min(H, cy + hh)))
+    if win[2] - win[0] < 4 or win[3] - win[1] < 4:
         return False
-    # Compare on a grid scaled to the box's aspect. A mostly-white area can hide a big change in
-    # its average, so also cap the share of cells that changed a lot.
-    gw = 48
-    gh = max(6, min(48, round(gw * (crop[3] - crop[1]) / max(1, crop[2] - crop[0]))))
-    ca = a.crop(crop).convert('L').resize((gw, gh)).tobytes()
-    cb = b.crop(crop).convert('L').resize((gw, gh)).tobytes()
-    diffs = [abs(p - q) for p, q in zip(ca, cb)]
-    mean = sum(diffs) / len(diffs)
-    changed = sum(1 for d in diffs if d > 40) / len(diffs)
-    return mean < (26 if loose else 14) and changed < (0.22 if loose else 0.06)
+    la, lb = _mean(a, win), _mean(b, win)
+    if lb < 0.85 * la or la < 0.85 * lb:
+        return False
+    keep = _edge_keep(a, b, win)
+    if keep is None or keep < 0.75:
+        return False                                     # nothing to compare, or the surroundings changed
+    if loose:
+        return True
+    inner = (int(max(0, x0)), int(max(0, y0)), int(min(W, x1)), int(min(H, y1)))
+    if inner[2] - inner[0] < 3 or inner[3] - inner[1] < 3:
+        return True
+    k_in = _edge_keep(a, b, inner)
+    return k_in is None or k_in >= 0.8
 
 
 # --------------------------------------------------------------------------- image annotation
@@ -279,7 +455,7 @@ def load(path):
     return _img_cache[path]
 
 
-LOOSE_ROLES = {'checkbox', 'switch', 'radio', 'option', 'tab', 'combobox', 'textbox', 'searchbox', 'spinbutton'}
+LOOSE_ROLES = {'checkbox', 'switch', 'radio', 'option', 'tab', 'combobox', 'textbox', 'searchbox', 'spinbutton', 'slider'}
 
 
 def resolve_boxes(slide_steps, stats):
@@ -289,7 +465,14 @@ def resolve_boxes(slide_steps, stats):
         if not st.get('image') or not os.path.isfile(st['image']) or st.get('nobox'):
             out.append(None)
             continue
-        box, src = step_box(st, load(st['image']).size)
+        if st.get('_stale'):
+            stats['stale'] = stats.get('stale', 0) + 1
+            out.append(None)
+            continue
+        why = {}
+        box, src = step_box(st, load(st['image']).size, why)
+        for k, v in why.items():
+            stats['box_' + k] = stats.get('box_' + k, 0) + v
         if box:
             stats['boxed_' + str(src)] += 1
         else:
@@ -298,11 +481,72 @@ def resolve_boxes(slide_steps, stats):
     return out
 
 
+def capture_ms(path):
+    """Capture time in ms from a recorder file name (step_<base36 ms><3 random>.png), or None."""
+    m = re.match(r'step_([0-9a-z]{8})[0-9a-z]{4}\.png$', os.path.basename(str(path)))
+    if not m:
+        return None
+    ms = int(m.group(1), 36)
+    return ms if 1.5e12 < ms < 2.2e12 else None
+
+
+def _dom_box(step, size):
+    bb, vp = step.get('bbox'), step.get('viewport')
+    if not (bb and vp and vp.get('w') and bb.get('w', 0) > 2 and bb.get('h', 0) > 2):
+        return None
+    k = size[0] / float(vp['w'])
+    return [max(0, bb['x'] * k), max(0, bb['y'] * k), min(size[0], (bb['x'] + bb['w']) * k), min(size[1], (bb['y'] + bb['h']) * k)]
+
+
+def mark_stale(spec):
+    """Flag captures the recorder reused from an earlier moment: byte-identical to an earlier step's capture
+    taken more than a second before it AND the step's recorded element isn't drawn where the recorder says
+    (seen on a recording where five steps on a policy page all carry the policies-list screenshot). Such a
+    picture doesn't show what the step describes, so it gets no box and never becomes a slide's picture.
+    Identical frames alone aren't enough: clicking an already-selected radio legitimately changes nothing,
+    and two steps captured in the same instant (a typed value flushed by the next click) share one frame."""
+    first = {}
+    for sec in spec.get('sections') or []:
+        for sd in sec.get('slides') or []:
+            for st in sd.get('steps') or []:
+                p = st.get('image')
+                st['_stale'] = False
+                if not p or not os.path.isfile(p):
+                    continue
+                h = hashlib.md5(Path(p).read_bytes()).hexdigest()
+                p0 = first.setdefault(h, p)
+                t0, t1 = capture_ms(p0), capture_ms(p)
+                if p0 == p or t0 is None or t1 is None or abs(t1 - t0) <= 1000:
+                    continue
+                img = load(p)
+                box = _dom_box(st, img.size)
+                st['_stale'] = box is not None and not content_ok(img, box, edge=_is_field(st))
+
+
+def _texts_in(path, box):
+    return [norm(t) for t, b in ocr_lines(path) if norm(t) and _overlap_frac(b, box) >= 0.5]
+
+
+def _says(texts, want):
+    return any(_label_match(c, want) for t in texts for c in (t, ' '.join(t.split()[1:])) if c)
+
+
+def same_text(st, box, base_path):
+    """If the step's own capture shows its label as the element's text inside the box, the base must show the
+    same text there: edges alone can't tell "Next" from "Save and next" in the same spot."""
+    want = norm(st.get('label'))
+    if not want or len(want.split()) > 5 or _is_field(st):
+        return True
+    if not _says(_texts_in(st['image'], box), want):
+        return True          # the label isn't visible text inside the box (icon button, checkbox): nothing to compare
+    return _says(_texts_in(base_path, box), want)
+
+
 def visible_on(st, box, base_path):
     if st['image'] == base_path:
         return True
     loose = st.get('action') in ('type', 'select', 'fill') or str(st.get('role') or '').lower() in LOOSE_ROLES
-    return same_region(load(st['image']), load(base_path), box, loose=loose)
+    return same_region(load(st['image']), load(base_path), box, loose=loose) and same_text(st, box, base_path)
 
 
 def split_runs(slide_steps, boxes):
@@ -311,7 +555,7 @@ def split_runs(slide_steps, boxes):
     dialog opened, page changed) starts a new run instead of losing its box."""
     runs, cur = [], []
     for i, st in enumerate(slide_steps):
-        has_img = bool(st.get('image') and os.path.isfile(st['image']))
+        has_img = bool(st.get('image') and os.path.isfile(st['image'])) and not st.get('_stale')
         if not has_img or boxes[i] is None:
             cur.append(i)  # nothing to point at: rides along without changing the run's screenshot
             continue
@@ -328,7 +572,7 @@ def split_runs(slide_steps, boxes):
 
 def annotate(run_steps, run_boxes, style, out_path):
     """Draw boxes on the run's base screenshot. Returns (path, [badge number or None per step])."""
-    with_img = [s for s in run_steps if s.get('image') and os.path.isfile(s['image'])]
+    with_img = [s for s in run_steps if s.get('image') and os.path.isfile(s['image']) and not s.get('_stale')]
     if not with_img:
         return None, [None] * len(run_steps)
     boxed_imgs = [s['image'] for s, b in zip(run_steps, run_boxes) if b is not None and s.get('image') and os.path.isfile(s['image'])]
@@ -670,6 +914,25 @@ class Deck:
         if cont and (cont['body'] or cont['bullets']):
             self.concept(section, cont)
 
+    def text_only_steps(self, sl, sd, steps):
+        """A steps slide with no trustworthy screenshot (every capture was stale or missing): the lead, the
+        numbered steps and any notes across the full width instead of beside an empty picture area."""
+        x, w, y = 0.5, 12.3, 1.5
+        if sd.get('lead'):
+            lh = text_h(sd['lead'], w, 15)
+            self.text(sl, x, y, w, lh, sd['lead'], size=15, color=PURPLE_DARK)
+            y += lh + 0.18
+        notes = [p for p in (sd.get('body') or []) if p] + [p for p in (sd.get('after') or []) if p]
+        tip = sd.get('tip')
+        tip_h = self.tip_layout(tip, w)[1] if tip else 0
+        items = [(i + 1, st['text']) for i, st in enumerate([s for s in steps if s.get('text')])]
+        items += [('•', p) for p in notes]
+        bottom = 6.85 - (tip_h + 0.15 if tip else 0)
+        if items:
+            self.steps_list(sl, items, x, y, w, bottom - y, size=13.5, gap=0.12)
+        if tip:
+            self.tip(sl, tip, x=x, w=w)
+
     def steps_slide(self, section, sd, style, img, numbers):
         steps = sd['steps']
         sl = self.prs.slides.add_slide(self.blank)
@@ -680,7 +943,10 @@ class Deck:
             self.footer(sl)
             return
         self.header(sl, section, sd.get('title', ''))
-        if style == 'standard':
+        more = []
+        if not img:
+            self.text_only_steps(sl, sd, steps)
+        elif style == 'standard':
             items = []
             if sd.get('lead'):
                 items.append((None, sd['lead']))
@@ -864,6 +1130,7 @@ def main():
     img_dir.mkdir(parents=True)
     style = spec.get('style') if spec.get('style') in ('standard', 'detailed', 'visual') else 'standard'
     stats = {'slides': 0, 'boxed_dom': 0, 'boxed_ocr': 0, 'unboxed': 0, 'split_extra': 0}
+    mark_stale(spec)
     deck = Deck(spec)
     deck.cover()
     sections = [s for s in spec.get('sections') or [] if s.get('slides')]
@@ -894,6 +1161,7 @@ def main():
                     part['steps'] = [sd['steps'][i] for i in run]
                     if ri > 0:
                         part['lead'] = None
+                        part['body'] = None          # the notes go with the first part, not repeated on each
                         part['title'] = f"{sd.get('title', '')} (continued)"
                     if ri < len(runs) - 1:
                         part['tip'] = None
