@@ -14,8 +14,9 @@ import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
 import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
 import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
-import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording } from './gdrive.mjs';
+import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording, googleDriveUploadDeck, googleDriveListDeckFiles, googleDriveFetchFile, googleDriveDeleteDeck, SLIDE_DECKS_FOLDER_ID } from './gdrive.mjs';
 import { getAcademyLessons, recordAcademyVideoLink } from './academy-lessons.mjs';
+import { createDeckStudio } from './deck-studio.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -2296,6 +2297,16 @@ Output ONLY a JSON object in this format:
   return JSON.parse(text);
 }
 
+// Create ✨ tab: AI slide decks built from recorded screenshots (tools/deck-studio.mjs).
+const deckStudio = createDeckStudio({
+  REPO_ROOT, libraryFetch, hasLibrary: () => !!LIBRARY_SECRET, safeName, formatHumanTitle,
+  googleDriveDownloadRecording, googleDriveConfigured, inferModuleFromScript, claudeEnv, extractJson, runGeminiPrompt, WHOAMI,
+  drive: {
+    configured: googleDriveConfigured, folderId: SLIDE_DECKS_FOLDER_ID, uploadDeck: googleDriveUploadDeck,
+    listDeckFiles: googleDriveListDeckFiles, fetchFile: googleDriveFetchFile, deleteDeck: googleDriveDeleteDeck,
+  },
+});
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -2303,6 +2314,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   const u = new URL(req.url, 'http://x');
   loadDotEnv();
+  if (u.pathname === '/decks' || u.pathname.startsWith('/decks/')) return deckStudio.handle(req, res, u);
 
   // ---- record-time capture ("Staged Studio" Phase 0): one slide per step, written as the person
   // clicks through, keyed by the step's captureId (stable across later edits/reordering) rather

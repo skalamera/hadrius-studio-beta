@@ -28,10 +28,13 @@ function switchView(name) {
   const isRecord = name === 'record' || name === 'recording';
   const isToRecord = name === 'toRecord' || name === 'workflows';
   const isRecorded = name === 'recorded' || name === 'pylonArticles';
+  const isCreate = name === 'create';
 
   $('#recordingView').hidden = !isRecord;
   $('#workflowsView').hidden = !isToRecord;
   $('#pylonArticlesView').hidden = !isRecorded;
+  if ($('#createView')) $('#createView').hidden = !isCreate;
+  if (isCreate && typeof window.onCreateViewShown === 'function') window.onCreateViewShown();
 
   $$('.tab').forEach((tab) => {
     const v = tab.dataset.view;

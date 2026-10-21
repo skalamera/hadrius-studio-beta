@@ -69,6 +69,18 @@ Anything marked **Beta** in amber — Auto-record, Enhance Plan, Generate plan, 
 
 Outputs are written to `out/<walkthrough name>/`.
 
+## Create ✨ (slide decks)
+
+The **Create ✨** tab builds training slide decks from the screenshots every recorded walkthrough already has (the Drive `_recordings` folder plus the shared script library).
+
+1. Check **📚 Library** first: every finished deck is saved to the shared [Slide Decks](https://drive.google.com/drive/folders/1aMR971LkbSTwMn5psY5wKqsCuvPaGjd5) Drive folder and is searchable and downloadable from there. While you type a request, matching decks also show up under **Already in the shared library**.
+2. In **✨ New deck**, describe a workflow ("How to import employees") or a module ("Getting started with People Oversight"), or click an idea. Pick the audience (Admins, Employees, Both), a style (Standard, Detailed, Visual) and a length.
+3. Claude picks the recordings that cover it and proposes an outline. Remove slides, ask for changes, or approve it.
+4. On approval Claude writes each section after reading the real `hadrius_frontend` components through the hadrius-codebase MCP. Every bolded UI label is then checked: captured from the live product by the recorder, cited from a code file, or re-checked in a second pass that confirms, corrects, or un-bolds it.
+5. `renderer/deck.py` marks up the screenshots (boxes come from the recorder's element positions, with OCR as a fallback; a step with no reliable position gets no box), builds the editable `.pptx`, exports a PDF (LibreOffice, else Keynote), and the bridge uploads both to the Slide Decks folder.
+
+Local copies live in `out/_decks/<id>/`. Needs `python-pptx`, `pymupdf` and `ocrmac` (installed by `setup.sh` from `requirements.txt`) and LibreOffice or Keynote for the PDF.
+
 ## Pylon collections
 
 The six collection IDs live in `tools/pylon.mjs`. All article visibility states are shown, with Published/Draft badges. Article synchronization is read-only until a video is rendered and explicitly published through supported bridge behavior.

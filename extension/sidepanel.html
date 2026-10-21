@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="sidepanel.css">
+  <link rel="stylesheet" href="create.css">
 </head>
 <body>
   <header>
@@ -27,7 +28,7 @@
       <span class="tool-status" id="bridgeToolStatus"><img class="status-icon" id="bridgeDot" src="icons/status/bridge-disconnected.svg" alt=""><span class="tool-status-label" id="bridgeLabel">Bridge</span><span class="tool-status-tooltip" id="bridgeTooltip">Checking…</span></span>
     </div>
   </header>
-  <nav><button class="tab active" data-view="record">Record <span id="stepCount" hidden></span></button><button class="tab" data-view="toRecord">To Record <span id="toRecordCount" class="badge" hidden></span></button><button class="tab" data-view="recorded">Recorded <span id="pylonArticleCount" class="badge" hidden></span></button></nav>
+  <nav><button class="tab active" data-view="record">Record <span id="stepCount" hidden></span></button><button class="tab" data-view="toRecord">To Record <span id="toRecordCount" class="badge" hidden></span></button><button class="tab" data-view="recorded">Recorded <span id="pylonArticleCount" class="badge" hidden></span></button><button class="tab tab-create" data-view="create">Create <span class="tab-sparkle" aria-hidden="true">✨</span><span id="createBusyDot" class="create-busy-dot" hidden></span></button></nav>
 
   <div id="statusBarContainer" class="top-status-container">
     <div id="recordingBanner" class="top-banner recording-banner" hidden>
@@ -144,6 +145,154 @@
         </svg>
       </button>
     </footer>
+  </main>
+
+  <!-- Create ✨: AI slide decks from recorded screenshots (create.js / create.css, bridge /decks) -->
+  <main id="createView" hidden>
+    <section class="cr-hero">
+      <div class="cr-hero-glow" aria-hidden="true"></div>
+      <h1 class="cr-hero-title"><span class="cr-spark">✨</span> Create a slide deck</h1>
+      <p class="cr-hero-sub">Describe a workflow or a whole module. Claude picks the recordings that cover it, checks every button and menu against the product code, and builds a marked-up PowerPoint and PDF.</p>
+      <ol class="cr-howto" aria-label="How it works">
+        <li><span>1</span>Describe it</li>
+        <li><span>2</span>Approve the outline</li>
+        <li><span>3</span>Download PPTX + PDF</li>
+      </ol>
+    </section>
+
+    <div class="cr-modes" role="tablist" aria-label="Create or browse">
+      <button type="button" role="tab" id="crModeCreate" class="cr-mode active" aria-selected="true">✨ New deck</button>
+      <button type="button" role="tab" id="crModeLibrary" class="cr-mode" aria-selected="false">📚 Library <span id="crLibCount" class="cr-mode-count" hidden></span></button>
+    </div>
+
+    <section id="crLibrary" class="cr-library" hidden>
+      <div class="cr-lib-search">
+        <span class="cr-lib-search-icon" aria-hidden="true">⌕</span>
+        <input id="crLibSearch" type="search" placeholder="Search decks: workflow, module, button…" autocomplete="off">
+      </div>
+      <div class="cr-lib-filters">
+        <select id="crLibModule" aria-label="Module"><option value="">All modules</option></select>
+        <select id="crLibAudience" aria-label="Audience"><option value="">Any audience</option><option value="admin">Admins</option><option value="employee">Employees</option><option value="both">Admins + employees</option></select>
+        <select id="crLibStyle" aria-label="Style"><option value="">Any style</option><option value="standard">Standard</option><option value="detailed">Detailed</option><option value="visual">Visual</option></select>
+      </div>
+      <div class="cr-lib-bar"><span id="crLibStatus" class="cr-lib-status">Loading the shared library…</span><span><a id="crLibFolder" class="cr-ghost-btn" href="#" target="_blank" rel="noopener noreferrer" hidden>Open folder ↗</a><button id="crLibRefresh" class="cr-ghost-btn" type="button" title="Refresh">↻</button></span></div>
+      <div id="crLibList" class="cr-lib-list"></div>
+    </section>
+
+    <section id="crCompose" class="cr-card">
+      <label class="cr-label" for="crPrompt"><span class="cr-num">1</span>What should the deck cover?</label>
+      <div class="cr-prompt-wrap">
+        <textarea id="crPrompt" rows="3" maxlength="1200" placeholder="e.g. Show new admins how to import employees from a spreadsheet, then invite them to Hadrius"></textarea>
+        <span class="cr-prompt-count" id="crPromptCount"></span>
+      </div>
+      <div id="crExisting" class="cr-existing" hidden></div>
+      <p class="cr-hint">Name the workflow or module, and anything to include or skip. Workflows make short decks (3-6 slides); "Getting started with …" makes a full module guide.</p>
+      <div class="cr-suggest-head">
+        <span class="cr-mini-label">Try one</span>
+        <button id="crShuffle" class="cr-ghost-btn" type="button" title="Show different ideas">🎲 Shuffle</button>
+      </div>
+      <div id="crSuggestions" class="cr-chips" aria-live="polite"></div>
+
+      <label class="cr-label"><span class="cr-num">2</span>Who is it for?</label>
+      <div class="cr-seg" id="crAudience" role="radiogroup" aria-label="Audience">
+        <button type="button" role="radio" data-v="admin"><span class="cr-seg-icon">🛡️</span>Admins<small>Set up and review</small></button>
+        <button type="button" role="radio" data-v="employee"><span class="cr-seg-icon">👤</span>Employees<small>Submit and attest</small></button>
+        <button type="button" role="radio" data-v="both"><span class="cr-seg-icon">👥</span>Both<small>General guide</small></button>
+      </div>
+
+      <label class="cr-label"><span class="cr-num">3</span>Pick a style</label>
+      <div class="cr-styles" id="crStyle" role="radiogroup" aria-label="Style">
+        <button type="button" role="radio" data-v="standard" class="cr-style">
+          <span class="cr-thumb cr-thumb-standard" aria-hidden="true"><i class="shot"><b></b><b></b></i><i class="lines"><em></em><em></em><em></em><em></em></i></span>
+          <span class="cr-style-name">Standard</span><span class="cr-style-desc">Screenshot, numbered steps, short tips</span>
+        </button>
+        <button type="button" role="radio" data-v="detailed" class="cr-style">
+          <span class="cr-thumb cr-thumb-detailed" aria-hidden="true"><i class="shot"><b></b></i><i class="lines"><em></em><em></em><em></em><em></em><em></em><em></em></i></span>
+          <span class="cr-style-name">Detailed</span><span class="cr-style-desc">Full explanations, light markup</span>
+        </button>
+        <button type="button" role="radio" data-v="visual" class="cr-style">
+          <span class="cr-thumb cr-thumb-visual" aria-hidden="true"><i class="shot"><b></b><b></b><u></u><u></u></i></span>
+          <span class="cr-style-name">Visual</span><span class="cr-style-desc">Screenshots only, heavy markup</span>
+        </button>
+      </div>
+
+      <label class="cr-label"><span class="cr-num">4</span>How long?</label>
+      <div class="cr-seg cr-seg-sm" id="crLength" role="radiogroup" aria-label="Length">
+        <button type="button" role="radio" data-v="auto">Auto<small>AI decides</small></button>
+        <button type="button" role="radio" data-v="quick">Quick<small>3-5 slides</small></button>
+        <button type="button" role="radio" data-v="standard">Standard<small>10-20</small></button>
+        <button type="button" role="radio" data-v="complete">Complete<small>40+</small></button>
+      </div>
+
+      <button id="crPlanBtn" class="cr-cta" type="button"><span class="cr-cta-spark">✨</span> Draft outline</button>
+      <p class="cr-footnote">Nothing is built until you approve the outline. <span id="crRecCount"></span></p>
+    </section>
+
+    <section id="crWorking" class="cr-card cr-working" hidden>
+      <div class="cr-orb" aria-hidden="true"><span></span><span></span><span></span></div>
+      <h2 id="crWorkTitle" class="cr-work-title">Drafting your outline</h2>
+      <p id="crWorkPhase" class="cr-work-phase">Starting…</p>
+      <ol id="crStages" class="cr-stages"></ol>
+      <div class="cr-progress" id="crProgressWrap" hidden><div id="crProgressBar"></div></div>
+      <p id="crWorkLog" class="cr-work-log"></p>
+      <p class="cr-work-note" id="crWorkNote">You can switch tabs or close the panel. This keeps running.</p>
+      <button id="crCancelBtn" class="cr-ghost-btn cr-danger" type="button">Cancel</button>
+    </section>
+
+    <section id="crOutline" class="cr-card" hidden>
+      <div class="cr-out-kicker">Proposed outline</div>
+      <h2 id="crOutTitle" class="cr-out-title"></h2>
+      <p id="crOutSubtitle" class="cr-out-sub"></p>
+      <div id="crOutMeta" class="cr-meta"></div>
+      <div id="crOutGaps" class="cr-gaps" hidden></div>
+      <p class="cr-out-help">Review the plan. Remove anything you don't need with ✕, or ask for changes.</p>
+      <div id="crOutSections" class="cr-sections"></div>
+      <div id="crReviseBox" class="cr-revise" hidden>
+        <label for="crReviseText" class="cr-mini-label">What should change?</label>
+        <textarea id="crReviseText" rows="3" maxlength="1200" placeholder="e.g. Add a section on reviewing submissions, and drop the export slides"></textarea>
+        <div class="cr-row"><button id="crReviseSend" class="cr-btn-primary" type="button">Update outline</button><button id="crReviseCancel" class="cr-ghost-btn" type="button">Never mind</button></div>
+      </div>
+      <div class="cr-out-actions">
+        <button id="crBuildBtn" class="cr-cta" type="button"><span class="cr-cta-spark">✨</span> Looks good, build it</button>
+        <div class="cr-row">
+          <button id="crReviseBtn" class="cr-btn-secondary" type="button">✎ Ask for changes</button>
+          <button id="crRestartBtn" class="cr-ghost-btn" type="button">Start over</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="crDone" class="cr-card" hidden>
+      <div class="cr-done-head">
+        <div class="cr-done-check" aria-hidden="true">✓</div>
+        <div><div class="cr-out-kicker">Your deck is ready</div><h2 id="crDoneTitle" class="cr-out-title"></h2></div>
+      </div>
+      <div id="crDoneMeta" class="cr-meta"></div>
+      <div class="cr-downloads">
+        <a id="crDlPptx" class="cr-dl" href="#" download><span class="cr-dl-icon pptx">P</span><span><b>PowerPoint</b><small>Editable .pptx</small></span></a>
+        <a id="crDlPdf" class="cr-dl" href="#" download><span class="cr-dl-icon pdf">PDF</span><span><b>PDF</b><small>Ready to share</small></span></a>
+      </div>
+      <p id="crPdfError" class="cr-warn" hidden></p>
+      <div id="crShared" class="cr-shared"></div>
+      <div id="crVerify" class="cr-verify"></div>
+      <div class="cr-mini-label cr-preview-label">Preview</div>
+      <div id="crThumbs" class="cr-thumbs"></div>
+      <div class="cr-row cr-done-actions">
+        <button id="crNewBtn" class="cr-btn-primary" type="button">✨ Create another</button>
+        <button id="crRebuildBtn" class="cr-btn-secondary" type="button">Edit outline</button>
+      </div>
+    </section>
+
+    <section id="crFailed" class="cr-card" hidden>
+      <div class="cr-out-kicker cr-danger-text">Couldn't finish</div>
+      <p id="crFailMsg" class="cr-fail-msg"></p>
+      <div class="cr-row"><button id="crRetryBtn" class="cr-btn-primary" type="button">Try again</button><button id="crFailRestart" class="cr-ghost-btn" type="button">Start over</button></div>
+    </section>
+
+    <section class="cr-history">
+      <div class="cr-history-head"><span class="cr-mini-label">Your recent decks</span><button id="crHistoryRefresh" class="cr-ghost-btn" type="button" title="Refresh">↻</button></div>
+      <div id="crHistory" class="cr-history-list"><p class="muted">No decks yet.</p></div>
+    </section>
+    <div id="crLightbox" class="cr-lightbox" hidden><img id="crLightboxImg" alt=""><button id="crLightboxClose" class="cr-lightbox-close" type="button" aria-label="Close">✕</button><button id="crLbPrev" class="cr-lb-nav prev" type="button" aria-label="Previous">‹</button><button id="crLbNext" class="cr-lb-nav next" type="button" aria-label="Next">›</button></div>
   </main>
 
   <!-- Floating render/export bar — lives outside the tab <main>s so it stays visible and
@@ -460,5 +609,6 @@
 
   <script src="html2canvas.min.js"></script>
   <script src="sidepanel.js"></script>
+  <script src="create.js"></script>
 </body>
 </html>

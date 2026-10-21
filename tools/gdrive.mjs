@@ -384,3 +384,93 @@ export async function googleDriveDownloadRecording(recordingId, localDir, fileNa
   }
   return got;
 }
+
+// ---- Create ✨ slide decks: the shared "Slide Decks" folder (Hadrius Academy/Slide Decks) ----
+// Every finished deck is filed here as up to three files tied together by appProperties
+// (hadriusDeck=1, deckId, kind=pptx|pdf|cover). The PowerPoint carries the deck's searchable
+// metadata (title, request, module, audience, style, sections) as JSON in its description, so the
+// extension's library is ONE folder listing, not a request per deck.
+export const SLIDE_DECKS_FOLDER_ID = '1aMR971LkbSTwMn5psY5wKqsCuvPaGjd5';
+
+async function resumableUpload(accessToken, metadata, filePath, mime) {
+  const size = fs.statSync(filePath).size;
+  const start = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,webViewLink', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime, 'X-Upload-Content-Length': String(size) },
+    body: JSON.stringify(metadata),
+  });
+  if (!start.ok) { const d = await start.json().catch(() => ({})); throw new Error(`Google Drive upload start failed: ${d.error?.message || start.status}`); }
+  const location = start.headers.get('location');
+  const put = await fetch(location, { method: 'PUT', headers: { 'Content-Type': mime, 'Content-Length': String(size) }, body: fs.readFileSync(filePath) });
+  const file = await put.json().catch(() => ({}));
+  if (!put.ok) throw new Error(`Google Drive upload of ${path.basename(filePath)} failed: ${file.error?.message || put.status}`);
+  return file;
+}
+
+/** Upload a finished deck. files: [{ path, kind: 'pptx'|'pdf'|'cover' }]. Replaces an earlier upload of the same deckId. */
+export async function googleDriveUploadDeck(deckId, files, meta) {
+  if (!googleDriveConfigured()) throw new Error('Google Drive is not connected on this machine');
+  const accessToken = await getAccessToken();
+  const existing = await googleDriveListDeckFiles({ deckId });
+  const out = {};
+  const MIME = { pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', pdf: 'application/pdf', cover: 'image/png' };
+  for (const f of files) {
+    if (!f?.path || !fs.existsSync(f.path)) continue;
+    const metadata = {
+      name: f.kind === 'cover' ? `${meta.title} (cover).png` : path.basename(f.path),
+      parents: [SLIDE_DECKS_FOLDER_ID],
+      appProperties: { hadriusDeck: '1', deckId, kind: f.kind },
+      ...(f.kind === 'pptx' ? { description: JSON.stringify(meta).slice(0, 20000) } : {}),
+    };
+    const file = await resumableUpload(accessToken, metadata, f.path, MIME[f.kind]);
+    out[f.kind] = { id: file.id, url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view` };
+  }
+  // Drop the previous upload of this deck (a rebuild), but only once the new files are in.
+  for (const old of existing) {
+    if (Object.values(out).some((n) => n.id === old.id)) continue;
+    await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(old.id)}?supportsAllDrives=true`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => {});
+  }
+  return out;
+}
+
+/** Every deck file in the Slide Decks folder (optionally one deck's). */
+export async function googleDriveListDeckFiles({ deckId } = {}) {
+  if (!googleDriveConfigured()) throw new Error('Google Drive is not connected on this machine');
+  const accessToken = await getAccessToken();
+  const files = [];
+  let pageToken;
+  const q = `'${SLIDE_DECKS_FOLDER_ID}' in parents and trashed = false and appProperties has { key='hadriusDeck' and value='1' }`
+    + (deckId ? ` and appProperties has { key='deckId' and value='${String(deckId).replace(/[^\w-]/g, '')}' }` : '');
+  do {
+    const params = new URLSearchParams({
+      q, pageSize: '1000', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true',
+      fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,description,appProperties,webViewLink,owners(displayName,emailAddress),lastModifyingUser(displayName))',
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const resp = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(`Google Drive listing failed: ${data.error?.message || resp.status}`);
+    files.push(...(data.files || []));
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return files;
+}
+
+/** Stream a Drive file's bytes (fetch Response) — the bridge pipes it to the panel. */
+export async function googleDriveFetchFile(fileId) {
+  const accessToken = await getAccessToken();
+  const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!resp.ok) throw new Error(`Google Drive download failed: ${resp.status}`);
+  return resp;
+}
+
+/** Delete one deck's files from the shared folder. */
+export async function googleDriveDeleteDeck(deckId) {
+  const accessToken = await getAccessToken();
+  const files = await googleDriveListDeckFiles({ deckId });
+  for (const f of files) {
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(f.id)}?supportsAllDrives=true`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!r.ok && r.status !== 404) throw new Error(`Google Drive delete failed: ${r.status}`);
+  }
+  return files.length;
+}
