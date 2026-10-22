@@ -109,33 +109,54 @@ export function createDeckStudio(deps) {
   async function slot() { if (active < 3) { active++; return; } await new Promise((r) => waiters.push(r)); active++; }
   function release() { active--; const w = waiters.shift(); if (w) w(); }
 
-  /** Claude CLI with the prompt on stdin (decks need prompts far past ARG_MAX), JSON reply parsed. */
-  async function claudeJson(job, prompt, { tools = true, maxTurns = 60, timeoutMs = 15 * 60000, cwd } = {}) {
+  /** Claude CLI with the prompt on stdin (decks need prompts far past ARG_MAX); resolves the reply text. */
+  function runClaude(job, prompt, { tools = true, maxTurns = 60, timeoutMs = 15 * 60000, cwd } = {}) {
+    return new Promise((resolve, reject) => {
+      const args = ['-p', '--output-format', 'json', '--max-turns', String(maxTurns)];
+      if (tools) args.push('--allowedTools', CODEBASE_TOOLS);
+      const child = spawn('claude', args, { env: claudeEnv(), cwd: cwd || DECKS_DIR, stdio: ['pipe', 'pipe', 'pipe'] });
+      job?.children.add(child);
+      let out = '', err = '';
+      const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Claude took too long (timed out)')); }, timeoutMs);
+      child.stdout.on('data', (c) => (out += c));
+      child.stderr.on('data', (c) => (err += c));
+      child.on('error', (e) => { clearTimeout(timer); reject(e); });
+      child.on('close', (code) => {
+        clearTimeout(timer); job?.children.delete(child);
+        if (job?.cancelled) return reject(new Error('cancelled'));
+        let parsed = null; try { parsed = JSON.parse(out); } catch { /* raw text */ }
+        const result = parsed ? parsed.result : out;
+        if (!result) return reject(new Error(`claude exited ${code}: ${clip(err || out, 300)}`));
+        if (parsed?.is_error && !/[{[]/.test(String(result))) return reject(new Error(`claude: ${clip(result, 300)}`));
+        resolve(String(result));
+      });
+      child.stdin.end(prompt);
+    });
+  }
+
+  /** Claude's reply as JSON. A long reply now and then has a JSON syntax slip (a stray quote, a missing comma)
+   *  that would throw away minutes of tool work, so it gets one quick syntax-only repair pass without tools,
+   *  in the same slot (a second slot could deadlock when all three are busy). The broken reply is kept in the
+   *  deck folder for debugging. */
+  async function claudeJson(job, prompt, opts = {}) {
     if (job?.cancelled) throw new Error('cancelled');
     await slot();
     try {
-      const text = await new Promise((resolve, reject) => {
-        const args = ['-p', '--output-format', 'json', '--max-turns', String(maxTurns)];
-        if (tools) args.push('--allowedTools', CODEBASE_TOOLS);
-        const child = spawn('claude', args, { env: claudeEnv(), cwd: cwd || DECKS_DIR, stdio: ['pipe', 'pipe', 'pipe'] });
-        job?.children.add(child);
-        let out = '', err = '';
-        const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Claude took too long (timed out)')); }, timeoutMs);
-        child.stdout.on('data', (c) => (out += c));
-        child.stderr.on('data', (c) => (err += c));
-        child.on('error', (e) => { clearTimeout(timer); reject(e); });
-        child.on('close', (code) => {
-          clearTimeout(timer); job?.children.delete(child);
-          if (job?.cancelled) return reject(new Error('cancelled'));
-          let parsed = null; try { parsed = JSON.parse(out); } catch { /* raw text */ }
-          const result = parsed ? parsed.result : out;
-          if (!result) return reject(new Error(`claude exited ${code}: ${clip(err || out, 300)}`));
-          if (parsed?.is_error && !/[{[]/.test(String(result))) return reject(new Error(`claude: ${clip(result, 300)}`));
-          resolve(String(result));
-        });
-        child.stdin.end(prompt);
-      });
-      return extractJson(text);
+      const text = await runClaude(job, prompt, opts);
+      try { return extractJson(text); }
+      catch (e) {
+        if (job?.cancelled) throw e;
+        try { if (job?.state?.id) fs.writeFileSync(path.join(deckDir(job.state.id), `bad-reply-${Date.now()}.txt`), text); } catch (_) {}
+        progress(job, null, `Claude's reply had a JSON syntax error (${clip(e.message, 90)}); fixing it`);
+        const fixPrompt = `The text below is meant to be one JSON value, but JSON.parse fails: ${e.message}
+Return the same JSON with only its syntax fixed: escape double quotes inside strings, add a missing comma, colon or bracket, drop trailing commas. Keep every key, value and string exactly as written otherwise, and keep it complete.
+Reply with ONLY the JSON.
+
+${text}`;
+        let fixed;
+        try { fixed = await runClaude(job, fixPrompt, { tools: false, maxTurns: 2, timeoutMs: 8 * 60000 }); } catch (_) { throw e; }
+        try { return extractJson(fixed); } catch (_) { throw e; }
+      }
     } finally { release(); }
   }
 
@@ -491,7 +512,16 @@ Reply with ONLY JSON: {"results": [{"label": "...", "status": "confirmed|correct
     let done = 0;
     progress(job, { progress: { done, total: chunks.length } }, `Writing ${chunks.length} part(s), up to 3 at a time`);
     const written = await Promise.all(chunks.map(async (c) => {
-      const r = await writeChunk(job, outline, c.sec, c.slides, c.part);
+      // one section part failing shouldn't throw away the rest of the deck: write it once more first
+      const name = `"${c.sec.title}"${c.part ? ` (part ${c.part})` : ''}`;
+      let r;
+      try { r = await writeChunk(job, outline, c.sec, c.slides, c.part); }
+      catch (e) {
+        if (job.cancelled) throw e;
+        progress(job, null, `Section ${name} failed (${clip(e.message, 100)}); writing it again`);
+        try { r = await writeChunk(job, outline, c.sec, c.slides, c.part); }
+        catch (e2) { if (job.cancelled) throw e2; throw new Error(`Couldn't write section ${name}: ${clip(e2.message, 200)}`); }
+      }
       done++; progress(job, { progress: { done, total: chunks.length } });
       return { ...r, sec: c.sec };
     }));

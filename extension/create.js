@@ -311,7 +311,7 @@
     const m = v.markup || {};
     const inCode = (v.cited || 0) + (v.confirmed || 0);
     const boxed = (m.boxed_dom || 0) + (m.boxed_ocr || 0);
-    const dropped = (m.box_blank || 0) + (m.box_conflict || 0);
+    const dropped = (m.box_blank || 0) + (m.box_conflict || 0) + (m.box_offset || 0);
     const unv = v.unverified || [];
     $('#crVerify').innerHTML = `
       <div>✓ <b>${v.labels || 0} UI labels checked</b>: ${v.recorded || 0} captured from the live product, ${inCode} confirmed in the frontend code${v.corrected ? `, <b>${v.corrected} corrected</b> to match the code` : ''}.</div>

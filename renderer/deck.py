@@ -297,6 +297,46 @@ def _field_box(img: Image.Image, box):
     return [max(0, fx0 - p), max(0, fy0 - p), min(W, fx1 + p), min(H, fy1 + p)]
 
 
+def _side_cover(img: Image.Image, box, side, s):
+    """Share of one side of `box` (its middle 70%) with a line or background change near it: each line across
+    a band around the side must span 10+ grey levels. The band reaches 12 CSS px out at the top and bottom
+    and 18 at the sides, where inputs keep more padding inside their visible border. Contrast across the
+    band, not between neighbouring pixels: screenshots scaled from a wider viewport smear a 1px #e5e5e5
+    border into a 240-on-255 line whose pixel-to-pixel steps are tiny."""
+    W, H = img.size
+    x0, y0, x1, y1 = [int(round(v)) for v in box]
+    if side in ('top', 'bottom'):
+        p = max(2, int(round(12 * s)))
+        y = y0 if side == 'top' else y1
+        a, b = x0 + (x1 - x0) * 15 // 100, x1 - (x1 - x0) * 15 // 100
+        c = img.crop((a, max(0, y - p), b, min(H, y + p + 1))).convert('L')
+    else:
+        p = max(2, int(round(18 * s)))
+        x = x0 if side == 'left' else x1
+        a, b = y0 + (y1 - y0) * 15 // 100, y1 - (y1 - y0) * 15 // 100
+        c = img.crop((max(0, x - p), a, min(W, x + p + 1), b)).convert('L').transpose(Image.Transpose.ROTATE_90)
+    w, h = c.size
+    if w < 2 or h < 2:
+        return 0.0
+    px = c.load()
+    hit = 0
+    for cx in range(w):
+        line = [px[cx, r] for r in range(h)]
+        if max(line) - min(line) >= 10:
+            hit += 1
+    return hit / w
+
+
+def field_frame_ok(img: Image.Image, box):
+    """A typing step's recorded box is a text field, so its outline (or a background change) runs along all
+    four sides, a little outside the box when the recorded input is the bare text area inside the visible
+    field. Recordings made before the recorder re-measured the field at capture time can have the box
+    shifted by a scroll: over the question above the field, or half off its bottom. Calibrated on all 49
+    typing boxes in seven decks: the shifted ones have a side at 0.22 or less, good ones 0.93+ on every side."""
+    s = img.size[0] / 1600.0
+    return all(_side_cover(img, box, side, s) >= 0.7 for side in ('top', 'bottom', 'left', 'right'))
+
+
 def step_box(step, img_size, why=None):
     """Box for a step in its OWN capture's pixel space, with where it came from. `why` (a dict) collects
     the reason a recorded box was dropped or moved, for the build stats."""
@@ -313,6 +353,8 @@ def step_box(step, img_size, why=None):
             box = [x0, y0, x1, y1]
             if not content_ok(img, box, edge=_is_field(step)):
                 why['blank'] = why.get('blank', 0) + 1     # the screenshot doesn't show the element there
+            elif step.get('action') in TYPING and not field_frame_ok(img, box):
+                why['offset'] = why.get('offset', 0) + 1   # no field outline where the recorder put it
             else:
                 moved = label_elsewhere(step, box, img_size) if step.get('label') else None
                 if moved is None:
@@ -542,11 +584,65 @@ def same_text(st, box, base_path):
     return _says(_texts_in(base_path, box), want)
 
 
+def _same_line(a, b):
+    """Same OCR'd text, give or take a few characters of OCR noise (a stray icon glyph, a lost dot). A similarity
+    ratio isn't enough: "No political contributions found within the relevant coverage period. Use Manage
+    disclosures to..." and "No gifts and entertainment found within ..." share most of their characters."""
+    if a == b:
+        return True
+    if min(len(a), len(b)) >= 6 and (f' {a} ' in f' {b} ' or f' {b} ' in f' {a} '):
+        return True                          # OCR joined or split lines differently ("Sep 16, 2026  Oct 16, 2026")
+    m = sum(x.size for x in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks())
+    return len(a) + len(b) - 2 * m <= max(3, 0.06 * max(len(a), len(b)))
+
+
+def _context_lines(path, box, s):
+    """OCR lines that pin down WHERE the element is: text in its own row (a checkbox's row, the field beside it)
+    and the text just above it (a field's question, the last line of the block a checkbox closes). Text inside
+    the box is left out: the element's own text may change (a typed value, a count)."""
+    x0, y0, x1, y1 = box
+    out = []
+    for t, b in ocr_lines(path):
+        n = norm(t)
+        if len(n) < 3 or _overlap_frac(b, box) > 0.3:
+            continue
+        cy = (b[1] + b[3]) / 2
+        row = y0 - 4 * s <= cy <= y1 + 4 * s and b[0] < x1 + 520 * s and b[2] > x0 - 320 * s
+        above = 0 <= y0 - b[3] <= 70 * s and b[0] < x1 + 200 * s and b[2] > x0 - 200 * s
+        if row or above:
+            out.append((n, b))
+    return out
+
+
+def same_context(st, box, base_path):
+    """The text beside the element and right above it must read the same, in the same place, on the base
+    screenshot. Forms, tables and wizards repeat one layout, so after a scroll or a wizard step a look-alike
+    (the next question's field, another section's attest checkbox, the next row's checkbox, the next step's
+    table) sits exactly where the element was and passes the edge check. The text next to it gives it away:
+    other text at that spot ("Adrian Sosa" became "Gifts & entertainment"), or the same text a little higher
+    or lower (the list scrolled under the box). Text that is simply gone on the base (a menu opened over it)
+    doesn't count against it."""
+    s = load(base_path).size[0] / 1600.0
+    there = [(norm(t), b) for t, b in ocr_lines(base_path) if norm(t)]
+    for n, b in _context_lines(st['image'], box, s):
+        at = [m for m, c in there if _overlap_frac(c, b) >= 0.5 or _overlap_frac(b, c) >= 0.5]
+        if at:
+            if not any(_same_line(n, m) for m in at):
+                return False
+            continue
+        cy = (b[1] + b[3]) / 2
+        if len(n) >= 8 and any(_same_line(n, m) and abs(c[0] - b[0]) <= 40 * s and abs((c[1] + c[3]) / 2 - cy) <= 300 * s
+                               for m, c in there):
+            return False                       # same line, same column, moved up or down: scrolled
+    return True
+
+
 def visible_on(st, box, base_path):
     if st['image'] == base_path:
         return True
     loose = st.get('action') in ('type', 'select', 'fill') or str(st.get('role') or '').lower() in LOOSE_ROLES
-    return same_region(load(st['image']), load(base_path), box, loose=loose) and same_text(st, box, base_path)
+    return (same_region(load(st['image']), load(base_path), box, loose=loose)
+            and same_text(st, box, base_path) and same_context(st, box, base_path))
 
 
 def split_runs(slide_steps, boxes):
@@ -1014,28 +1110,57 @@ class Deck:
                                    'body': more})
 
     def quickref(self, rows):
-        rows = rows[:14]
-        sl = self.prs.slides.add_slide(self.blank)
-        self.header(sl, 'Quick reference', 'Where to find it')
-        tbl = sl.shapes.add_table(len(rows) + 1, 2, Inches(0.5), Inches(1.45), Inches(12.333), Inches(min(5.4, 0.38 * (len(rows) + 1)))).table
-        tbl.columns[0].width = Inches(5.0)
-        tbl.columns[1].width = Inches(7.333)
-        for r, (a, b) in enumerate([('I want to...', 'Go to')] + [(x.get('task', ''), x.get('where', '')) for x in rows]):
-            for c, val in enumerate((a, b)):
-                cell = tbl.cell(r, c)
-                cell.text = ''
-                cell.fill.solid()
-                cell.fill.fore_color.rgb = PURPLE if r == 0 else (LIGHT if r % 2 == 0 else WHITE)
-                p = cell.text_frame.paragraphs[0]
-                run = p.add_run()
-                run.text = str(val).replace('**', '')
-                run.font.name = FONT
-                run.font.size = Pt(12)
-                run.font.bold = (r == 0 or c == 0)
-                run.font.color.rgb = WHITE if r == 0 else INK
-                cell.margin_left = Inches(0.15)
-                cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-        self.footer(sl)
+        """The quick reference table. A table row grows past its set height to fit its text (PowerPoint and
+        LibreOffice both do), so a fixed 0.38in a row ran 14 rows off the slide. Each row is measured instead;
+        the text drops to 11 or 10.5pt if that fits everything, else the table continues on a second slide."""
+        head = ('I want to...', 'Go to')
+        rows = [(str(x.get('task', '')).replace('**', ''), str(x.get('where', '')).replace('**', '')) for x in rows[:14]]
+        if not rows:
+            return
+        cols, room = (5.0, 7.333), 5.4
+
+        def row_h(cells, size, min_h, header=False):
+            # cell text width: column minus the 0.15in left and 0.1in right cell margins
+            n = max(wrap_count(v, w - 0.25 + 0.04, size, bold=header or c == 0) for c, (v, w) in enumerate(zip(cells, cols)))
+            return max(min_h, n * line_h(size) + 0.14)
+
+        for size, min_h in ((12, 0.38), (11, 0.35), (10.5, 0.33)):
+            hh = row_h(head, size, min_h, True)
+            if hh + sum(row_h(r, size, min_h) for r in rows) <= room:
+                break
+        # as few slides as it takes, with the rows spread evenly over them (not 13 rows and then 1)
+        k = 1
+        while True:
+            per = -(-len(rows) // k)
+            pages = [rows[i:i + per] for i in range(0, len(rows), per)]
+            if all(hh + sum(row_h(r, size, min_h) for r in pg) <= room for pg in pages) or per == 1:
+                break
+            k += 1
+        for pi, page in enumerate(pages):
+            sl = self.prs.slides.add_slide(self.blank)
+            self.header(sl, 'Quick reference', 'Where to find it' + (' (continued)' if pi else ''))
+            heights = [hh] + [row_h(r, size, min_h) for r in page]
+            tbl = sl.shapes.add_table(len(page) + 1, 2, Inches(0.5), Inches(1.45), Inches(12.333), Inches(sum(heights))).table
+            tbl.columns[0].width = Inches(cols[0])
+            tbl.columns[1].width = Inches(cols[1])
+            for r, (a, b) in enumerate([head] + page):
+                tbl.rows[r].height = Inches(heights[r])
+                for c, val in enumerate((a, b)):
+                    cell = tbl.cell(r, c)
+                    cell.text = ''
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = PURPLE if r == 0 else (LIGHT if r % 2 == 0 else WHITE)
+                    p = cell.text_frame.paragraphs[0]
+                    run = p.add_run()
+                    run.text = val
+                    run.font.name = FONT
+                    run.font.size = Pt(size)
+                    run.font.bold = (r == 0 or c == 0)
+                    run.font.color.rgb = WHITE if r == 0 else INK
+                    cell.margin_left = Inches(0.15)
+                    cell.margin_right = Inches(0.1)
+                    cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            self.footer(sl)
 
     def closing(self):
         sl = self.prs.slides.add_slide(self.blank)
