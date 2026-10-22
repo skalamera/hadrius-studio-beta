@@ -78,7 +78,7 @@ const clip = (s, n) => { const t = String(s || '').replace(/\s+/g, ' ').trim(); 
 const now = () => new Date().toISOString();
 
 export function createDeckStudio(deps) {
-  const { REPO_ROOT, libraryFetch, hasLibrary, safeName, formatHumanTitle, googleDriveDownloadRecording, googleDriveConfigured, inferModuleFromScript, claudeEnv, extractJson, runGeminiPrompt, WHOAMI = 'unknown', drive } = deps;
+  const { REPO_ROOT, libraryFetch, hasLibrary, safeName, formatHumanTitle, googleDriveDownloadRecording, googleDriveConfigured, inferModuleFromScript, claudeEnv, extractJson, WHOAMI = 'unknown', drive } = deps;
   const DECKS_DIR = path.join(REPO_ROOT, 'out', '_decks');
   const SCRIPTS_DIR = path.join(REPO_ROOT, 'scripts');
   const RECORDINGS_DIR = path.join(REPO_ROOT, 'out', '_recordings');
@@ -263,9 +263,15 @@ Reply with ONLY JSON: {"module": "<main module or null>", "scripts": ["<name>", 
     let pick;
     try { pick = await claudeJson(job, pickPrompt, { tools: false, maxTurns: 2, timeoutMs: 4 * 60000 }); }
     catch (e) {
+      // one more try with Claude; there is no other model to fall back to, since every later step needs
+      // Claude with the codebase tools anyway
       if (job.cancelled) throw e;
-      progress(job, null, `Claude unavailable for recording search (${clip(e.message, 80)}); trying Gemini`);
-      pick = extractJson(await runGeminiPrompt(pickPrompt));
+      progress(job, null, `Recording search didn't work (${clip(e.message, 100)}); asking Claude again`);
+      try { pick = await claudeJson(job, pickPrompt, { tools: false, maxTurns: 2, timeoutMs: 4 * 60000 }); }
+      catch (e2) {
+        if (job.cancelled) throw e2;
+        throw new Error(`Claude couldn't pick the recordings for this deck: ${clip(e2.message, 200)}`);
+      }
     }
     const chosen = [...new Set((pick.scripts || []).map(String))].map(byName).filter(Boolean).slice(0, 30);
     if (!chosen.length) throw new Error(`None of the recorded walkthroughs cover "${request}" yet. Record it first, or try a broader request.`);

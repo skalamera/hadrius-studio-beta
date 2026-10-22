@@ -334,28 +334,57 @@ export async function runClaude(prompt, opts = {}) {
   }
 }
 
+/** Index of the bracket that closes the JSON object/array opening at s[start], or -1 if it never closes or a
+ *  closer doesn't match. Brackets inside strings don't count. */
+function jsonEnd(s, start) {
+  const want = [];
+  let inStr = false;
+  let esc = false;
+  for (let j = start; j < s.length; j++) {
+    const c = s[j];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') want.push('}');
+    else if (c === '[') want.push(']');
+    else if (c === '}' || c === ']') {
+      if (want.pop() !== c) return -1;
+      if (!want.length) return j;
+    }
+  }
+  return -1;
+}
+
+/** The JSON object or array in a model reply. Replies wrap it in prose or a code fence and sometimes add a
+ *  note after it that has braces of its own, so this doesn't slice first-brace-to-last-brace (that broke on
+ *  "{...}\n\nNote: {...}"). It walks the top-level bracketed values, skipping any that don't parse, and
+ *  returns the largest one that does. It never looks inside a value that doesn't parse or doesn't close,
+ *  so a fragment of a broken or cut-off reply can't come back as the answer. */
 export function extractJson(text) {
   if (!text || typeof text !== 'string') throw new Error('empty model output');
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const raw = fence ? fence[1] : text;
-  const startObj = raw.indexOf('{');
-  const endObj = raw.lastIndexOf('}');
-  const startArr = raw.indexOf('[');
-  const endArr = raw.lastIndexOf(']');
-
-  let slice = null;
-  if (startObj !== -1 && endObj > startObj) {
-    if (startArr !== -1 && startArr < startObj && endArr > endObj) {
-      slice = raw.slice(startArr, endArr + 1);
-    } else {
-      slice = raw.slice(startObj, endObj + 1);
+  let best = null;
+  let bestLen = 0;
+  let err = null;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '{' && text[i] !== '[') continue;
+    const end = jsonEnd(text, i);
+    if (end < 0) {
+      err = err || new Error('a bracket never closes or closes wrong (the reply may have been cut off)');
+      break;
     }
-  } else if (startArr !== -1 && endArr > startArr) {
-    slice = raw.slice(startArr, endArr + 1);
+    try {
+      const v = JSON.parse(text.slice(i, end + 1));
+      if (end + 1 - i > bestLen) { best = v; bestLen = end + 1 - i; }
+    } catch (e) { err = err || e; }
+    i = end;
   }
-
-  if (!slice) throw new Error(`no JSON structure found in output (received: "${text.slice(0, 80)}...")`);
-  return JSON.parse(slice);
+  if (best !== null) return best;
+  if (err) throw new Error(`model reply is not valid JSON: ${err.message}`);
+  throw new Error(`no JSON structure found in output (received: "${text.slice(0, 80)}...")`);
 }
 
 // ---- Phase 1: modules + routes (deterministic source: the sidebar tab hooks) ----

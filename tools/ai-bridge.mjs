@@ -2300,7 +2300,7 @@ Output ONLY a JSON object in this format:
 // Create ✨ tab: AI slide decks built from recorded screenshots (tools/deck-studio.mjs).
 const deckStudio = createDeckStudio({
   REPO_ROOT, libraryFetch, hasLibrary: () => !!LIBRARY_SECRET, safeName, formatHumanTitle,
-  googleDriveDownloadRecording, googleDriveConfigured, inferModuleFromScript, claudeEnv, extractJson, runGeminiPrompt, WHOAMI,
+  googleDriveDownloadRecording, googleDriveConfigured, inferModuleFromScript, claudeEnv, extractJson, WHOAMI,
   drive: {
     configured: googleDriveConfigured, folderId: SLIDE_DECKS_FOLDER_ID, uploadDeck: googleDriveUploadDeck,
     listDeckFiles: googleDriveListDeckFiles, fetchFile: googleDriveFetchFile, deleteDeck: googleDriveDeleteDeck,
