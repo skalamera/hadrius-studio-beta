@@ -16,7 +16,7 @@ step's label is clearly elsewhere on screen moves to the label (clicks) or is dr
 A capture that is byte-identical to an earlier step's capture from more than a second before, and
 doesn't show the step's element where the recorder says it was, is stale (the recorder reused an old
 screenshot): it gets no box and is never used as a slide picture. A text field found only by OCR of
-its placeholder is boxed along the field's own border.
+its placeholder, value or label is boxed along the field's own outline, or not at all.
 
 A slide can group several steps on one screen. The slide shows the last boxed step's screenshot
 and an earlier step only keeps its box there if the element's edges are still in the same place on
@@ -253,22 +253,15 @@ def _is_field(step):
     return step.get('action') in TYPING or str(step.get('role') or '').lower() in VALUE_ROLES
 
 
-def _field_box(img: Image.Image, box):
-    """A text field found by OCR of its placeholder ("Title") gets boxed around the placeholder text only, which
-    looks wrong once the field holds a longer value ("Compliance Testi|ng"). Find the field's own border instead:
-    flood-fill its background from just right of the text and take the filled area. None unless the fill closes
-    (the field has a visible border), stays field-sized and keeps the text at its top-left, as a field's
-    content is; then the OCR box stays as it was."""
-    W, H = img.size
-    s = W / 1600.0
-    tx0, ty0, tx1, ty1 = box[0] + 8, box[1] + 6, box[2] - 8, box[3] - 6       # ocr_box() pads 8/6
-    max_w, max_h = 1000 * s, 220 * s
-    cx0, cy0 = max(0, int(tx0 - 60 * s)), max(0, int(ty0 - 40 * s))
-    cx1, cy1 = min(W, int(tx0 + max_w)), min(H, int(ty0 + max_h))
+def _flood(img: Image.Image, area, sx, sy, tol=8):
+    """Flood-fill from (sx, sy) over pixels within `tol` grey levels of the seed, inside `area` (x0, y0, x1, y1).
+    Returns the filled bounds and pixel count (x0, y0, x1, y1, n) in image space, or None if the fill reaches
+    the edge of the area (the region has no closed outline) or the seed is outside it."""
+    cx0, cy0, cx1, cy1 = area
     c = img.crop((cx0, cy0, cx1, cy1)).convert('L')
     cw, ch = c.size
     px = c.load()
-    sx, sy = int(tx1 + 6 * s) - cx0, int((ty0 + ty1) / 2) - cy0
+    sx, sy = sx - cx0, sy - cy0
     if not (0 <= sx < cw and 0 <= sy < ch):
         return None
     bg = px[sx, sy]
@@ -283,12 +276,30 @@ def _field_box(img: Image.Image, box):
         minx, maxx, miny, maxy = min(minx, x), max(maxx, x), min(miny, y), max(maxy, y)
         for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
             if not (0 <= nx < cw and 0 <= ny < ch):
-                return None                      # ran out of the search area: no closed border
+                return None                      # ran out of the search area: no closed outline
             i = ny * cw + nx
-            if not seen[i] and abs(px[nx, ny] - bg) <= 8:
+            if not seen[i] and abs(px[nx, ny] - bg) <= tol:
                 seen[i] = 1
                 stack.append((nx, ny))
-    fx0, fy0, fx1, fy1 = cx0 + minx, cy0 + miny, cx0 + maxx + 1, cy0 + maxy + 1
+    return cx0 + minx, cy0 + miny, cx0 + maxx + 1, cy0 + maxy + 1, n
+
+
+def _field_box(img: Image.Image, box):
+    """A text field found by OCR of its placeholder ("Title") gets boxed around the placeholder text only, which
+    looks wrong once the field holds a longer value ("Compliance Testi|ng"). Find the field's own border instead:
+    flood-fill its background from just right of the text and take the filled area. None unless the fill closes
+    (the field has a visible border), stays field-sized and keeps the text at its top-left, as a field's
+    content is; then the OCR box stays as it was."""
+    W, H = img.size
+    s = W / 1600.0
+    tx0, ty0, tx1, ty1 = box[0] + 8, box[1] + 6, box[2] - 8, box[3] - 6       # ocr_box() pads 8/6
+    max_w, max_h = 1000 * s, 220 * s
+    cx0, cy0 = max(0, int(tx0 - 60 * s)), max(0, int(ty0 - 40 * s))
+    cx1, cy1 = min(W, int(tx0 + max_w)), min(H, int(ty0 + max_h))
+    fill = _flood(img, (cx0, cy0, cx1, cy1), int(tx1 + 6 * s), int((ty0 + ty1) / 2))
+    if fill is None:
+        return None
+    fx0, fy0, fx1, fy1, n = fill
     if not (fx0 <= tx0 + 2 * s and fx1 >= tx1 and fy0 <= ty0 + 2 * s and fy1 >= ty1 - 2 * s):
         return None                              # the fill didn't flow around the text
     if tx0 - fx0 > 48 * s or ty0 - fy0 > 24 * s or n < 0.6 * (fx1 - fx0) * (fy1 - fy0):
@@ -337,6 +348,42 @@ def field_frame_ok(img: Image.Image, box):
     return all(_side_cover(img, box, side, s) >= 0.7 for side in ('top', 'bottom', 'left', 'right'))
 
 
+def _field_below(img: Image.Image, box):
+    """The OCR'd text is the field's label, with the field right under it ("Guidance" over its text box,
+    "Leave note (optional)" over the note). Walk down from the label to the first line under it, then fill
+    the field's inside from just below that line. None unless the fill closes into a field-sized rectangle
+    that starts right at that line and lines up with the label (helper text or open page under the label
+    leaks or fails the shape checks)."""
+    W, H = img.size
+    s = W / 1600.0
+    tx0, ty0, tx1, ty1 = box[0] + 8, box[1] + 6, box[2] - 8, box[3] - 6       # ocr_box() pads 8/6
+    g = img.convert('L')
+    px = g.load()
+    x, y = int(tx0 + 12 * s), int(ty1 + 2 * s)
+    if not (0 <= x < W and 0 <= y < H):
+        return None
+    bg = px[x, y]
+    end = min(H - 1, int(ty1 + 48 * s))
+    while y < end and abs(px[x, y] - bg) <= 12:
+        y += 1
+    if y >= end:
+        return None                              # nothing under the label within 48px
+    top = y
+    while y < min(H - 1, top + int(4 * s) + 1) and abs(px[x, y] - bg) > 12:
+        y += 1                                   # step over the border line
+    fill = _flood(img, (max(0, int(tx0 - 60 * s)), max(0, int(top - 4 * s)), min(W, int(tx0 + 1000 * s)), min(H, int(top + 400 * s))),
+                  x, y + max(1, int(2 * s)))
+    if fill is None:
+        return None
+    fx0, fy0, fx1, fy1, n = fill
+    if not (top - 2 * s <= fy0 <= top + 8 * s and tx0 - 40 * s <= fx0 <= tx0 + 14 * s):
+        return None                              # not a box starting at that line, under the label
+    if fx1 - fx0 < 120 * s or fy1 - fy0 < 20 * s or n < 0.6 * (fx1 - fx0) * (fy1 - fy0):
+        return None                              # too small for a field, or not a mostly empty rectangle
+    p = 3 * s
+    return [max(0, fx0 - p), max(0, fy0 - p), min(W, fx1 + p), min(H, fy1 + p)]
+
+
 def step_box(step, img_size, why=None):
     """Box for a step in its OWN capture's pixel space, with where it came from. `why` (a dict) collects
     the reason a recorded box was dropped or moved, for the build stats."""
@@ -367,7 +414,14 @@ def step_box(step, img_size, why=None):
     if step.get('label') and step.get('image'):
         b = ocr_box(step['image'], step['label'])
         if b and content_ok(img, b):
-            return ((_field_box(img, b) or b) if _is_field(step) else b), 'ocr'
+            if not _is_field(step):
+                return b, 'ocr'
+            # a field is boxed along its own outline (the field holding the OCR'd placeholder or value, or the
+            # field under the OCR'd label), never around label text that only sits near it
+            fb = _field_box(img, b) or _field_below(img, b)
+            if fb:
+                return fb, 'ocr'
+            why['no_field'] = why.get('no_field', 0) + 1
     return None, None
 
 
