@@ -115,8 +115,8 @@
       $('#crLibMake')?.addEventListener('click', () => { if (q) $('#crPrompt').value = q; updateCount(); save(); setMode('create'); show('crCompose'); renderExisting(); });
       return;
     }
-    $('#crLibList').innerHTML = items.map((d) => `
-      <div class="cr-lib-card" data-id="${esc(d.deckId)}">
+    const card = (d) => `
+      <div class="cr-lib-card${isGettingStarted(d) ? ' gs' : ''}" data-id="${esc(d.deckId)}">
         <div class="cr-lib-cover" title="Open the PDF in Google Drive">${coverUrl(d) ? `<img loading="lazy" src="${coverUrl(d)}" alt="">` : ''}${d.pages ? `<span class="cr-lib-pages">${d.pages} pp</span>` : ''}</div>
         <div class="cr-lib-body">
           <div class="cr-lib-title">${highlight(d.title, q)}</div>
@@ -130,7 +130,18 @@
             ${d.createdBy && d.createdBy === cr.me ? '<button type="button" class="cr-lib-del" title="Remove from the shared library (you made this deck)">🗑</button>' : ''}
           </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    // Getting Started guides get their own collapsible group at the top; everything else lists below it.
+    const gs = items.filter(isGettingStarted), rest = items.filter((d) => !isGettingStarted(d));
+    const gsOpen = q || localStorage.getItem('crLibGsOpen') !== '0';   // a search always shows its matches
+    $('#crLibList').innerHTML = (gs.length ? `
+      <details class="cr-lib-group gs"${gsOpen ? ' open' : ''}>
+        <summary><span>🚀 Getting Started Guides</span><span class="cr-lib-group-n">${gs.length}</span></summary>
+        <div class="cr-lib-group-list">${gs.map(card).join('')}</div>
+      </details>` : '')
+      + (gs.length && rest.length ? '<div class="cr-lib-group-head">Other decks</div>' : '')
+      + rest.map(card).join('');
+    $('#crLibList .cr-lib-group.gs')?.addEventListener('toggle', (e) => { if (!q) localStorage.setItem('crLibGsOpen', e.target.open ? '1' : '0'); });
     $$('#crLibList .cr-lib-card').forEach((card) => {
       const d = cr.library.find((x) => x.deckId === card.dataset.id);
       card.querySelector('.cr-lib-cover').addEventListener('click', () => { const u = (d.files.pdf || d.files.pptx)?.url; if (u) window.open(u, '_blank', 'noopener'); });
@@ -141,6 +152,7 @@
       });
     });
   }
+  const isGettingStarted = (d) => /getting\s+started/i.test(`${d.title || ''} ${d.request || ''}`);
   const clipText = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
   function renderExisting() {
     const box = $('#crExisting');
