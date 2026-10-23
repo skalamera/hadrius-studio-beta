@@ -391,6 +391,59 @@ export async function googleDriveDownloadRecording(recordingId, localDir, fileNa
 // metadata (title, request, module, audience, style, sections) as JSON in its description, so the
 // extension's library is ONE folder listing, not a request per deck.
 export const SLIDE_DECKS_FOLDER_ID = '1aMR971LkbSTwMn5psY5wKqsCuvPaGjd5';
+// Inside it, decks are filed like the panel's Library groups: "Getting Started Guides", then one folder per
+// module ("Other" when none); cover thumbnails go to "_covers" so people browsing Drive see only decks.
+const DECK_GS_FOLDER = 'Getting Started Guides';
+const DECK_COVERS_FOLDER = '_covers';
+
+/** The Slide Decks subfolder a deck file belongs in (same rules as the panel's Library groups). */
+export function deckFolderName(meta = {}, kind = 'pdf') {
+  if (kind === 'cover') return DECK_COVERS_FOLDER;
+  if (/getting\s+started/i.test(`${meta.title || ''} ${meta.request || ''}`)) return DECK_GS_FOLDER;
+  // stored module names vary in case ("People oversight"): title-case so they share one folder
+  return String(meta.module || 'Other').trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other';
+}
+
+/** Subfolders of Slide Decks: [{ id, name }]. */
+async function deckSubfolders(accessToken) {
+  const params = new URLSearchParams({
+    q: `'${SLIDE_DECKS_FOLDER_ID}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`,
+    pageSize: '1000', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true', fields: 'files(id,name,createdTime)', orderBy: 'createdTime',
+  });
+  return (await driveJson(`https://www.googleapis.com/drive/v3/files?${params}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }, 'deck folder listing')).files || [];
+}
+
+/** Id of the named Slide Decks subfolder, created on first use (the oldest wins if two exist). */
+const deckFolderId = (accessToken, name) => findChildFolder(name, SLIDE_DECKS_FOLDER_ID, accessToken, { create: true });
+
+/** Move a file into folderId (same id, so its links keep working). */
+async function moveDriveFile(accessToken, file, folderId) {
+  const from = (file.parents || []).filter((x) => x !== folderId);
+  if ((file.parents || []).includes(folderId) && !from.length) return;
+  const params = new URLSearchParams({ addParents: folderId, supportsAllDrives: 'true', fields: 'id,parents' });
+  if (from.length) params.set('removeParents', from.join(','));
+  await driveJson(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?${params}`,
+    { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }, 'deck file move');
+}
+
+/** File every deck already in Slide Decks into its group subfolder. dry: report only. Returns [{name, from, to}]. */
+export async function googleDriveOrganizeDecks({ dry = false } = {}) {
+  const accessToken = await getAccessToken();
+  const files = await googleDriveListDeckFiles();
+  const meta = new Map();
+  for (const f of files) if (f.appProperties?.kind === 'pptx') { try { meta.set(f.appProperties.deckId, JSON.parse(f.description || '{}')); } catch { /* no metadata */ } }
+  const names = new Map((await deckSubfolders(accessToken)).map((f) => [f.id, f.name]));
+  const moves = [];
+  for (const f of files) {
+    const to = deckFolderName(meta.get(f.appProperties?.deckId) || {}, f.appProperties?.kind);
+    const from = (f.parents || []).map((x) => (x === SLIDE_DECKS_FOLDER_ID ? '(top level)' : names.get(x) || x)).join(', ');
+    if (from === to) continue;
+    moves.push({ name: f.name, from, to });
+    if (!dry) await moveDriveFile(accessToken, f, await deckFolderId(accessToken, to));
+  }
+  return moves;
+}
 
 async function resumableUpload(accessToken, metadata, filePath, mime, fileId) {
   const size = fs.statSync(filePath).size;
@@ -422,9 +475,10 @@ export async function googleDriveUploadDeck(deckId, files, meta) {
   const MIME = { pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', pdf: 'application/pdf', cover: 'image/png' };
   for (const f of files) {
     if (!f?.path || !fs.existsSync(f.path)) continue;
+    const folderId = await deckFolderId(accessToken, deckFolderName(meta, f.kind));
     const metadata = {
       name: f.kind === 'cover' ? `${meta.title} (cover).png` : path.basename(f.path),
-      parents: [SLIDE_DECKS_FOLDER_ID],
+      parents: [folderId],
       appProperties: { hadriusDeck: '1', deckId, kind: f.kind },
       ...(f.kind === 'pptx' ? { description: JSON.stringify(meta).slice(0, 20000) } : {}),
     };
@@ -433,6 +487,8 @@ export async function googleDriveUploadDeck(deckId, files, meta) {
     if (prev) {
       const { parents, ...update } = metadata;          // parents can't be set by files.update
       file = await resumableUpload(accessToken, update, f.path, MIME[f.kind], prev.id).catch(() => null);
+      // a rebuild can change the deck's group (module, title): move the same file, keeping its link
+      if (file?.id) await moveDriveFile(accessToken, prev, folderId).catch(() => {});
     }
     if (!file?.id) file = await resumableUpload(accessToken, metadata, f.path, MIME[f.kind]);
     kept.add(file.id);
@@ -446,18 +502,19 @@ export async function googleDriveUploadDeck(deckId, files, meta) {
   return out;
 }
 
-/** Every deck file in the Slide Decks folder (optionally one deck's). */
+/** Every deck file in the Slide Decks folder and its group subfolders (optionally one deck's). */
 export async function googleDriveListDeckFiles({ deckId } = {}) {
   if (!googleDriveConfigured()) throw new Error('Google Drive is not connected on this machine');
   const accessToken = await getAccessToken();
   const files = [];
   let pageToken;
-  const q = `'${SLIDE_DECKS_FOLDER_ID}' in parents and trashed = false and appProperties has { key='hadriusDeck' and value='1' }`
+  const folders = [SLIDE_DECKS_FOLDER_ID, ...(await deckSubfolders(accessToken)).map((f) => f.id)];
+  const q = `(${folders.map((id) => `'${id}' in parents`).join(' or ')}) and trashed = false and appProperties has { key='hadriusDeck' and value='1' }`
     + (deckId ? ` and appProperties has { key='deckId' and value='${String(deckId).replace(/[^\w-]/g, '')}' }` : '');
   do {
     const params = new URLSearchParams({
       q, pageSize: '1000', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true',
-      fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,description,appProperties,webViewLink,owners(displayName,emailAddress),lastModifyingUser(displayName))',
+      fields: 'nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,description,appProperties,webViewLink,parents,owners(displayName,emailAddress),lastModifyingUser(displayName))',
       ...(pageToken ? { pageToken } : {}),
     });
     const resp = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });

@@ -131,17 +131,31 @@
           </div>
         </div>
       </div>`;
-    // Getting Started guides get their own collapsible group at the top; everything else lists below it.
-    const gs = items.filter(isGettingStarted), rest = items.filter((d) => !isGettingStarted(d));
-    const gsOpen = q || localStorage.getItem('crLibGsOpen') !== '0';   // a search always shows its matches
-    $('#crLibList').innerHTML = (gs.length ? `
-      <details class="cr-lib-group gs"${gsOpen ? ' open' : ''}>
-        <summary><span>🚀 Getting Started Guides</span><span class="cr-lib-group-n">${gs.length}</span></summary>
-        <div class="cr-lib-group-list">${gs.map(card).join('')}</div>
-      </details>` : '')
-      + (gs.length && rest.length ? '<div class="cr-lib-group-head">Other decks</div>' : '')
-      + rest.map(card).join('');
-    $('#crLibList .cr-lib-group.gs')?.addEventListener('toggle', (e) => { if (!q) localStorage.setItem('crLibGsOpen', e.target.open ? '1' : '0'); });
+    // Getting Started guides get their own collapsible group at the top; every other deck sits in a
+    // collapsible group per module (A–Z; while searching, the group holding the best match comes first).
+    // Every group starts collapsed; groups the user opens are remembered per key, and a search always
+    // opens the groups that hold matches.
+    const opened = new Set(JSON.parse(localStorage.getItem('crLibOpen') || '[]'));
+    const group = (key, label, list, cls = '') => `
+      <details class="cr-lib-group${cls ? ` ${cls}` : ''}" data-key="${esc(key)}"${q || opened.has(key) ? ' open' : ''}>
+        <summary><span>${label}</span><span class="cr-lib-group-n">${list.length}</span></summary>
+        <div class="cr-lib-group-list">${list.map(card).join('')}</div>
+      </details>`;
+    const gs = items.filter(isGettingStarted);
+    const byMod = new Map();
+    // stored module names vary in case ("People oversight"), so group case-insensitively and title-case the header
+    const modName = (d) => (d.module || 'Other').trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    for (const d of items) if (!isGettingStarted(d)) { const m = modName(d); if (!byMod.has(m)) byMod.set(m, []); byMod.get(m).push(d); }
+    const mods = [...byMod.keys()];
+    if (!q) mods.sort((a, b) => (a === 'Other') - (b === 'Other') || a.localeCompare(b));
+    $('#crLibList').innerHTML = (gs.length ? group('gs', '🚀 Getting Started Guides', gs, 'gs') : '')
+      + mods.map((m) => group(`mod:${m}`, esc(m), byMod.get(m))).join('');
+    $$('#crLibList .cr-lib-group').forEach((g) => g.addEventListener('toggle', () => {
+      if (q) return;
+      const s = new Set(JSON.parse(localStorage.getItem('crLibOpen') || '[]'));
+      if (g.open) s.add(g.dataset.key); else s.delete(g.dataset.key);
+      localStorage.setItem('crLibOpen', JSON.stringify([...s]));
+    }));
     $$('#crLibList .cr-lib-card').forEach((card) => {
       const d = cr.library.find((x) => x.deckId === card.dataset.id);
       card.querySelector('.cr-lib-cover').addEventListener('click', () => { const u = (d.files.pdf || d.files.pptx)?.url; if (u) window.open(u, '_blank', 'noopener'); });
