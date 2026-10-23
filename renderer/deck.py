@@ -965,17 +965,34 @@ class Deck:
         n = len(sections)
         cols = 1 if n <= 6 else 2
         per = -(-n // cols)
-        row_h = min(0.88, 5.2 / max(per, 1))
+        tw = 11.4 if cols == 1 else 5.4             # one column uses the slide width
+        top, bottom = 1.5, 6.85
+        # Measure every row: a title can wrap and push its summary down, so nothing sits at a fixed offset.
+        title_h = [self.lines_for(s.get('title', ''), tw, 14.5, bold=True) * line_h(14.5) + 0.06 for s in sections]
+
+        def rows_at(sz):
+            """Row heights (rows aligned across columns) with summaries at sz pt (None = no summaries)."""
+            hs = [title_h[i] + (0.04 + text_h(s['summary'], tw, sz) if sz and s.get('summary') else 0)
+                  for i, s in enumerate(sections)]
+            return [max(hs[c * per + r] for c in range(cols) if c * per + r < n) for r in range(per)]
+
+        gap_min = 0.14
+        for sz in (11, 10.5, 10, 9.5, None):
+            heights = rows_at(sz)
+            if sum(heights) + gap_min * (per - 1) <= bottom - top:
+                break
+        if sz is None and any(s.get('summary') for s in sections):
+            self.overflow('contents: section summaries dropped, they do not fit')
+        gap = min(0.4, (bottom - top - sum(heights)) / (per - 1)) if per > 1 else 0
         for i, sec in enumerate(sections):
             col, row = divmod(i, per)
             x = 0.5 + col * 6.3
-            y = 1.5 + row * row_h
+            y = top + sum(heights[:row]) + gap * row
             self.text(sl, x, y, 0.7, 0.5, f'{i + 1:02d}', size=19, color=PURPLE, bold=True)
-            self.text(sl, x + 0.7, y, 5.4, 0.35, sec.get('title', ''), size=14.5, bold=True)
-            if sec.get('summary') and row_h >= 0.7:
-                sz = next((z for z in (11, 10.5, 10, 9.5) if text_h(sec['summary'], 5.4, z) <= row_h - 0.34), None)
-                if sz:
-                    self.text(sl, x + 0.7, y + 0.32, 5.4, row_h - 0.34, sec['summary'], size=sz, color=GRAY)
+            self.text(sl, x + 0.7, y, tw, title_h[i], sec.get('title', ''), size=14.5, bold=True)
+            if sz and sec.get('summary'):
+                self.text(sl, x + 0.7, y + title_h[i] + 0.04, tw, text_h(sec['summary'], tw, sz),
+                          sec['summary'], size=sz, color=GRAY)
         self.footer(sl)
 
     def section(self, num, title, blurb):
