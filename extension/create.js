@@ -364,14 +364,19 @@
       const items = r.items || [];
       if (!items.length) { $('#crHistory').innerHTML = '<p class="muted">No decks yet. Your finished decks will be listed here.</p>'; return; }
       const label = { done: 'Ready', outline: 'Outline to review', planning: 'Drafting outline…', building: 'Building…', failed: 'Failed', cancelled: 'Cancelled' };
-      $('#crHistory').innerHTML = items.slice(0, 12).map((it) => `
+      // the 3 newest show by default; "View more" lists the rest (kept open across refreshes until "Show less")
+      const SHOWN = 3;
+      const more = items.length - SHOWN;
+      $('#crHistory').innerHTML = items.slice(0, cr.histAll ? items.length : SHOWN).map((it) => `
         <div class="cr-hist" data-id="${esc(it.id)}">
           <span class="cr-hist-icon">${it.style === 'visual' ? '🖼️' : it.style === 'detailed' ? '📘' : '📊'}</span>
           <div class="cr-hist-body"><div class="cr-hist-title">${esc(it.title || it.request || 'Untitled')}</div>
             <div class="cr-hist-meta"><span class="cr-status-dot ${esc(it.status)}"></span>${esc(label[it.status] || it.status)} · ${esc(AUD[it.audience] || '')} · ${esc(STY[it.style] || '')}${it.pages ? ` · ${it.pages} pages` : ''} · ${new Date(it.createdAt).toLocaleDateString()}</div></div>
           ${it.status === 'done' && it.files ? `<span class="cr-hist-dl">${it.files.pptx ? `<a href="${BRIDGE}/decks/${esc(it.id)}/download/pptx" title="Download PowerPoint">PPTX</a>` : ''}${it.files.pdf ? `<a href="${BRIDGE}/decks/${esc(it.id)}/download/pdf" title="Download PDF">PDF</a>` : ''}</span>` : ''}
           <button type="button" class="cr-hist-del" title="Delete this deck">🗑</button>
-        </div>`).join('');
+        </div>`).join('')
+        + (more > 0 ? `<button type="button" class="cr-hist-more" id="crHistMore">${cr.histAll ? 'Show less' : `View ${more} more`}</button>` : '');
+      $('#crHistMore')?.addEventListener('click', () => { cr.histAll = !cr.histAll; loadHistory(); });
       $$('#crHistory .cr-hist').forEach((row) => {
         row.addEventListener('click', (e) => {
           if (e.target.closest('a')) return;

@@ -190,6 +190,8 @@ body.has-floating-bar #createView{padding-bottom:calc(var(--floating-bar-h,96px)
 .cr-hist-dl a:hover{background:#e6e0ff}
 .cr-hist-del{background:none;border:0;color:#b8c2be;padding:2px 4px;font-size:12px}
 .cr-hist-del:hover{color:#ad3e3e}
+.cr-hist-more{align-self:center;background:none;border:0;color:#4c3dab;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer}
+.cr-hist-more:hover{background:#f3f0ff}
 .cr-status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:middle;background:#9aa7a2}
 .cr-status-dot.done{background:#1f9d6c}.cr-status-dot.outline{background:#7c5cff}.cr-status-dot.failed,.cr-status-dot.cancelled{background:#ad3e3e}
 .cr-status-dot.planning,.cr-status-dot.building{background:#7c5cff;animation:crPulse 1.2s infinite}
