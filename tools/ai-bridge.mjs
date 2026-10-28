@@ -17,6 +17,7 @@ import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
 import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording, googleDriveUploadDeck, googleDriveListDeckFiles, googleDriveFetchFile, googleDriveDeleteDeck, SLIDE_DECKS_FOLDER_ID } from './gdrive.mjs';
 import { getAcademyLessons, recordAcademyVideoLink } from './academy-lessons.mjs';
 import { createDeckStudio } from './deck-studio.mjs';
+import { normalizeLanguage, translationStatus, translationProblems, translationRequest, buildTranslationPrompt, parseTranslationReply, applyTranslation, buildLocalizedScript, localizedName, driveTitleFor, renderModeFor, allowsPylon, carryOverTranslations } from './translation.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -413,7 +414,7 @@ async function buildArticleScriptIndex(articles = []) {
       const remoteItems = remote?.items || [];
       for (const item of remoteItems) {
         const sName = item.name;
-        if (!sName) continue;
+        if (!sName || isInternalRecord(sName)) continue;
         const entry = { scriptName: sName, driveVideoUrl: item.driveVideoUrl || null };
         if (item.title) {
           const slug = candSlug(item.title);
@@ -467,7 +468,10 @@ async function backfillRecipeStartUrl(script) {
 // script sets the field itself.
 const PUBLISH_LINK_FIELDS = ['pylonArticleId', 'pylonArticleUrl', 'driveVideoId', 'driveVideoUrl'];
 async function carryOverPublishLinks(script) {
-  if (PUBLISH_LINK_FIELDS.every((f) => script[f] !== undefined)) return;
+  // A Spanish translation (and its own Drive link) rides on the same script; an older panel's save
+  // without it must not drop it either (tools/translation.mjs carryOverTranslations).
+  const translationLinksSet = script.translations && Object.values(script.translations).every((t) => t?.driveVideoId !== undefined);
+  if (PUBLISH_LINK_FIELDS.every((f) => script[f] !== undefined) && translationLinksSet) return;
   let existing = null;
   try {
     const local = path.join(REPO_ROOT, 'scripts', `${script.name}.script.json`);
@@ -478,6 +482,7 @@ async function carryOverPublishLinks(script) {
   for (const f of PUBLISH_LINK_FIELDS) {
     if (script[f] === undefined && existing[f] !== undefined) script[f] = existing[f];
   }
+  carryOverTranslations(script, existing);
 }
 
 // ---- recording screenshots, shared through Drive (tools/gdrive.mjs) ----
@@ -528,6 +533,8 @@ function backfillRecordingUploads() {
 // fetch without a backend change. Only the machine with PR_WATCH_USER set polls GitHub; everyone
 // reads the record, and anyone can dismiss a flag.
 const DRIFT_DOC_NAME = '_studio-drift-flags';
+// Reserved library records (drift flags, team voices, ...) share this prefix; they aren't walkthroughs.
+const isInternalRecord = (name) => String(name || '').startsWith('_studio-');
 const PR_WATCH_USER = (process.env.PR_WATCH_USER || '').trim();
 const PR_WATCH_INTERVAL_MS = 10 * 60 * 1000;
 
@@ -547,7 +554,7 @@ async function loadAllLibraryScripts() {
   const list = (await libraryFetch('GET'))?.items || [];
   const out = [];
   for (const item of list) {
-    if (!item.name || item.name.startsWith(DRIFT_DOC_NAME)) continue;
+    if (!item.name || isInternalRecord(item.name)) continue;
     const cached = prWatchScriptCache.get(item.name);
     if (cached && cached.updated_at === item.updated_at) { out.push(cached.script); continue; }
     const full = await libraryGetByName(item.name);
@@ -1916,8 +1923,80 @@ function repoEnv(k) {
     return line ? line.slice(line.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '') : '';
   } catch { return ''; }
 }
-// Any VoiceStudio profile id is accepted (they're per-install); other providers must be listed.
-function narrationVoiceValue(v) { const s = String(v || '').trim(); return NARRATION_VOICES.some((x) => x.value === s) || /^vs:[\w-]{4,40}$/.test(s) ? s : ''; }
+// Any VoiceStudio profile id is accepted (they're per-install); other providers must be listed
+// (built in above, or added by a teammate through the render bar's "+ Add voice").
+function narrationVoiceValue(v) { const s = String(v || '').trim(); return NARRATION_VOICES.some((x) => x.value === s) || customVoices.some((x) => `el:${x.id}` === s) || /^vs:[\w-]{4,40}$/.test(s) ? s : ''; }
+
+// ---- Team-added ElevenLabs voices (render bar "+ Add voice") ----
+// One reserved shared-library record holds the list, so a voice anyone adds shows up in every
+// teammate's picker (same pattern as _studio-drift-flags). Mirrored to out/_custom-voices.json so
+// the list survives a library outage and narrationVoiceValue() can check it synchronously.
+const VOICES_DOC_NAME = '_studio-voices';
+const CUSTOM_VOICES_FILE = path.join(REPO_ROOT, 'out', '_custom-voices.json');
+const EL_VOICE_ID_RE = /^[A-Za-z0-9]{20}$/;
+function cleanCustomVoices(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : []).filter((v) => v && EL_VOICE_ID_RE.test(String(v.id || '')) && String(v.label || '').trim() && !seen.has(v.id) && seen.add(v.id))
+    .map((v) => ({ id: v.id, label: String(v.label).trim().slice(0, 40), detail: String(v.detail || '').trim().slice(0, 120), addedBy: v.addedBy || null, addedAt: v.addedAt || null }));
+}
+let customVoices = (() => { try { return cleanCustomVoices(JSON.parse(fs.readFileSync(CUSTOM_VOICES_FILE, 'utf8')).voices); } catch { return []; } })();
+let customVoicesFetchedAt = 0;
+function mirrorCustomVoices() {
+  try { fs.mkdirSync(path.dirname(CUSTOM_VOICES_FILE), { recursive: true }); fs.writeFileSync(CUSTOM_VOICES_FILE, JSON.stringify({ voices: customVoices }, null, 2)); } catch {}
+}
+/** The shared list. `fresh` adds a cache-busting param: the library's GET is CDN-cached for 60 s,
+ * and a read-modify-write on a stale copy would drop a voice a teammate just added. Throws on a
+ * library error (a missing record is just an empty list) so callers never mistake an outage for "none". */
+async function fetchSharedVoices({ fresh = false } = {}) {
+  try {
+    const r = await libraryFetch('GET', { name: VOICES_DOC_NAME, ...(fresh ? { fresh: String(Date.now()) } : {}) });
+    return cleanCustomVoices(r?.item?.script?.voices);
+  } catch (e) {
+    if (/not found/i.test(String(e?.message))) return [];
+    throw e;
+  }
+}
+async function refreshCustomVoices({ force = false } = {}) {
+  if (!LIBRARY_SECRET || (!force && Date.now() - customVoicesFetchedAt < 60_000)) return customVoices;
+  try {
+    customVoices = await fetchSharedVoices({ fresh: force });
+    customVoicesFetchedAt = Date.now();
+    mirrorCustomVoices();
+  } catch (e) { console.warn(`[voices] shared voice list unavailable, using the local copy: ${e.message}`); }
+  return customVoices;
+}
+/** ElevenLabs characters left on the plan (the same /v1/user/subscription numbers renderer/tts.py
+ * checks before a render): { remaining, limit, used, resetsAt } or null when unknown. Cached 2 min
+ * so opening the panel doesn't hit ElevenLabs every time; `force` refreshes (after a render). */
+let elCreditsCache = { at: 0, value: null };
+async function elevenLabsCredits({ force = false } = {}) {
+  const key = repoEnv('ELEVENLABS_API_KEY');
+  if (!key) return null;
+  if (!force && elCreditsCache.value && Date.now() - elCreditsCache.at < 120_000) return elCreditsCache.value;
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/user/subscription', { headers: { 'xi-api-key': key }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return elCreditsCache.value;
+    const d = await r.json();
+    const limit = Number(d.character_limit) || 0, used = Number(d.character_count) || 0;
+    const value = { remaining: Math.max(0, limit - used), limit, used,
+      resetsAt: d.next_character_count_reset_unix ? new Date(d.next_character_count_reset_unix * 1000).toISOString() : null };
+    elCreditsCache = { at: Date.now(), value };
+    return value;
+  } catch { return elCreditsCache.value; }
+}
+/** Look a voice up in this machine's ElevenLabs account: { name, category } or a user-facing error. */
+async function lookupElevenLabsVoice(id) {
+  const key = repoEnv('ELEVENLABS_API_KEY');
+  if (!key) return { error: 'This machine has no ElevenLabs key (ELEVENLABS_API_KEY in .env), so the voice can\'t be checked.' };
+  let r;
+  try { r = await fetch(`https://api.elevenlabs.io/v1/voices/${id}`, { headers: { 'xi-api-key': key }, signal: AbortSignal.timeout(10000) }); }
+  catch (e) { return { error: `Couldn't reach ElevenLabs: ${e.message}` }; }
+  if (r.status === 401) return { error: 'ElevenLabs rejected this machine\'s API key.' };
+  if (r.status === 400 || r.status === 404) return { error: 'ElevenLabs has no voice with that ID in our account. If it\'s from the Voice Library, add it to "My Voices" in ElevenLabs first, then try again.' };
+  if (!r.ok) return { error: `ElevenLabs returned HTTP ${r.status}.` };
+  const d = await r.json().catch(() => ({}));
+  return { name: String(d.name || '').trim(), category: d.category || null };
+}
 /** This machine's VoiceStudio profiles: name -> id, or null when VoiceStudio isn't running. */
 async function voiceStudioProfiles() {
   try {
@@ -2062,6 +2141,29 @@ async function startDriveUpload(name, videoPath) {
     .then((r) => console.log(`[academy-sheet] "${title}": ${r.status}${r.cell ? ` (${r.cell})` : ''}${r.current ? ` — cell already has ${r.current}` : ''}${r.where ? ` — ${r.where.join(', ')}` : ''}`))
     .catch((e) => console.warn(`[academy-sheet] couldn't write the link for "${title}": ${String(e?.message || e)}`));
   return drive;
+}
+
+// A translated render (e.g. Spanish) goes to the SAME module folder as the English video, named
+// "<English title> (Spanish)", and replaces its own file on re-render via translations.<lang>.driveVideoId.
+// The English driveVideoId, the Academy sheet link and the Pylon article are never touched by it.
+async function startTranslatedDriveUpload(baseName, lang, videoPath) {
+  const title = driveTitleFor(formatHumanTitle(baseName), lang);
+  const scriptPath = path.join(REPO_ROOT, 'scripts', `${baseName}.script.json`);
+  let scriptObj = null;
+  try { scriptObj = JSON.parse(fs.readFileSync(scriptPath, 'utf8')); } catch (_) {}
+  const { module } = await resolveScriptModule(baseName, scriptObj);
+  const drive = await googleDriveUploadVideo(videoPath, title, module, { existingId: scriptObj?.translations?.[lang]?.driveVideoId });
+  await patchSavedTranslation(baseName, lang, { driveVideoId: drive.id, driveVideoUrl: drive.url }, 'gdrive');
+  return drive;
+}
+
+/** Merge fields into script.translations[lang] on the saved script, re-read at write time. */
+async function patchSavedTranslation(name, lang, fields, tag) {
+  let current = null;
+  try { current = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'scripts', `${name}.script.json`), 'utf8')); } catch (_) { return null; }
+  const translations = { ...(current.translations || {}) };
+  translations[lang] = { ...(translations[lang] || {}), ...fields };
+  return patchSavedScript(name, { translations }, tag);
 }
 
 async function publishRenderToPylon(name, outDir) {
@@ -2390,7 +2492,9 @@ const server = http.createServer(async (req, res) => {
     }
     const drive = sc?.driveVideoUrl || (sc?.driveVideoId ? `https://drive.google.com/file/d/${sc.driveVideoId}/view` : null);
     const pylon = sc?.pylonArticleUrl || (sc?.pylonArticleId ? pylonArticleUrl({ id: sc.pylonArticleId }) : null);
-    return sendJson(res, 200, { ok: true, drive, pylon });
+    const es = sc?.translations?.es;
+    const driveEs = es?.driveVideoUrl || (es?.driveVideoId ? `https://drive.google.com/file/d/${es.driveVideoId}/view` : null);
+    return sendJson(res, 200, { ok: true, drive, pylon, driveEs });
   }
 
   // GET /video/<name>/timeline -> { ok, video: bool, duration, fx, steps: [{ src, step, start, end, narration }] }
@@ -2446,9 +2550,12 @@ const server = http.createServer(async (req, res) => {
   // GET /voices -> the render bar's voice picker. `value` goes onto the script as script.voice and
   // reaches renderer/tts.py as NARRATION_VOICE; `available` says whether this machine can use it.
   if (req.method === 'GET' && u.pathname === '/voices') {
-    const profiles = await voiceStudioProfiles();
+    const [profiles, , credits] = await Promise.all([voiceStudioProfiles(), refreshCustomVoices(), elevenLabsCredits({ force: u.searchParams.has('fresh') })]);
     const elKey = !!repoEnv('ELEVENLABS_API_KEY');
-    const voices = NARRATION_VOICES.map((v) => {
+    const builtIn = new Set(NARRATION_VOICES.map((v) => v.value));
+    const added = customVoices.filter((v) => !builtIn.has(`el:${v.id}`))
+      .map((v) => ({ value: `el:${v.id}`, label: v.label, group: 'ElevenLabs', detail: v.detail || `Added by ${v.addedBy || 'a teammate'}`, custom: true }));
+    const voices = [...NARRATION_VOICES, ...added].map((v) => {
       if (v.vsName) {
         const id = profiles?.get(v.vsName.toLowerCase());
         return { ...v, value: id ? `vs:${id}` : v.value, available: !!id,
@@ -2457,7 +2564,38 @@ const server = http.createServer(async (req, res) => {
       return { ...v, available: v.value.startsWith('el:') ? elKey : v.value.startsWith('mac:') ? process.platform === 'darwin' : true,
         why: v.value.startsWith('el:') && !elKey ? 'needs ELEVENLABS_API_KEY in .env' : v.value.startsWith('mac:') && process.platform !== 'darwin' ? 'macOS only' : null };
     });
-    return sendJson(res, 200, { ok: true, voices, default: defaultNarrationVoice(voices) });
+    return sendJson(res, 200, { ok: true, voices, default: defaultNarrationVoice(voices), elevenLabsCredits: credits });
+  }
+
+  // POST /voices { voiceId, label? } -> add an ElevenLabs voice to everyone's picker. The id is
+  // checked against our ElevenLabs account first (so a typo can't land in the list), the name
+  // defaults to the voice's ElevenLabs name, and the list is re-read fresh right before the write.
+  if (req.method === 'POST' && u.pathname === '/voices') {
+    try {
+      const body = await readJsonBody(req);
+      const id = String(body.voiceId || '').trim().replace(/^el:/, '');
+      if (!EL_VOICE_ID_RE.test(id)) return sendJson(res, 400, { ok: false, error: 'That doesn\'t look like an ElevenLabs voice ID (20 letters and numbers, e.g. vTckqxNLVCsRq5sZsOrw).' });
+      if (!LIBRARY_SECRET) return sendJson(res, 400, { ok: false, error: 'This machine isn\'t connected to the shared library (STUDIO_SHARED_SECRET in .env), so the voice can\'t be shared with the team.' });
+      const shared = await fetchSharedVoices({ fresh: true });
+      const existing = NARRATION_VOICES.find((v) => v.value === `el:${id}`) || shared.find((v) => v.id === id);
+      if (existing) return sendJson(res, 409, { ok: false, error: `That voice is already in the list as "${existing.label}".`, value: `el:${id}` });
+      const found = await lookupElevenLabsVoice(id);
+      if (found.error) return sendJson(res, 400, { ok: false, error: found.error });
+      const label = String(body.label || '').trim().slice(0, 40) || found.name || id;
+      const taken = [...NARRATION_VOICES, ...shared].find((v) => String(v.label).toLowerCase() === label.toLowerCase());
+      if (taken) return sendJson(res, 409, { ok: false, error: `There's already a voice called "${taken.label}". Pick a different display name.` });
+      const voice = { id, label, detail: `ElevenLabs voice${found.name && found.name !== label ? ` "${found.name}"` : ''} · added by ${WHOAMI}`, addedBy: WHOAMI, addedAt: new Date().toISOString() };
+      const next = cleanCustomVoices([...shared, voice]);
+      await libraryFetch('POST', null, {
+        script: { name: VOICES_DOC_NAME, title: 'Studio narration voices (internal)', steps: [], voices: next, updatedAt: voice.addedAt },
+        updated_by: WHOAMI,
+      });
+      customVoices = next; customVoicesFetchedAt = Date.now(); mirrorCustomVoices();
+      console.log(`[voices] ${WHOAMI} added ElevenLabs voice "${label}" (${id})`);
+      return sendJson(res, 200, { ok: true, value: `el:${id}`, label, elevenLabsName: found.name || null });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+    }
   }
 
   // ---- per-step narration preview: voices one line through renderer/tts.py, the same provider
@@ -2467,6 +2605,7 @@ const server = http.createServer(async (req, res) => {
       const { text, voice } = await readJsonBody(req);
       const line = String(text || '').trim();
       if (!line) return sendJson(res, 400, { ok: false, error: 'no narration text to preview' });
+      await refreshCustomVoices();
       const venvPython = path.join(REPO_ROOT, '.venv', 'bin', 'python');
       const python = fs.existsSync(venvPython) ? venvPython : 'python3';
       const out = await new Promise((resolve, reject) => {
@@ -2495,6 +2634,37 @@ const server = http.createServer(async (req, res) => {
       if ((mode === 'avoid' || mode === 'use') && !list.length) return sendJson(res, 400, { ok: false, error: `list the word(s) to ${mode}` });
       const out = await rephraseNarrationLine({ line, mode, words: list, step, before, after, scriptName });
       return sendJson(res, 200, { ok: true, ...out });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
+    }
+  }
+
+  // ---- translate a script's narration/captions/title (Spanish render option). Pure: returns the
+  // merged translation for the panel to keep on its draft (script.translations.<lang>) and save with
+  // the script; it writes nothing itself. Body: { script, language: 'es', only: 'missing'|'all', keys?: [stepKey] }.
+  // Lines are stamped with the hash of the English they came from, so later English edits flag them. ----
+  if (req.method === 'POST' && u.pathname === '/translate') {
+    try {
+      const { script, language: askedLanguage = 'es', only = 'missing', keys = null, title = undefined } = await readJsonBody(req);
+      const language = normalizeLanguage(askedLanguage);
+      if (language === 'en') return sendJson(res, 400, { ok: false, error: 'pick a language to translate into' });
+      if (!script || !Array.isArray(script.steps)) return sendJson(res, 400, { ok: false, error: 'no script provided' });
+      const ask = translationRequest(script, language, { only, keys: Array.isArray(keys) ? keys.map(String) : null, title });
+      let translation = script.translations?.[language] || {};
+      if (ask.title || ask.items.length) {
+        // Batches keep each reply short enough to come back as clean JSON on long scripts.
+        const BATCH = 25;
+        let work = script;
+        for (let i = 0; i < Math.max(1, ask.items.length); i += BATCH) {
+          const part = { title: ask.title && i === 0, items: ask.items.slice(i, i + BATCH) };
+          if (!part.title && !part.items.length) break;
+          const raw = await runClaude(buildTranslationPrompt(work, part, language));
+          translation = applyTranslation(work, language, part, parseTranslationReply(raw));
+          work = { ...work, translations: { ...(work.translations || {}), [language]: translation } };
+        }
+      }
+      const status = translationStatus({ ...script, translations: { ...(script.translations || {}), [language]: translation } }, language);
+      return sendJson(res, 200, { ok: true, language, translation, status: { ok: status.ok, title: status.title, missing: status.missing.length, stale: status.stale.length, problems: translationProblems(status) } });
     } catch (e) {
       return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
     }
@@ -3400,7 +3570,7 @@ const server = http.createServer(async (req, res) => {
         const scriptsDir = path.join(REPO_ROOT, 'scripts');
         if (fs.existsSync(scriptsDir)) {
           for (const f of fs.readdirSync(scriptsDir)) {
-            if (!f.endsWith('.script.json')) continue;
+            if (!f.endsWith('.script.json') || isInternalRecord(f)) continue;
             try {
               const sc = JSON.parse(fs.readFileSync(path.join(scriptsDir, f), 'utf8'));
               const sName = sc.name || f.replace('.script.json', '');
@@ -3426,7 +3596,7 @@ const server = http.createServer(async (req, res) => {
         const merged = [];
         for (const r of remoteItems) {
           const sName = r.name;
-          if (sName.startsWith(DRIFT_DOC_NAME)) continue; // internal record, not a walkthrough
+          if (isInternalRecord(sName)) continue; // internal record, not a walkthrough
           seenNames.add(sName.toLowerCase());
           const mName = safeName(sName);
           const mp4Path = path.join(REPO_ROOT, 'out', mName, `${mName}.mp4`);
@@ -3857,8 +4027,12 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (c) => (body += c));
     req.on('end', async () => {
       try {
-        const { script, mode = 'both', drive: uploadToDrive = true } = JSON.parse(body);
+        const { script, mode: askedMode = 'both', drive: uploadToDrive = true, language: askedLanguage } = JSON.parse(body);
         if (!script || !Array.isArray(script.steps)) throw new Error('no script provided');
+        // Language: English (default) or a translation stored on the same script (tools/translation.mjs).
+        // A translated render is video-only whatever the panel asked for: no Pylon article, ever.
+        const language = normalizeLanguage(askedLanguage);
+        const mode = renderModeFor(askedMode, language);
         // A recipe-backed script is deliberately steps: [] — render.sh dispatches it to its own
         // Phase 1 recipe (renderer/from-recipe.mjs), which never reads these steps or environment
         // at all, so neither guard below applies to it.
@@ -3871,10 +4045,15 @@ const server = http.createServer(async (req, res) => {
         if (render.running) throw new Error('a render is already running');
         render.uploadToDrive = uploadToDrive !== false;
         // No pick: Josh when this machine has an ElevenLabs key, else the .env provider chain.
+        await refreshCustomVoices(); // a teammate may have just added the picked voice
         script.voice = narrationVoiceValue(script.voice) || (repoEnv('ELEVENLABS_API_KEY') ? DEFAULT_NARRATION_VOICE : undefined);
         render.voice = script.voice || null;
         // Extra FX (render bar switch): saved on the script so CLI re-renders keep the same look.
         if (script.fx) script.fx = true; else delete script.fx;
+        // Built before the title is reformatted below, since the translation's staleness hashes were
+        // made from the title as the panel sent it. Throws (400) when any line is untranslated or
+        // stale, so a Spanish render never silently falls back to English text.
+        const translated = language !== 'en' ? buildLocalizedScript(script, language) : null;
         const rawTitle = (script.title || script.name || 'Untitled walkthrough').trim();
         const humanTitle = formatHumanTitle(rawTitle);
         const name = safeName(humanTitle);
@@ -3883,6 +4062,16 @@ const server = http.createServer(async (req, res) => {
         const scriptPath = path.join(REPO_ROOT, 'scripts', `${name}.script.json`);
         const outDir = path.join(REPO_ROOT, 'out', name);
         const reportPath = path.join(outDir, 'report.json');
+        // A translated render's voice pick belongs to that language, not to the English video: keep it
+        // on translations.<lang>.voice and leave the script's own (English) voice as it was saved, so a
+        // Spanish render in another voice never changes what the next English re-render sounds like.
+        const renderVoice = script.voice;
+        if (translated) {
+          let savedVoice;
+          try { savedVoice = JSON.parse(fs.readFileSync(scriptPath, 'utf8')).voice; } catch (_) {}
+          script.translations = { ...(script.translations || {}), [language]: { ...(script.translations?.[language] || {}), ...(renderVoice ? { voice: renderVoice } : {}) } };
+          if (savedVoice) script.voice = savedVoice; else delete script.voice;
+        }
 
         // Check if a valid render already exists for fast-path Pylon article creation
         let hasValidExistingRender = false;
@@ -4012,6 +4201,21 @@ const server = http.createServer(async (req, res) => {
 
         const renderable = script.steps.filter((step) => step.capture !== false && step.media?.pre);
         if (!renderable.length) throw new Error('the recording has no captured slides');
+        // A translated render works on its own copy (translated text, out/<name>__es, own render key and
+        // caches), written outside scripts/ so it never shows up as a library script or gets wiped with
+        // the English out/<name> by render.sh.
+        let renderName = name, renderScriptPath = scriptPath, renderScript = script;
+        if (translated) {
+          renderName = localizedName(name, language);
+          renderScript = { ...translated, name: renderName, module: script.module, voice: renderVoice, environment: script.environment, recording: script.recording };
+          if (script.fx) renderScript.fx = true; else delete renderScript.fx;
+          const langDir = path.join(REPO_ROOT, 'out', '_lang');
+          fs.mkdirSync(langDir, { recursive: true });
+          renderScriptPath = path.join(langDir, `${renderName}.script.json`);
+          fs.writeFileSync(renderScriptPath, JSON.stringify(renderScript, null, 2));
+        }
+        const renderOutDir = path.join(REPO_ROOT, 'out', renderName);
+        const publishOpts = { language, baseName: name };
 
         // Auto-heal missing slides: if any slide capture was missed (e.g. rapid clicks or page transition),
         // reuse the nearest captured slide so the video and narration render smoothly without failing.
@@ -4041,56 +4245,58 @@ const server = http.createServer(async (req, res) => {
         if (stillMissing.length === renderable.length) throw new Error('No captured slides were saved for this recording — make a new recording before rendering.');
 
         const prelude = [`Using ${renderable.length} slides captured during the live recording — no replay.`];
+        if (translated) prelude.push(`Rendering the ${language === 'es' ? 'Spanish' : language} version into out/${renderName} (no Pylon article).`);
         if (renderSaveWarning) prelude.unshift(renderSaveWarning);
         const renderMode = mode || 'video';
-        const renderKey = renderKeyForScript(script);
+        const renderKey = renderKeyForScript(renderScript);
 
         // Unchanged since the last render (typically the automatic editor preview)? The MP4 on disk
         // is already exactly what this render would produce — reuse it and go straight to publishing.
-        const existingMp4 = path.join(outDir, `${name}.mp4`);
+        const existingMp4 = path.join(renderOutDir, `${renderName}.mp4`);
         let priorKey = null;
-        try { priorKey = JSON.parse(fs.readFileSync(path.join(outDir, 'render-key.json'), 'utf8')).key; } catch (_) {}
+        try { priorKey = JSON.parse(fs.readFileSync(path.join(renderOutDir, 'render-key.json'), 'utf8')).key; } catch (_) {}
         if (renderMode !== 'preview' && priorKey && priorKey === renderKey && fs.existsSync(existingMp4)) {
           const reuseMsg = `No changes since the last render — reusing that video instead of rendering again.`;
           Object.assign(render, {
-            running: false, name, mode: renderMode, renderKey, phase: 'done',
+            running: false, name: renderName, mode: renderMode, renderKey, language, phase: 'done',
             log: [...(renderSaveWarning ? [renderSaveWarning] : []), reuseMsg],
-            outDir, video: existingMp4,
-            interactive: fs.existsSync(path.join(outDir, 'interactive', 'index.html')) ? path.join(outDir, 'interactive', 'index.html') : null,
+            outDir: renderOutDir, video: existingMp4,
+            interactive: fs.existsSync(path.join(renderOutDir, 'interactive', 'index.html')) ? path.join(renderOutDir, 'interactive', 'index.html') : null,
             report: null, error: null, startedAt: Date.now(), finishedAt: Date.now(), pylon: null, drive: null, reused: true,
           });
           try {
-            const r = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+            const r = JSON.parse(fs.readFileSync(path.join(renderOutDir, 'report.json'), 'utf8'));
             render.report = { slides: r.slides?.length ?? 0, healed: r.healed?.length ?? 0, failed: r.failed ?? [], loginRequired: false, mutationsAllowed: false, source: r.source || null };
           } catch (_) {}
-          try { fs.writeFileSync(path.join(outDir, 'render-key.json'), JSON.stringify({ key: renderKey, mode: renderMode })); } catch (_) {}
+          try { fs.writeFileSync(path.join(renderOutDir, 'render-key.json'), JSON.stringify({ key: renderKey, mode: renderMode })); } catch (_) {}
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, name, scriptPath, reused: true }));
-          console.log(`[render] "${name}": unchanged since last render — reusing out/${name}/${name}.mp4`);
-          publishFinishedRender(name, renderMode);
+          res.end(JSON.stringify({ ok: true, name: renderName, scriptPath, reused: true, language }));
+          console.log(`[render] "${renderName}": unchanged since last render — reusing out/${renderName}/${renderName}.mp4`);
+          publishFinishedRender(renderName, renderMode, publishOpts);
           return;
         }
 
         Object.assign(render, {
           running: true,
-          name,
+          name: renderName,
           mode: renderMode,
           renderKey,
+          language,
           reused: false,
           phase: 'assembling',
           log: prelude,
-          outDir,
+          outDir: renderOutDir,
           video: null,
           interactive: null,
           report: null,
           error: null,
           startedAt: Date.now(),
           finishedAt: null,
-          pylon: renderMode !== 'video' ? { status: 'pending' } : null,
+          pylon: renderMode !== 'video' && allowsPylon(language) ? { status: 'pending' } : null,
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, name, scriptPath }));
-        startRender(scriptPath, name, render.log, renderMode, renderKey);
+        res.end(JSON.stringify({ ok: true, name: renderName, scriptPath, language }));
+        startRender(renderScriptPath, renderName, render.log, renderMode, renderKey, publishOpts);
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
@@ -4159,13 +4365,35 @@ function renderKeyForScript(script) {
   });
   const payload = JSON.stringify([script.title || script.name, canonicalModule(script.module) || script.module || null,
     !!script.captionsFromNarration, script.recording?.id || null, steps, narrationVoiceValue(script.voice) || null,
-    ...(script.fx ? ['fx:1'] : [])]);
+    ...(script.fx ? ['fx:1'] : []),
+    // A translated render's key also names its language (English keys are unchanged: no entry).
+    ...(normalizeLanguage(script.language) !== 'en' ? [`lang:${normalizeLanguage(script.language)}`] : [])]);
   return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 24);
 }
 
 // After a video exists in out/<name>/: upload to Drive and draft the Pylon article as the mode asks.
 // Shared by a fresh render's close handler and the "reuse the preview" fast path.
-function publishFinishedRender(name, mode) {
+function publishFinishedRender(name, mode, { language = 'en', baseName = name } = {}) {
+  // Translated (Spanish) renders: their own Drive file at most, and never anything in Pylon, whatever
+  // mode was asked for — the Pylon article keeps the English video. Server-side guard (see also /render).
+  if (!allowsPylon(language)) {
+    render.pylon = null;
+    if (render.video && googleDriveConfigured() && mode !== 'preview' && render.uploadToDrive !== false) {
+      const driveOutDir = render.outDir;
+      render.drive = { status: 'pending' };
+      startTranslatedDriveUpload(baseName, language, render.video).then((drive) => {
+        if (render.outDir === driveOutDir) render.drive = { status: 'done', ...drive };
+        console.log(`Google Drive upload complete for "${name}" (${language}): ${drive.url}`);
+      }).catch((e) => {
+        if (render.outDir === driveOutDir) render.drive = { status: 'failed', error: String(e?.message || e) };
+        console.warn(`Google Drive upload failed for "${name}" (${language}): ${String(e?.message || e)}`);
+      });
+    } else if (render.video) {
+      render.drive = null;
+    }
+    console.log(`Render complete for "${name}" (${language} — ${mode === 'preview' ? 'local preview' : 'video only'}, no Pylon article)`);
+    return;
+  }
   if (render.video && googleDriveConfigured() && mode !== 'preview' && mode !== 'pylon' && render.uploadToDrive !== false) {
     const driveName = name, driveOutDir = render.outDir, driveVideoPath = render.video;
     render.drive = { status: 'pending' };
@@ -4196,8 +4424,8 @@ function publishFinishedRender(name, mode) {
   }
 }
 
-function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = null) {
-  Object.assign(render, { running: true, name, mode, renderKey, phase: 'replaying', log: [...prelude], outDir: path.join(REPO_ROOT, 'out', name), video: null, interactive: null, report: null, error: null, startedAt: render.startedAt || Date.now(), finishedAt: null, pylon: null });
+function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = null, { language = 'en', baseName = name } = {}) {
+  Object.assign(render, { running: true, name, mode, renderKey, language, phase: 'replaying', log: [...prelude], outDir: path.join(REPO_ROOT, 'out', name), video: null, interactive: null, report: null, error: null, startedAt: render.startedAt || Date.now(), finishedAt: null, pylon: null });
   const child = spawn('bash', [path.join(REPO_ROOT, 'render.sh'), scriptPath], { cwd: REPO_ROOT, env: { ...narrationEnv(render.voice), PATH: `${process.env.HOME}/.local/bin:${process.env.HOME}/.local/node/bin:${process.env.HOME}/.npm-global/bin:${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` } });
   const onLine = (chunk) => {
     for (const raw of String(chunk).split('\n')) {
@@ -4226,7 +4454,8 @@ function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = 
       try {
         const r = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
         render.report = { slides: r.slides?.length ?? 0, healed: r.healed?.length ?? 0, failed: r.failed ?? [], loginRequired: !!r.loginRequired, mutationsAllowed: !!r.mutationsAllowed, source: r.source || null };
-        if (LIBRARY_SECRET) {
+        // Translated renders stay out of the shared library (its record is the English script's).
+        if (LIBRARY_SECRET && language === 'en') {
           libraryFetch('POST', null, { name, report: r }).catch(() => {});
         }
       } catch (_) {}
@@ -4234,7 +4463,7 @@ function startRender(scriptPath, name, prelude = [], mode = 'both', renderKey = 
     if (code === 0 && (render.video || (mode === 'pylon' && render.report?.slides))) {
       render.phase = 'done';
       try { if (render.video) fs.writeFileSync(path.join(outDir, 'render-key.json'), JSON.stringify({ key: render.renderKey || null, mode })); } catch (_) {}
-      publishFinishedRender(name, mode);
+      publishFinishedRender(name, mode, { language, baseName });
     } else {
       render.phase = 'failed';
       // A recipe attaches to a real, already-open browser tab over CDP rather than the renderer's
@@ -4265,6 +4494,8 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('Uses your logged-in `claude` CLI session (run `claude auth status` to check).');
   console.log('Keep this running while using "Draft with AI" in the side panel. Ctrl+C to stop.');
   if (googleDriveConfigured()) setTimeout(backfillRecordingUploads, 5000);
+  // Team-added voices: load the shared list now so a render that names one is accepted straight away.
+  refreshCustomVoices({ force: true }).catch(() => {});
   if (PR_WATCH_USER) {
     console.log(`[pr-watch] watching ${FRONTEND_REPO} for merged PRs as ${PR_WATCH_USER}, every ${PR_WATCH_INTERVAL_MS / 60000} min`);
     setTimeout(prWatchTick, 15000);

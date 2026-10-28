@@ -202,7 +202,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         catch (e) { return reply({ ok: false, error: String(e?.message || e) }); }
       }
       case 'PANEL_RENDER': {
-        try { return reply(await bridge('POST', '/render', { script: msg.script, mode: msg.mode || 'both', drive: msg.drive !== false })); }
+        try { return reply(await bridge('POST', '/render', { script: msg.script, mode: msg.mode || 'both', drive: msg.drive !== false, ...(msg.language ? { language: msg.language } : {}) })); }
         catch (e) { return reply({ ok: false, error: String(e?.message || e) }); }
       }
       case 'PANEL_RENDER_STATUS': {
@@ -242,6 +242,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
             name: sc.name || '',
             title: sc.title || '', // lets Save keep the loaded library name (e.g. "…-ai") while the title is unchanged
             captionsFromNarration: !!sc.captionsFromNarration,
+            // The Spanish translation (and its Drive link) lives on the script; keep it for editing/saving.
+            ...(sc.translations ? { translations: sc.translations } : {}),
             createdAt: sc.createdAt || new Date().toISOString(),
             updatedAt: sc.updatedAt || sc.createdAt || new Date().toISOString(),
           };

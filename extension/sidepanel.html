@@ -95,6 +95,21 @@
       <video id="videoPreviewPlayer" controls preload="metadata"></video>
       <div id="videoPreviewStale" class="video-preview-stale" hidden>Steps changed since this render. Re-render to see the edits.</div>
     </section>
+    <section id="translationBar" class="translation-bar" hidden>
+      <div class="translation-head">
+        <span class="translation-title">Spanish version</span>
+        <span id="translationSummary" class="translation-summary"></span>
+      </div>
+      <label class="step-field-label">
+        <span>Title · Spanish <span id="esTitleFlag" class="es-flag stale" hidden></span></span>
+        <input id="esTitle" type="text" placeholder="Título en español" />
+      </label>
+      <div class="es-source"><span class="es-source-label">English</span><span id="esTitleSource"></span> <button id="esTitleKeep" class="link-btn" type="button" hidden>Keep as is</button></div>
+      <div class="translation-actions">
+        <button id="translateBtn" class="primary" type="button">✨ Translate to Spanish</button>
+        <span id="translateStatus" class="translate-status"></span>
+      </div>
+    </section>
     <section id="steps" class="steps"></section>
   </main>
 
@@ -328,6 +343,15 @@
       <label for="voiceSelect">Voice</label>
       <select id="voiceSelect" title="Narration voice for this render"></select>
       <button type="button" id="voicePreviewBtn" class="voice-preview-btn" title="Hear a short sample of this voice">▶</button>
+      <button type="button" id="voiceAddBtn" class="voice-preview-btn" title="Add an ElevenLabs voice to everyone's list">＋</button>
+      <span class="lang-pick">
+        <label for="langSelect">Language</label>
+        <select id="langSelect" title="Language of the narration, captions and title/closing cards. Spanish renders are video-only (no Pylon article) and upload as their own Drive file, &quot;&lt;title&gt; (Spanish)&quot;.">
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+        </select>
+      </span>
+      <span id="elCredits" class="el-credits" hidden><img src="icons/elevenlabs.png" alt="ElevenLabs" class="el-logo"><span id="elCreditsText"></span></span>
     </div>
     <p id="renderNotice" class="render-notice" hidden></p>
     <div class="render-buttons">
@@ -360,6 +384,30 @@
       <div class="repair-summary-actions"><button id="repairSummaryOk" type="button" class="primary">Got it</button></div>
     </div>
   </div>
+  <div id="addVoiceModal" class="modal-backdrop" hidden>
+    <div class="modal-card add-voice-card" role="dialog" aria-labelledby="addVoiceTitle">
+      <div class="modal-header">
+        <div class="modal-title-group"><img src="icons/elevenlabs.png" alt="" class="el-logo el-logo-lg"><h3 id="addVoiceTitle" class="plan-card-title">Add an ElevenLabs voice</h3></div>
+        <button id="closeAddVoiceBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
+      </div>
+      <form id="addVoiceForm" class="add-voice-body" autocomplete="off">
+        <p class="muted">Paste the voice ID from ElevenLabs (Voices → ⋯ → Copy voice ID). It's checked against our ElevenLabs account, then added to the Voice list for everyone on the team.</p>
+        <label class="step-field-label">Voice ID
+          <input id="addVoiceId" type="text" placeholder="e.g. vTckqxNLVCsRq5sZsOrw" maxlength="40" spellcheck="false" required>
+        </label>
+        <label class="step-field-label">Display name <span class="muted">(optional, defaults to the ElevenLabs name)</span>
+          <input id="addVoiceLabel" type="text" placeholder="e.g. Elena" maxlength="40">
+        </label>
+        <p id="addVoiceError" class="add-voice-error" hidden></p>
+        <p id="addVoiceCredits" class="muted" hidden></p>
+        <div class="add-voice-actions">
+          <button type="button" id="cancelAddVoiceBtn" class="secondary">Cancel</button>
+          <button type="submit" id="submitAddVoiceBtn" class="primary">Add voice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="loadScriptModal" class="modal-backdrop" hidden>
     <div class="modal-card">
       <div class="modal-header">

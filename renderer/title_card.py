@@ -54,6 +54,50 @@ def format_module_badge(raw: str) -> str:
         return ''
     return '   '.join(' '.join(w.upper()) for w in words)
 
+# Fixed card wording per language. English is the default and must stay exactly as it was; other
+# languages are used only by translated renders (report.json "language", see assemble.py).
+CARD_STRINGS = {
+    'en': {
+        'support_badge': 'N E E D   H E L P ?',
+        'support_visit': 'For additional information, visit our support portal at',
+        'support_email': 'or reach our support team by emailing',
+        'modules': {},
+    },
+    'es': {
+        'support_badge': '¿ N E C E S I T A S   A Y U D A ?',
+        'support_visit': 'Para más información, visita nuestro portal de soporte en',
+        'support_email': 'o comunícate con nuestro equipo de soporte escribiendo a',
+        # Module badge above the title (the six Academy modules + Other's generic badge stays English:
+        # "HADRIUS ACADEMY" is the brand name).
+        'modules': {
+            'testing program': 'Programa de pruebas',
+            'people oversight': 'Supervisión de personal',
+            'branches': 'Sucursales',
+            'communications': 'Comunicaciones',
+            'marketing': 'Marketing',
+            'account surveillance': 'Monitoreo de cuentas',
+        },
+    },
+}
+
+
+def card_strings(language: str | None = 'en') -> dict:
+    return CARD_STRINGS.get((language or 'en').strip().lower(), CARD_STRINGS['en'])
+
+
+def localize_module(module: str | None, language: str | None = 'en') -> str | None:
+    if not module:
+        return module
+    return card_strings(language)['modules'].get(re.sub(r'[-_.]+', ' ', str(module)).strip().lower(), module)
+
+
+def format_localized_title(raw: str) -> str:
+    # Translated titles arrive already in the language's own (sentence) case — "Cómo encontrar el ID
+    # de un proyecto" — so only tidy the whitespace; English title-casing would turn "ID" into "Id".
+    cleaned = ' '.join(str(raw).split())
+    return cleaned or 'Walkthrough'
+
+
 BG_RGB = (255, 255, 255)
 PURPLE = (75, 60, 169, 255)       # the logo's purple
 INK = (28, 24, 48, 255)           # body copy on white
@@ -70,6 +114,7 @@ def generate_title_video(
     module: str | None = None,
     music_path: Path | None = None,
     show_academy: bool = False,
+    language: str = 'en',
     **kwargs,
 ) -> Path:
     output_mp4 = Path(output_mp4)
@@ -86,7 +131,9 @@ def generate_title_video(
         music_path = Path(module)
         module = None
 
-    title = format_title(title_text)
+    title = format_title(title_text) if (language or 'en') == 'en' else format_localized_title(title_text)
+    if (language or 'en') != 'en':
+        module = localize_module(module, language)
     
     # Calculate optimal font size and line wrapping
     font_size = 68
@@ -237,6 +284,7 @@ def generate_support_card_video(
     music_path: Path | None = None,
     portal: str = 'support.hadrius.com',
     email: str = 'support@hadrius.com',
+    language: str = 'en',
 ) -> Path:
     """Closing 'need help?' card — same white/purple Hadrius Academy theme as the title
     card, inserted after the last recorded step and crossfaded in/out exactly like every other
@@ -253,10 +301,11 @@ def generate_support_card_video(
     base_bg = get_base_background()
     cx = W // 2
 
+    strings = card_strings(language)
     lines = [
-        ('body', 'For additional information, visit our support portal at'),
+        ('body', strings['support_visit']),
         ('link', portal),
-        ('body', 'or reach our support team by emailing'),
+        ('body', strings['support_email']),
         ('link', email),
     ]
     line_gap = 20
@@ -268,7 +317,7 @@ def generate_support_card_video(
 
     sizes = [line_size(k, t) for k, t in lines]
     total_h = sum(h for _, h, _ in sizes) + line_gap * (len(lines) - 1)
-    badge_text = "N E E D   H E L P ?"
+    badge_text = strings['support_badge']
     bbox_b = badge_font.getbbox(badge_text)
     badge_h = bbox_b[3] - bbox_b[1]
     top = (H - total_h) // 2 - badge_h - 36

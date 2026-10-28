@@ -2001,9 +2001,9 @@ let isSavingScript = false;
 
 function updateRenderButtons() {
   const hasSteps = (state.steps?.length || 0) > 0;
-  const disableRender = !hasSteps || isRenderingActive;
+  const disableRender = !hasSteps || isRenderingActive || (uiLang() === 'es' && !esSummary().ready);
   $('#renderBtn').disabled = disableRender;
-  document.querySelectorAll('#renderOptions .seg-btn, #driveToggle, #fxToggle').forEach((el) => (el.disabled = isRenderingActive));
+  document.querySelectorAll('#renderOptions .seg-btn, #driveToggle, #fxToggle, #langSelect').forEach((el) => (el.disabled = isRenderingActive));
   updateRenderOptions();
   $('#downloadBtn').disabled = !hasSteps;
   $('#saveScriptBtn').disabled = !hasSteps || isSavingScript;
@@ -2051,7 +2051,8 @@ function updateRenderBarSummary() {
   const out = document.querySelector('#renderOptions .seg-btn.active, #renderOptions .seg-btn[aria-checked="true"]')?.textContent?.trim();
   const sel = (id) => { const s = $(id); return s && s.selectedIndex >= 0 ? s.options[s.selectedIndex]?.textContent?.trim() : ''; };
   const fxOn = $('#fxToggle')?.checked && !$('#fxSwitchWrap')?.hidden;
-  const parts = [out, !$('#modulePick')?.hidden && sel('#moduleSelect'), sel('#voiceSelect'), fxOn && 'Extra FX'].filter(Boolean);
+  const spanish = typeof uiLang === 'function' && uiLang() === 'es';
+  const parts = [spanish ? 'Spanish video' : out, !$('#modulePick')?.hidden && sel('#moduleSelect'), sel('#voiceSelect'), fxOn && 'Extra FX'].filter(Boolean);
   el.textContent = parts.length ? `Render · ${parts.join(' · ')}` : 'Render options';
 }
 $('#renderBarToggle')?.addEventListener('click', () => {
@@ -2566,6 +2567,24 @@ function renderSteps() {
     }
 
     const vspan = stepVideoSpan(step);
+    // Spanish mode: the same editor edits the step's Spanish text (script.translations.es); the English
+    // line is shown above it for reference and missing/stale lines are flagged on the row.
+    const es = uiLang() === 'es';
+    const esSt = es ? esStepStatus(step) : null;
+    const esE = es ? esEntry(step) : null;
+    const narrVal = es ? (esE?.narration || '') : (step.narration || '');
+    const capVal = es ? (esE?.caption || '') : (step.caption || '');
+    const esFlag = !es ? '' : esSt === 'missing' ? '<span class="es-flag missing" title="No Spanish text yet: this step would render in English, so Spanish renders are blocked until it is translated">ES · not translated</span>'
+      : esSt === 'stale' ? '<span class="es-flag stale" title="The English changed after this was translated. Re-translate it or keep the Spanish as is.">ES · English changed</span>' : '';
+    const esSourceTxt = es ? trStepSource(step) : null;
+    const esHelp = !es || esSt === 'skip' ? '' : `
+        <div class="es-source"><span class="es-source-label">English</span>${esc(esSourceTxt.narration || '(no narration)')}${esSourceTxt.caption ? `<br><span class="es-source-label">Caption</span>${esc(esSourceTxt.caption)}` : ''}</div>
+        ${esSt === 'missing' || esSt === 'stale' ? `<div class="es-review-row ${esSt}">
+          <span>${esSt === 'missing' ? 'Not translated yet.' : 'The English changed since this was translated.'}</span>
+          <button class="es-translate-btn secondary" type="button">✨ ${esSt === 'missing' ? 'Translate' : 'Re-translate'}</button>
+          ${esSt === 'stale' ? '<button class="es-keep-btn secondary" type="button" title="The Spanish still fits the new English">Keep as is</button>' : ''}
+          <span class="es-step-status"></span>
+        </div>` : ''}`;
 
     card.innerHTML = `
       <div class="row">
@@ -2574,6 +2593,7 @@ function renderSteps() {
         <span class="target" title="${esc(targetDesc)}">${esc(targetDesc)}</span>
         ${vspan ? `<span class="video-time" title="Where this step starts and ends in the rendered video">${fmtTime(vspan.start)}–${fmtTime(vspan.end)}</span>` : ''}
         ${step.narration ? '<span class="step-narration-icon" title="Has narration">🗣</span>' : ''}
+        ${esFlag}
         <span class="tools">
           <button class="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
           <button class="down" title="Move down" ${i === state.steps.length - 1 ? 'disabled' : ''}>↓</button>
@@ -2584,14 +2604,15 @@ function renderSteps() {
         ${step.route ? `<div class="step-route-badge">Route: ${esc(step.route)}</div>` : ''}
         ${vspan ? `<button class="play-in-video secondary" type="button" title="Jump the rendered video to this step">▶ Play in video (${fmtTime(vspan.start)}–${fmtTime(vspan.end)})</button>` : ''}
         ${(vspan && videoPreview.src) ? `<div class="thumb-wrap step-clip-wrap"><video class="step-clip" controls playsinline preload="none" ${thumbUrl ? `poster="${thumbUrl}"` : ''} src="${videoPreview.src}#t=${stepPlayFrom(vspan).toFixed(2)},${vspan.end.toFixed(2)}"></video></div>`
-          : thumbUrl ? `<div class="thumb-wrap"><img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" /><div class="thumb-caption" ${(step.caption || step.narration) ? '' : 'hidden'}>${esc(step.caption || step.narration || '')}</div></div>` : ''}
+          : thumbUrl ? `<div class="thumb-wrap"><img class="thumb" src="${thumbUrl}" alt="Step ${i + 1} capture" loading="lazy" /><div class="thumb-caption" ${(capVal || narrVal) ? '' : 'hidden'}>${esc(capVal || narrVal || '')}</div></div>` : ''}
+        ${esHelp}
         <label class="step-field-label">
-          <span>Narration</span>
-          <textarea class="narration" placeholder="What the voice says while this step happens">${esc(step.narration || '')}</textarea>
+          <span>${es ? 'Narration · Spanish' : 'Narration'}</span>
+          <textarea class="narration" placeholder="${es ? 'Lo que dice la voz en este paso (Spanish)' : 'What the voice says while this step happens'}">${esc(narrVal)}</textarea>
         </label>
         <div class="preview-voice-row">
           <button class="preview-voice-btn secondary" type="button" title="Hear this line in the render's voice. The audio is cached, so the next render reuses it instead of generating it again.">▶ Preview voice</button>
-          <button class="rephrase-btn secondary" type="button" title="Have AI rewrite this narration line: avoid or use specific words, make it shorter or longer, or let it decide.">✨ Rephrase with AI</button>
+          <button class="rephrase-btn secondary" type="button" ${es ? 'hidden' : ''} title="Have AI rewrite this narration line: avoid or use specific words, make it shorter or longer, or let it decide.">✨ Rephrase with AI</button>
           <span class="preview-voice-status"></span>
         </div>
         <div class="rephrase-box" hidden>
@@ -2609,8 +2630,8 @@ function renderSteps() {
           </div>
         </div>
         <label class="step-field-label">
-          <span>Caption</span>
-          <input class="caption" value="${esc(step.caption || '')}" placeholder="Defaults to narration" />
+          <span>${es ? 'Caption · Spanish' : 'Caption'}</span>
+          <input class="caption" value="${esc(capVal)}" placeholder="${es ? 'Defaults to the Spanish narration' : 'Defaults to narration'}" />
         </label>
       </div>
     `;
@@ -2626,8 +2647,17 @@ function renderSteps() {
       send({ type: 'PANEL_UPDATE_STEP', index: step.index, patch });
     };
 
-    card.querySelector('.narration').onchange = (e) => { update({ narration: e.target.value }); updateVideoPreviewStale(); };
-    card.querySelector('.caption').onchange = (e) => update({ caption: e.target.value });
+    if (es) {
+      card.querySelector('.narration').onchange = (e) => { setEsStep(step, { narration: e.target.value.trim() }); renderSteps(); };
+      card.querySelector('.caption').onchange = (e) => { setEsStep(step, { caption: e.target.value.trim() }); renderSteps(); };
+      const tBtn = card.querySelector('.es-translate-btn');
+      if (tBtn) tBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); translateToSpanish({ keys: [trStepKey(step)], statusEl: card.querySelector('.es-step-status') }); };
+      const kBtn = card.querySelector('.es-keep-btn');
+      if (kBtn) kBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setEsStep(step, {}); renderSteps(); };
+    } else {
+      card.querySelector('.narration').onchange = (e) => { update({ narration: e.target.value }); updateVideoPreviewStale(); updateTranslationBar(); };
+      card.querySelector('.caption').onchange = (e) => { update({ caption: e.target.value }); updateTranslationBar(); };
+    }
     const playBtn = card.querySelector('.play-in-video');
     if (playBtn) playBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); playStepInVideo(step); };
 
@@ -2754,6 +2784,7 @@ function renderSteps() {
 
     root.appendChild(card);
   });
+  updateTranslationBar();
 }
 
 function toScript() {
@@ -2776,6 +2807,8 @@ function toScript() {
     // Extra FX switch in the render bar (previews follow it too, so an unchanged preview can still
     // become the final video). Omitted when off so plain renders keep their old render keys.
     ...(typeof renderChoice !== 'undefined' && renderChoice.fx ? { fx: true } : {}),
+    // Translations (Spanish) ride on the same script; the English fields above are never replaced.
+    ...(state.script?.translations ? { translations: state.script.translations } : {}),
     steps: state.steps.map((s) => ({
       index: s.index,
       action: s.action,
@@ -2795,8 +2828,13 @@ function toScript() {
 }
 function stripBbox(target){const {bbox,viewport,...rest}=target;return {...rest,hint:{bbox,viewport}};}
 
-async function renderVideo(mode = 'video', drive = true) {
+async function renderVideo(mode = 'video', drive = true, language = 'en') {
   if (!state.steps.length) return alert('Record at least one step first.');
+  if (language === 'es') {
+    const s = esSummary();
+    if (!s.ready) { updateRenderOptions(); return toast(`Spanish isn't ready: ${s.problems}.`); }
+    mode = 'video'; // Spanish renders never create or touch a Pylon article (the bridge enforces it too)
+  }
   const script = toScript();
   const title = $('#scriptName').value.trim() || script.name;
   if (!(await confirmLibraryNameClash(script, title, 'Rendering'))) return;
@@ -2809,10 +2847,10 @@ async function renderVideo(mode = 'video', drive = true) {
   $('#driveVideoLink').hidden = true;
   $('#renderStatus').classList.remove('ready', 'error');
   $('#renderStatusSpinner').hidden = false;
-  $('#renderStatus').textContent = mode === 'both' ? 'Starting video render & Pylon article…' : mode === 'pylon' ? 'Creating Pylon article…' : 'Starting render…';
+  $('#renderStatus').textContent = language === 'es' ? 'Starting Spanish render…' : mode === 'both' ? 'Starting video render & Pylon article…' : mode === 'pylon' ? 'Creating Pylon article…' : 'Starting render…';
   updateFloatingBarVisibility();
 
-  const result = await send({ type: 'PANEL_RENDER', script, mode, drive });
+  const result = await send({ type: 'PANEL_RENDER', script, mode, drive, ...(language !== 'en' ? { language } : {}) });
   if (!result?.ok) {
     isRenderingActive = false;
     updateRenderButtons();
@@ -2925,6 +2963,7 @@ async function checkRender() {
   clearInterval(renderTimer);
   isRenderingActive = false;
   updateRenderButtons();
+  loadVoices({ fresh: true }); // the render just spent ElevenLabs characters; show the new balance
   $('#renderLinks').hidden = false;
 
   if (drive?.status === 'done' && drive.url) {
@@ -3365,7 +3404,12 @@ $('#fxToggle').onchange = (e) => {
 
 function updateRenderOptions() {
   if (!renderChoice || !$('#renderOptions')) return;
-  const makesVideo = renderChoice.out !== 'pylon';
+  const spanish = typeof uiLang === 'function' && uiLang() === 'es';
+  const makesVideo = spanish || renderChoice.out !== 'pylon';
+  // Spanish is video-only: no Article / Both choice to make.
+  const seg = document.querySelector('#renderOptions .seg');
+  if (seg) seg.hidden = spanish;
+  if ($('#langSelect') && $('#langSelect').value !== uiLang()) $('#langSelect').value = uiLang();
   document.querySelectorAll('#renderOptions .seg-btn').forEach((b) => {
     const on = b.dataset.out === renderChoice.out;
     b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
@@ -3375,11 +3419,16 @@ function updateRenderOptions() {
   $('#driveToggle').checked = renderChoice.drive;
   $('#fxSwitchWrap').hidden = !makesVideo;
   $('#fxToggle').checked = !!renderChoice.fx;
-  $('#renderBtn').textContent = { video: 'Render video', pylon: 'Create article', both: 'Render video + article' }[renderChoice.out];
+  $('#renderBtn').textContent = spanish ? 'Render Spanish video' : { video: 'Render video', pylon: 'Create article', both: 'Render video + article' }[renderChoice.out];
   const notes = [];
-  if (makesVideo && renderChoice.drive && publishLinks.drive)
+  if (spanish) {
+    const s = esSummary();
+    if (!s.ready && (state?.steps?.length || 0) > 0) notes.push(`Spanish isn't ready: ${esc(s.problems)}. Translate or review those lines above.`);
+    if (renderChoice.drive && publishLinks.driveEs)
+      notes.push(`The Spanish video is already on Drive. Uploading replaces <a href="${publishLinks.driveEs}" target="_blank" rel="noopener">that file</a>, and its link stays the same.`);
+  } else if (makesVideo && renderChoice.drive && publishLinks.drive)
     notes.push(`This video is already on Drive. Uploading replaces <a href="${publishLinks.drive}" target="_blank" rel="noopener">the existing file</a>, and its link stays the same.`);
-  if (renderChoice.out !== 'video' && publishLinks.pylon)
+  if (!spanish && renderChoice.out !== 'video' && publishLinks.pylon)
     notes.push(`This creates a new draft article. The <a href="${publishLinks.pylon}" target="_blank" rel="noopener">current one</a> is left as-is.`);
   $('#renderNotice').innerHTML = notes.join('<br>');
   $('#renderNotice').hidden = !notes.length;
@@ -3411,14 +3460,32 @@ function updateModulePick() {
 
 // ---- Voice picker: narration voice for renders and per-step previews. The list comes from the
 // bridge (GET /voices, which also says what this machine can use); the pick is saved per user.
-var voicePick = { voices: [], value: null, defaultValue: null, loaded: false };
+var voicePick = { voices: [], value: null, defaultValue: null, loaded: false, credits: null };
 chrome.storage.local.get(['voiceChoice'], (r) => { if (r?.voiceChoice) voicePick.value = r.voiceChoice; updateVoicePick(); });
-async function loadVoices() {
+async function loadVoices({ fresh = false } = {}) {
   try {
-    const r = await api('/voices');
+    const r = await api(fresh ? '/voices?fresh=1' : '/voices');
     voicePick.voices = r.voices || []; voicePick.defaultValue = r.default || null; voicePick.loaded = true;
+    voicePick.credits = r.elevenLabsCredits || null;
   } catch (_) {}
   updateVoicePick();
+}
+/** "84,210 of 100,000 ElevenLabs characters left · resets Nov 3", or '' when the bridge couldn't tell. */
+function elCreditsText(c = voicePick.credits) {
+  if (!c || !c.limit) return '';
+  const n = (x) => Number(x).toLocaleString();
+  const reset = c.resetsAt ? ` · resets ${new Date(c.resetsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
+  return `${n(c.remaining)} of ${n(c.limit)} ElevenLabs characters left${reset}`;
+}
+function updateElCredits() {
+  const el = $('#elCredits');
+  if (!el) return;
+  const text = elCreditsText();
+  el.hidden = !text;
+  $('#elCreditsText').textContent = text;
+  // Under 10% left: red, since a render that runs out falls back to a different provider's voice.
+  el.classList.toggle('low', !!voicePick.credits && voicePick.credits.remaining < voicePick.credits.limit * 0.1);
+  el.title = text ? 'ElevenLabs characters left on the team plan. Each narrated character costs one; lines already voiced are cached and free to re-render.' : '';
 }
 function currentVoice() {
   const ok = (v) => voicePick.voices.find((x) => x.value === v && x.available);
@@ -3437,7 +3504,50 @@ function updateVoicePick() {
   sel.disabled = typeof isRenderingActive !== 'undefined' && !!isRenderingActive;
   const cur = voicePick.voices.find((v) => v.value === value);
   sel.title = cur ? `Narration voice: ${cur.label}${cur.group ? ` · ${cur.group}` : ''} (${cur.detail})` : 'Narration voice for this render';
+  const addBtn = $('#voiceAddBtn'); if (addBtn) addBtn.disabled = sel.disabled;
+  updateElCredits();
 }
+
+// ＋ next to the picker: add an ElevenLabs voice by its ID. The bridge checks the ID against our
+// ElevenLabs account and saves it to the shared library, so it appears in every teammate's list.
+function openAddVoiceModal() {
+  $('#addVoiceForm').reset();
+  $('#addVoiceError').hidden = true;
+  const credits = elCreditsText();
+  $('#addVoiceCredits').hidden = !credits; $('#addVoiceCredits').textContent = credits;
+  $('#submitAddVoiceBtn').disabled = false; $('#submitAddVoiceBtn').textContent = 'Add voice';
+  $('#addVoiceModal').hidden = false;
+  setTimeout(() => $('#addVoiceId').focus(), 0);
+}
+function closeAddVoiceModal() { $('#addVoiceModal').hidden = true; }
+$('#voiceAddBtn').onclick = (e) => { e.preventDefault(); openAddVoiceModal(); };
+$('#closeAddVoiceBtn').onclick = closeAddVoiceModal;
+$('#cancelAddVoiceBtn').onclick = closeAddVoiceModal;
+$('#addVoiceModal').onclick = (e) => { if (e.target.id === 'addVoiceModal') closeAddVoiceModal(); };
+$('#addVoiceModal').onkeydown = (e) => { if (e.key === 'Escape') { e.preventDefault(); closeAddVoiceModal(); } };
+$('#addVoiceForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const btn = $('#submitAddVoiceBtn'), err = $('#addVoiceError');
+  const voiceId = $('#addVoiceId').value.trim();
+  const label = $('#addVoiceLabel').value.trim();
+  err.hidden = true;
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const r = await api('/voices', { method: 'POST', body: JSON.stringify({ voiceId, label }) });
+    await loadVoices({ fresh: true });
+    // Select the new voice so the next render (and ▶ sample) uses it.
+    voicePick.value = r.value;
+    chrome.storage.local.set({ voiceChoice: r.value });
+    updateVoicePick();
+    if (typeof updateVideoPreviewStale === 'function') updateVideoPreviewStale();
+    closeAddVoiceModal();
+    toast(`✓ Added ${r.label} to the voice list for everyone`);
+  } catch (ex) {
+    err.textContent = ex.message || String(ex);
+    err.hidden = false;
+    btn.disabled = false; btn.textContent = 'Add voice';
+  }
+};
 // ▶ next to the picker: a short fixed sample in the selected voice. Same /preview/narration path and
 // cache as the per-step preview, so each voice's sample is generated once and then free.
 const VOICE_SAMPLE = 'Welcome to Hadrius Academy. In this video, we\'ll walk through the workflow step by step.';
@@ -3478,6 +3588,142 @@ $('#voiceSelect').onchange = (e) => {
   if (typeof updateVideoPreviewStale === 'function') updateVideoPreviewStale();
 };
 loadVoices();
+// ---- Language (render bar): English (default) or Spanish. Spanish narration/captions/title are a
+// translation stored on the SAME script (script.translations.es, English never overwritten), made by
+// the bridge's AI (/translate) and edited in the same step editor, which switches to the Spanish text.
+// A line whose English changed after translating is flagged, and the bridge refuses to render while
+// any line is missing or stale. Spanish renders are video-only (no Pylon) and go to their own Drive file.
+// The pick is saved per user, like the voice.
+var languageChoice = 'en';
+chrome.storage.local.get(['languageChoice'], (r) => {
+  if (r?.languageChoice === 'es') languageChoice = 'es';
+  if ($('#langSelect')) $('#langSelect').value = languageChoice;
+  if (typeof renderSteps === 'function' && state?.steps) renderSteps();
+  updateRenderOptions();
+});
+function uiLang() { return typeof languageChoice !== 'undefined' && languageChoice === 'es' ? 'es' : 'en'; }
+// Keep in sync with tools/translation.mjs (hashText / stepKey / stepSource / sourceHash);
+// tests/spanish/translation.test.mjs checks they agree.
+function trHashText(s) {
+  const str = String(s ?? '');
+  let a = 0x811c9dc5, b = 0x9747b28c;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    a ^= c; a = Math.imul(a, 0x01000193) >>> 0;
+    b ^= c; b = Math.imul(b, 0x01000193) >>> 0; b ^= b >>> 13;
+  }
+  return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0');
+}
+function trStepKey(step) {
+  if (step?.captureId) return `step_${step.captureId}.png`;
+  const pre = step?.media?.pre;
+  if (pre) return String(pre).split('/').pop();
+  return `i${step?.index ?? 0}`;
+}
+function trStepSource(step) {
+  const narration = String(step?.narration || '').trim();
+  const cap = String(step?.caption || '').trim();
+  return { narration, caption: cap && cap !== narration ? cap : '' };
+}
+function trTitleHash(t) { return trHashText(String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()); }
+function trSourceHash(step) { const { narration, caption } = trStepSource(step); return trHashText(`${narration}\u241e${caption}`); }
+function trRenderable(step) { return !!step && step.capture !== false && !!(step.media?.pre || step.captureId); }
+function esData() { return state?.script?.translations?.es || {}; }
+function esEntry(step) { return esData().steps?.[trStepKey(step)] || null; }
+function esTitleSource() { return ($('#scriptName')?.value || '').trim() || 'untitled'; }
+/** 'ok' | 'empty' | 'missing' | 'stale' | 'skip' (not in the video) — same rules as translationStatus(). */
+function esStepStatus(step) {
+  if (!trRenderable(step)) return 'skip';
+  const src = trStepSource(step);
+  if (!src.narration && !src.caption) return 'empty';
+  const e = esEntry(step);
+  const has = e && (src.narration ? String(e.narration || '').trim() : String(e.caption || e.narration || '').trim());
+  return !has ? 'missing' : e.sourceHash !== trSourceHash(step) ? 'stale' : 'ok';
+}
+function esTitleStatus() {
+  const d = esData();
+  return !String(d.title || '').trim() ? 'missing' : d.titleSourceHash !== trTitleHash(esTitleSource()) ? 'stale' : 'ok';
+}
+function esSummary() {
+  const rows = (state?.steps || []).map((s, i) => ({ n: i + 1, st: esStepStatus(s) })).filter((r) => r.st !== 'skip');
+  const missing = rows.filter((r) => r.st === 'missing').map((r) => r.n);
+  const stale = rows.filter((r) => r.st === 'stale').map((r) => r.n);
+  const title = esTitleStatus();
+  const lines = rows.filter((r) => r.st !== 'empty').length;
+  const parts = [];
+  if (title !== 'ok') parts.push(title === 'missing' ? 'title not translated' : 'title changed in English');
+  if (missing.length) parts.push(`step${missing.length > 1 ? 's' : ''} ${missing.join(', ')} not translated`);
+  if (stale.length) parts.push(`step${stale.length > 1 ? 's' : ''} ${stale.join(', ')} changed in English since translating`);
+  return { ready: !parts.length && rows.length > 0, missing, stale, title, lines, done: lines - missing.length - stale.length, problems: parts.join('; ') };
+}
+/** Save the translation onto the draft script (background state), like any other script edit. */
+function saveEsTranslation(next) {
+  if (!state.script) state.script = {};
+  state.script.translations = { ...(state.script.translations || {}), es: { ...next, updatedAt: new Date().toISOString() } };
+  send({ type: 'PANEL_UPDATE_SCRIPT', patch: { translations: state.script.translations } }).catch(() => {});
+}
+/** An edit (or "Keep as is") is a review: the line now matches the current English. */
+function setEsStep(step, patch) {
+  const d = esData();
+  const key = trStepKey(step);
+  const cur = { ...(d.steps?.[key] || {}), ...patch, sourceHash: trSourceHash(step) };
+  if (!cur.caption) delete cur.caption;
+  saveEsTranslation({ ...d, steps: { ...(d.steps || {}), [key]: cur } });
+  updateTranslationBar(); updateRenderOptions();
+}
+function setEsTitle(title) {
+  const d = esData();
+  saveEsTranslation({ ...d, title: String(title || '').trim(), titleSourceHash: trTitleHash(esTitleSource()) });
+  updateTranslationBar(); updateRenderOptions();
+}
+var translating = false;
+/** Ask the bridge to translate: every missing/stale line (default), all lines, or the given step keys. */
+async function translateToSpanish({ only = 'missing', keys = null, statusEl = null } = {}) {
+  if (translating) return;
+  translating = true;
+  const btn = $('#translateBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Translating…'; }
+  if (statusEl) statusEl.textContent = 'Translating…';
+  $('#translateStatus').textContent = keys ? '' : 'Translating with AI… this can take a minute.';
+  try {
+    const script = toScript();
+    const r = await api('/translate', { method: 'POST', body: JSON.stringify({ script, language: 'es', only, ...(keys ? { keys } : {}) }) });
+    saveEsTranslation(r.translation || {});
+    $('#translateStatus').textContent = r.status?.ok ? '✓ Spanish is ready to review.' : (r.status?.problems || '');
+    if (statusEl) statusEl.textContent = '';
+  } catch (e) {
+    $('#translateStatus').textContent = `Couldn't translate: ${e.message || e}`;
+    if (statusEl) statusEl.textContent = `Couldn't translate: ${e.message || e}`;
+  } finally {
+    translating = false;
+    renderSteps();
+    updateTranslationBar(); updateRenderOptions();
+  }
+}
+function updateTranslationBar() {
+  const bar = $('#translationBar');
+  if (!bar) return;
+  const show = uiLang() === 'es' && (state?.steps?.length || 0) > 0;
+  bar.hidden = !show;
+  if (!show) return;
+  const s = esSummary();
+  $('#translationSummary').textContent = s.ready ? `✓ All ${s.lines} lines translated` : `${s.done} of ${s.lines} lines ready`;
+  $('#translationSummary').classList.toggle('ready', s.ready);
+  const ti = $('#esTitle');
+  if (document.activeElement !== ti) ti.value = esData().title || '';
+  $('#esTitleSource').textContent = esTitleSource();
+  $('#esTitleFlag').hidden = s.title === 'ok';
+  $('#esTitleFlag').textContent = s.title === 'missing' ? 'Not translated' : 'English title changed: review';
+  $('#esTitleKeep').hidden = s.title !== 'stale';
+  const btn = $('#translateBtn');
+  if (!translating) {
+    const todo = s.missing.length + s.stale.length + (s.title !== 'ok' ? 1 : 0);
+    btn.disabled = false;
+    btn.textContent = s.done === 0 && s.title === 'missing' ? '✨ Translate to Spanish' : todo ? `✨ Translate ${todo} remaining` : '✨ Re-translate everything';
+    btn.dataset.only = todo ? 'missing' : 'all';
+    btn.className = todo ? 'primary' : 'secondary';
+  }
+}
 async function refreshModulePick() {
   if (!(state.steps?.length)) return updateModulePick();
   const script = toScript();
@@ -3512,12 +3758,30 @@ async function refreshPublishLinks() {
   try {
     const r = await api(`/publish-links/${encodeURIComponent(name)}`);
     if (publishLinks.name !== name) return;
-    publishLinks.drive = r?.drive || null; publishLinks.pylon = r?.pylon || null;
-  } catch (_) { publishLinks.drive = publishLinks.pylon = null; }
+    publishLinks.drive = r?.drive || null; publishLinks.pylon = r?.pylon || null; publishLinks.driveEs = r?.driveEs || null;
+  } catch (_) { publishLinks.drive = publishLinks.pylon = publishLinks.driveEs = null; }
   updateRenderOptions();
 }
 $('#scriptName').addEventListener('change', () => { publishLinks.name = null; refreshPublishLinks(); });
-$('#renderBtn').onclick = () => renderVideo(renderChoice.out, renderChoice.out !== 'pylon' && renderChoice.drive);
+$('#renderBtn').onclick = () => (uiLang() === 'es'
+  ? renderVideo('video', renderChoice.drive, 'es')
+  : renderVideo(renderChoice.out, renderChoice.out !== 'pylon' && renderChoice.drive));
+$('#langSelect').onchange = (e) => {
+  languageChoice = e.target.value === 'es' ? 'es' : 'en';
+  chrome.storage.local.set({ languageChoice });
+  renderSteps();
+  updateRenderButtons();
+};
+$('#translateBtn').onclick = (e) => {
+  e.preventDefault();
+  const only = e.currentTarget.dataset.only || 'missing';
+  if (only === 'all' && !confirm('Re-translate every line? This replaces the Spanish text, including your edits.')) return;
+  translateToSpanish({ only });
+};
+$('#esTitle').onchange = (e) => setEsTitle(e.target.value);
+$('#esTitleKeep').onclick = (e) => { e.preventDefault(); setEsTitle(esData().title || ''); };
+// The Spanish title is checked against the English title; renaming makes it stale.
+$('#scriptName').addEventListener('change', () => { updateTranslationBar(); updateRenderButtons(); });
 $('#downloadBtn').onclick = exportScript;
 
 $('#viewFinderLink').onclick = async (e) => {

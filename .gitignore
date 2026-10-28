@@ -4,6 +4,7 @@ out/
 .venv/
 .browser-profile/
 .browser-profile-ai-*/
+.browser-profile-drift/
 .DS_Store
 __pycache__/
 *.pyc

@@ -812,6 +812,12 @@ def cached_card(dest, key_parts, make):
         part = cached.with_suffix('.part'); shutil.copyfile(dest, part); part.replace(cached)
     return False
 
+# Translated renders (report.json "language", set by from-recording.mjs) get their title and closing
+# cards in that language. English passes nothing extra and keeps its exact card cache keys.
+LANG = (rep.get('language') or 'en').strip().lower()
+LANG_KW = {'language': LANG} if LANG != 'en' else {}
+LANG_KEY = [f'lang:{LANG}'] if LANG != 'en' else []
+
 title_clip = tmp / 'title_card.mp4'
 if rep.get('no_title') or '--no-title' in args:
     if title_clip.exists(): title_clip.unlink()
@@ -821,12 +827,13 @@ else:
         if mod_name and mod_name.strip().lower() == 'other':
             mod_name = None  # "Other" (picked in the render bar) gets the generic HADRIUS ACADEMY badge
         title_text = rep.get('title') or rep['name']
-        cached_card(title_clip, ['title', title_text, mod_name, SHOW_ACADEMY], lambda: generate_title_video(
+        cached_card(title_clip, ['title', title_text, mod_name, SHOW_ACADEMY, *LANG_KEY], lambda: generate_title_video(
             title_text,
             title_clip,
             module=mod_name,
             music_path=MUSIC if MUSIC.exists() else None,
-            show_academy=SHOW_ACADEMY
+            show_academy=SHOW_ACADEMY,
+            **LANG_KW
         ))
     except Exception as e:
         print(f"warning: could not generate title card: {e}")
@@ -836,8 +843,8 @@ if rep.get('no_support') or '--no-support' in args:
     if support_clip.exists(): support_clip.unlink()
 else:
     try:
-        cached_card(support_clip, ['support'], lambda: generate_support_card_video(
-            support_clip, music_path=MUSIC if MUSIC.exists() else None))
+        cached_card(support_clip, ['support', *LANG_KEY], lambda: generate_support_card_video(
+            support_clip, music_path=MUSIC if MUSIC.exists() else None, **LANG_KW))
     except Exception as e:
         print(f"warning: could not generate support card: {e}")
 

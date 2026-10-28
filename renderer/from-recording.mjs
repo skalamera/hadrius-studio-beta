@@ -45,6 +45,9 @@ const report = {
   source: 'recording',
   // Extra FX (render bar switch): assemble.py adds camera moves, a dimmed spotlight and click ripples.
   ...(script.fx ? { fx: true } : {}),
+  // Translated renders (the bridge's out/_lang/<name>__es.script.json): assemble.py draws the title and
+  // closing cards in this language. Absent for English, so English report.json files are unchanged.
+  ...(script.language && script.language !== 'en' ? { language: script.language } : {}),
 };
 
 let slideNo = 0;
