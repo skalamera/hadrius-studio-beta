@@ -1899,6 +1899,7 @@ const NARRATION_VOICES = [
   { value: 'el:Qp6Fte34lBUOY2WbPaa2', label: 'Ben', group: 'ElevenLabs', detail: 'ElevenLabs voice clone' },
   { value: 'el:1sOroIqNuijWLU6m22Wr', label: 'Helen', group: 'ElevenLabs', detail: 'ElevenLabs voice clone' },
   { value: 'el:ASKgFTYhNapAxfCKAxbr', label: 'Vince', group: 'ElevenLabs', detail: 'ElevenLabs voice clone' },
+  { value: 'el:vTckqxNLVCsRq5sZsOrw', label: 'Elena', group: 'ElevenLabs', detail: 'ElevenLabs voice' },
   // VoiceStudio profiles are matched by NAME on each machine (profile ids differ per install); the
   // id here is only the fallback when VoiceStudio can't be asked. Import a .ovsvoice to add one.
   { value: 'vs:4bfebca6', vsName: 'The Upbeat', label: 'The Upbeat', group: 'VoiceStudio', detail: 'Local VoiceStudio' },
