@@ -369,6 +369,13 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
   .tool-status-label{display:none}
 }
 @media(max-width:340px){.wordmark{width:118px}}
+/* Claude is Studio's only AI provider, so "not connected" must be unmistakable at every width: a red
+   ring on the icon plus a red "Claude not connected" label that stays visible even where the other
+   labels collapse to icons, wherever it fits (fix instructions are in the tooltip). */
+.tool-status.bad .status-icon{border-radius:50%;box-shadow:0 0 0 2px #fce3e0,0 0 0 3.5px #c0392b}
+.tool-status.bad .tool-status-label{display:inline;color:#c0392b;white-space:nowrap;margin-left:6px}
+/* Below ~480px the label would push the other indicators off the edge: keep just the red ring. */
+@media(max-width:479px){.tool-status.bad .tool-status-label{display:none}}
 
 .status-icon{width:15px;height:15px;flex-shrink:0;object-fit:contain}
 

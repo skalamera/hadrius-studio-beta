@@ -94,18 +94,13 @@ export function parseJudge(obj){
   if(out.accurate)out.claim_missing=false;
   return out;
 }
-/** Default judge: runClaude from tools/coverage-scan.mjs (claude CLI, keychain login, Read tool only).
- *  Its Gemini fallback is suppressed for this call (it would read GEMINI_API_KEY from .env files):
- *  a placeholder key short-circuits the .env lookup and the Gemini host is refused locally. */
+/** Default judge: runClaude from tools/coverage-scan.mjs (claude CLI, keychain login, Read tool only;
+ *  Claude is the only provider, so nothing here reads API keys from .env files). */
 export function makeClaudeJudge({runModel=null,timeoutMs=240_000}={}){
   return async(input)=>{
     const cs=await import('../coverage-scan.mjs');const run=runModel??cs.runClaude;const meta={};
-    const hadKey=Object.hasOwn(process.env,'GEMINI_API_KEY');const prevKey=process.env.GEMINI_API_KEY;const prevFetch=globalThis.fetch;
-    if(!hadKey||!prevKey)process.env.GEMINI_API_KEY='drift-classify-gemini-fallback-disabled';
-    globalThis.fetch=(u,o)=>/generativelanguage\.googleapis\.com/.test(String(u?.url??u))?Promise.reject(new Error('gemini_fallback_disabled_for_drift')):prevFetch(u,o);
-    try{const raw=await run(buildJudgePrompt(input),{allowedTools:'Read',maxTurns:6,timeout:timeoutMs,model:cs.decisionModel(),onMeta:m=>Object.assign(meta,m)});
-      return {...parseJudge(cs.extractJson(raw)),model:meta.model??null,costUsd:meta.costUsd??null};}
-    finally{globalThis.fetch=prevFetch;if(!hadKey)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=prevKey;}
+    const raw=await run(buildJudgePrompt(input),{allowedTools:'Read',maxTurns:6,timeout:timeoutMs,model:cs.decisionModel(),onMeta:m=>Object.assign(meta,m)});
+    return {...parseJudge(cs.extractJson(raw)),model:meta.model??null,costUsd:meta.costUsd??null};
   };
 }
 

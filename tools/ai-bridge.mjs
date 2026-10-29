@@ -11,7 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
+import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding, CLAUDE_NOT_CONNECTED_MSG, CLAUDE_MISSING_MSG, isClaudeAuthError, claudeConnectionError } from './coverage-scan.mjs';
 import { pylonGetArticle, pylonUpdateArticleBody, pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
 import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
 import { googleDriveAuthorizedFetch, googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording, googleDriveUploadDeck, googleDriveListDeckFiles, googleDriveFetchFile, googleDriveDeleteDeck, SLIDE_DECKS_FOLDER_ID } from './gdrive.mjs';
@@ -34,9 +34,8 @@ const PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browse
 // Only the keys the bridge itself uses are imported. ~/.hermes/.env in particular is shared with
 // other tools and carries ANTHROPIC_API_KEY etc.; if those reached process.env they would be
 // inherited by every `claude` we spawn and override the operator's `claude login` session.
-const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'GEMINI_API_KEY', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GOOGLE_DRIVE_FOLDER_ID', 'PR_WATCH_USER']);
+const DOTENV_KEYS = new Set(['STUDIO_LIBRARY_URL', 'STUDIO_SHARED_SECRET', 'STUDIO_USER', 'PYLON_API_TOKEN', 'PYLON_KB_ID', 'PYLON_COLLECTION_ID', 'PYLON_OTHER_COLLECTION_ID', 'PYLON_AUTHOR_USER_ID', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GOOGLE_DRIVE_FOLDER_ID', 'PR_WATCH_USER']);
 let LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
-let GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 
 function loadDotEnv() {
   const parseEnv = (p) => {
@@ -55,7 +54,6 @@ function loadDotEnv() {
   const home = process.env.HOME || process.env.USERPROFILE;
   if (home) parseEnv(path.join(home, '.hermes/.env'));
   LIBRARY_SECRET = (process.env.STUDIO_SHARED_SECRET || '').trim();
-  GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 }
 loadDotEnv();
 const LIBRARY_URL = process.env.STUDIO_LIBRARY_URL || 'https://pylon-webhook-service.vercel.app/api/studio-beta-scripts';
@@ -242,8 +240,9 @@ function writeDismissedWorkflows(list) {
 // ---- Claude CLI login state. Every AI feature shells out to `claude`, whose OAuth login is separate
 // from the desktop app's and expires silently. Check it cheaply (~0.2s) and cache, so the panel can
 // show the fix up front and jobs fail fast with it instead of a bare OAuth error deep in a log.
-const CLAUDE_LOGIN_HINT = 'The Claude CLI on this machine is signed out. In a terminal run:  claude login   (finish the browser prompt), then try again — no restart needed.';
-const CLAUDE_MISSING_HINT = 'The `claude` CLI is not installed or not on PATH for the bridge. Run ./setup.sh in the kb-studio folder.';
+// Claude is Studio's only AI provider, so these are the errors every AI feature shows when it can't run.
+const CLAUDE_LOGIN_HINT = CLAUDE_NOT_CONNECTED_MSG;
+const CLAUDE_MISSING_HINT = CLAUDE_MISSING_MSG;
 let claudeAuth = { loggedIn: null, checkedAt: 0, detail: null };
 function checkClaudeAuth({ maxAgeMs = 60000 } = {}) {
   if (Date.now() - claudeAuth.checkedAt < maxAgeMs) return Promise.resolve(claudeAuth);
@@ -261,12 +260,10 @@ function checkClaudeAuth({ maxAgeMs = 60000 } = {}) {
     child.stdin?.end();
   });
 }
-// \b guards keep prose like "two dialog instances" from matching "log in" and spuriously
-// flagging the CLI as signed out on an ordinary workflow failure.
-const isClaudeAuthError = (msg) => /authenticate|OAuth|not logged in|\blog ?in\b|session expired/i.test(String(msg));
 /** Append the fix to an auth failure message and flip the cached state so the panel's banner appears. */
 function withAuthHint(msg) {
   const s = String(msg);
+  if (s.startsWith("Claude isn't connected")) return s;
   if (!isClaudeAuthError(s)) return s;
   claudeAuth = { loggedIn: false, checkedAt: Date.now(), detail: CLAUDE_LOGIN_HINT };
   return `${s} — ${CLAUDE_LOGIN_HINT}`;
@@ -274,13 +271,13 @@ function withAuthHint(msg) {
 /** Throw with the fix if the CLI is signed out — call before starting anything that needs `claude`. */
 async function requireClaudeAuth() {
   const a = await checkClaudeAuth({ maxAgeMs: 0 });
-  if (a.loggedIn === false) {
-    if (GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim()) {
-      console.warn('Claude CLI is signed out; operations will fall back to gemini-3.8-flash.');
-      return;
-    }
-    throw new Error(a.detail);
-  }
+  if (a.loggedIn === false) throw new Error(a.detail || CLAUDE_LOGIN_HINT);
+}
+/** Same check for every AI call, but cached: a known-good login is re-checked at most once a minute,
+ *  a known-bad one every call (so signing in takes effect on the very next try). */
+async function ensureClaudeConnected() {
+  const a = await checkClaudeAuth({ maxAgeMs: claudeAuth.loggedIn === false ? 0 : 60000 });
+  if (a.loggedIn === false) { const e = new Error(a.detail || CLAUDE_LOGIN_HINT); e.claudeNotConnected = true; throw e; }
 }
 
 // ---- hadrius-codebase MCP connection state — separate from the Claude CLI login above: this is
@@ -676,8 +673,8 @@ let plans = {}; // key -> { plan, generatedAt, title, model }
 try { plans = JSON.parse(fs.readFileSync(PLANS_FILE, 'utf8')); } catch (_) {}
 function savePlans() { try { fs.writeFileSync(PLANS_FILE, JSON.stringify(plans, null, 2)); } catch (e) { console.warn('could not save plans:', e.message); } }
 // `model` is recorded because a plan's worth depends entirely on who wrote it: Claude here has the
-// read-only hadrius-codebase MCP and derives steps from real source, while the Gemini fallback has no
-// tool access at all. Without this field a cache of mixed provenance looks uniform, and "regenerate
+// read-only hadrius-codebase MCP and derives steps from real source, but which Claude model (and how
+// many tool turns it took) still varies. Without this field a cache of mixed provenance looks uniform, and "regenerate
 // the weak ones" has no answer but the timestamps.
 function setPlan(key, plan, title) { plans[key] = { plan, generatedAt: new Date().toISOString(), title, model: plan?.model || null, turns: plan?.turns ?? null }; savePlans(); }
 
@@ -777,19 +774,13 @@ const aiSlots = Array.from({ length: AI_RECORD_CONCURRENCY }, (_, i) => i + 1);
 async function narrateRecordedSteps(script, log) {
   log('Writing narration…');
   try {
-    let lines = null;
-    try {
-      lines = parseNarrationLines(await runClaude(buildPrompt(script.steps, script.name), buildPromptPlain(script.steps, script.name)), script.steps.length, narrationStepLines(script.steps));
-    } catch (claudeErr) {
-      log(`  (Claude narration unusable: ${String(claudeErr?.message || claudeErr).slice(0, 120)}; falling back to gemini-3.8-flash…)`);
-      lines = await runGemini(script.steps, script.name);
-    }
+    let lines = parseNarrationLines(await runClaudeCli(buildPrompt(script.steps, script.name)), script.steps.length, narrationStepLines(script.steps));
     if (Array.isArray(lines)) {
       lines = sanitizeNarrationLines(lines);
       script.steps.forEach((s, i) => { const l = String(lines[i] || '').trim(); if (l) s.narration = l; });
     }
   } catch (e) {
-    log(`  (narration skipped — ${String(e?.message || e).slice(0, 100)}; use ✨ Draft with AI in the editor)`);
+    log(`  (narration skipped — ${String(e?.message || e).slice(0, 400)}; use ✨ Draft with AI in the editor)`);
   }
 }
 
@@ -1167,7 +1158,8 @@ function driftPrTriggerTick() {
   else console.log(`[drift-weekly] PR early check started for ${batch.names.join(', ')} -> ${r.run.outDir}`);
 }
 
-function runClaudeCli(prompt) {
+async function runClaudeCli(prompt) {
+  await ensureClaudeConnected();
   return new Promise((resolve, reject) => {
     // The hadrius-codebase MCP server (added by setup.sh via `claude mcp add`) lets the model
     // ground narration in real code instead of guessing — read-only tools only, nothing that
@@ -1184,7 +1176,11 @@ function runClaudeCli(prompt) {
     ].join(',');
     const args = ['-p', prompt, '--output-format', 'json', '--max-turns', '40', '--allowedTools', allowedTools];
     const child = execFile('claude', args, { maxBuffer: 1024 * 1024 * 20, timeout: 300000, env: claudeEnv() }, (err, stdout, stderr) => {
-      if (err && !stdout) return reject(new Error(stderr || err.message));
+      if (err && !stdout) {
+        const friendly = claudeConnectionError(err, stderr);
+        if (friendly) claudeAuth = { loggedIn: false, checkedAt: Date.now(), detail: friendly.message.startsWith(CLAUDE_MISSING_HINT) ? CLAUDE_MISSING_HINT : CLAUDE_LOGIN_HINT };
+        return reject(friendly || new Error(stderr || err.message));
+      }
       try {
         const parsed = JSON.parse(stdout);
         if (parsed.is_error || (parsed.subtype && parsed.subtype !== 'success')) {
@@ -1194,7 +1190,10 @@ function runClaudeCli(prompt) {
               return resolve(parsed.result);
             } catch (_) {}
           }
-          return reject(new Error(`claude: ${parsed.result || parsed.subtype || stderr || 'unknown error'}`));
+          const msg = parsed.result || parsed.subtype || stderr || 'unknown error';
+          const friendly = claudeConnectionError(null, msg);
+          if (friendly) claudeAuth = { loggedIn: false, checkedAt: Date.now(), detail: CLAUDE_LOGIN_HINT };
+          return reject(friendly || new Error(`claude: ${msg}`));
         }
         resolve(parsed.result ?? stdout);
       } catch (_) {
@@ -1203,175 +1202,6 @@ function runClaudeCli(prompt) {
     });
     child.stdin?.end();
   });
-}
-
-async function runGeminiPrompt(prompt) {
-  const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
-  if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error?.message || `Gemini API returned HTTP ${resp.status}`);
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const nonThought = parts.filter(p => p.text && !p.thought);
-  const text = (nonThought.length ? nonThought : parts).map(p => p.text).filter(Boolean).join('\n').trim();
-  if (!text) {
-    console.error('[runGeminiPrompt] Empty response from Gemini. Response structure:', JSON.stringify(data));
-    throw new Error('Gemini could not generate a response for this prompt.');
-  }
-  return text;
-}
-
-// `geminiPrompt` (defaults to `prompt`) is what actually gets sent if Claude fails. Several
-// callers write a prompt that tells Claude "you have access to the codebase via search_code /
-// read_file / ..." for MCP grounding — reused verbatim for the Gemini fallback, that tool-shaped
-// language made Gemini attempt a real function call with no tools declared for the request, which
-// comes back as finishReason: MALFORMED_FUNCTION_CALL and empty text. Every such caller has (or
-// should have) a tool-free "Plain" twin of its prompt to pass here instead.
-async function runClaude(prompt, geminiPrompt = prompt) {
-  try {
-    return await runClaudeCli(prompt);
-  } catch (claudeErr) {
-    console.warn(`Claude CLI failed (${claudeErr.message}), falling back to gemini-3.8-flash...`);
-    return await runGeminiPrompt(geminiPrompt);
-  }
-}
-
-const GEMINI_MCP_TOOLS = [
-  {
-    functionDeclarations: [
-      {
-        name: 'search_code',
-        description: 'Search the Hadrius frontend codebase (apps/hadrius-app/src/) for page components, route definitions, button labels, modal dialogs, or form inputs.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            query: {
-              type: 'STRING',
-              description: 'Exact text or regex to search for in code (e.g. "Add policy", "datasets", "Create branch")'
-            }
-          },
-          required: ['query']
-        }
-      },
-      {
-        name: 'read_file',
-        description: 'Read the contents of a specific source file under apps/hadrius-app/src/.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            file_path: {
-              type: 'STRING',
-              description: 'Relative path to file, e.g. apps/hadrius-app/src/pages/coreloop/firm_oversight_v2/policies/add_policy_dialog.tsx'
-            }
-          },
-          required: ['file_path']
-        }
-      },
-      {
-        name: 'list_directory',
-        description: 'List the files and subdirectories under a path in apps/hadrius-app/src/.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            path: {
-              type: 'STRING',
-              description: 'Directory path to list, e.g. apps/hadrius-app/src/pages/coreloop/firm_oversight_v2'
-            }
-          },
-          required: ['path']
-        }
-      }
-    ]
-  }
-];
-
-async function executeMcpTool(toolName, args) {
-  const mcpName = `mcp__hadrius-codebase__${toolName}`;
-  const prompt = `Call ${mcpName} with arguments: ${JSON.stringify(args)}. Output only the result.`;
-  const cliArgs = ['-p', prompt, '--allowedTools', mcpName, '--max-turns', '3'];
-  return new Promise((resolve) => {
-    const child = execFile('claude', cliArgs, { maxBuffer: 1024 * 1024 * 10, timeout: 35000, env: claudeEnv() }, (err, stdout) => {
-      if (err || !stdout) return resolve({ error: err?.message || 'Tool execution failed' });
-      resolve({ result: stdout.trim().slice(0, 4000) });
-    });
-    child.stdin?.end();
-  });
-}
-
-async function runGeminiWithTools(prompt, { maxTurns = 8 } = {}) {
-  const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
-  if (!key) throw new Error('GEMINI_API_KEY is not set');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
-
-  const contents = [
-    {
-      role: 'user',
-      parts: [{ text: prompt }]
-    }
-  ];
-
-  for (let turn = 0; turn < maxTurns; turn++) {
-    const payload = {
-      contents,
-      tools: GEMINI_MCP_TOOLS
-    };
-
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await resp.json();
-    if (!resp.ok) {
-      throw new Error(data.error?.message || `Gemini API returned HTTP ${resp.status}`);
-    }
-
-    const candidate = data.candidates?.[0];
-    if (!candidate?.content) {
-      throw new Error('Gemini returned an empty candidate');
-    }
-
-    const modelContent = candidate.content;
-    contents.push(modelContent);
-
-    const functionCalls = (modelContent.parts || []).filter(p => p.functionCall);
-    if (!functionCalls.length) {
-      const nonThought = (modelContent.parts || []).filter(p => p.text && !p.thought);
-      const finalText = (nonThought.length ? nonThought : modelContent.parts).map(p => p.text).filter(Boolean).join('\n').trim();
-      return finalText;
-    }
-
-    const responseParts = [];
-    for (const fcPart of functionCalls) {
-      const { name, args } = fcPart.functionCall;
-      console.log(`[Gemini Tool Call] ${name}(${JSON.stringify(args)})`);
-      let resultObj;
-      try {
-        resultObj = await executeMcpTool(name, args || {});
-      } catch (err) {
-        resultObj = { error: String(err?.message || err) };
-      }
-      responseParts.push({
-        functionResponse: {
-          name,
-          response: resultObj
-        }
-      });
-    }
-
-    contents.push({
-      role: 'user',
-      parts: responseParts
-    });
-  }
-
-  throw new Error('Gemini tool calling exceeded maximum turns');
 }
 
 async function generatePlanFromIdea({ userPrompt, previousPlan, clarification }) {
@@ -1426,53 +1256,14 @@ IMPORTANT RULES:
     prompt += `\n\nUSER'S CLARIFICATION & REQUESTED CHANGES:\n"${clarification}"\nAdjust the plan according to their feedback and the codebase.`;
   }
 
-  let rawOutput;
-  try {
-    rawOutput = await runClaudeCli(prompt);
-  } catch (claudeErr) {
-    console.warn(`Claude CLI with MCP failed (${claudeErr.message}), falling back to Gemini with custom MCP tool calling...`);
-    try {
-      rawOutput = await runGeminiWithTools(prompt);
-    } catch (toolErr) {
-      console.warn(`Gemini with tools failed (${toolErr.message}), falling back to Gemini direct prompt...`);
-      const fallbackPrompt = `You are an expert product educator on the Hadrius compliance web app.
-The user wants a video walkthrough plan for: "${userPrompt}".
-${previousPlan ? `Previous plan: ${JSON.stringify(previousPlan)}` : ''}
-${clarification ? `User feedback/clarification: "${clarification}"` : ''}
-
-Hadrius has 6 core modules:
-1. Testing program (policies, tests, exceptions, calendar, risks & controls) - route prefix /testing-program/
-2. People oversight (employees, attestations, disclosures, certifications) - route prefix /people-oversight/
-3. Branches (branch directory, inspections, exams) - route prefix /branches/
-4. Communications (email review, instant messages, lexicon, datasets, cases) - route prefix /communications/
-5. Marketing (materials review, websites, social media) - route prefix /marketing/
-6. Account surveillance (trades, holdings, accounts, flags) - route prefix /account-surveillance/
-
-Formulate a clean, grounded step-by-step walkthrough plan for what the user wants to achieve.
-Step 1 MUST ALWAYS be the starting navigation step: "Navigate to <Module> > <Tab>".
-Followed by 3 to 10 clear, imperative steps referencing visible buttons/dialogs in quotes.
-
-Return ONLY a valid JSON object in this exact shape:
-{
-  "title": "Clean concise walkthrough title",
-  "module": "Communications",
-  "startRoute": "/communications/cases",
-  "summary": "One sentence summary of the workflow.",
-  "steps": [
-    "Navigate to Communications > Cases",
-    ...
-  ]
-}`;
-      rawOutput = await runGeminiPrompt(fallbackPrompt);
-    }
-  }
+  const rawOutput = await runClaudeCli(prompt);
 
   const plan = extractJson(String(rawOutput));
   if (!plan || !Array.isArray(plan.steps) || !plan.steps.length) {
     throw new Error('AI could not generate a valid step-by-step plan for this idea. Please try clarifying your request.');
   }
   // Verification record computed from the per-step proof, not the model's headline claim. A plan
-  // written by the no-tools Gemini fallback has no proof at all and correctly comes out "low".
+  // with no per-step proof correctly comes out "low".
   plan.grounding = assessGrounding(plan);
   delete plan.step_grounding;
   delete plan.confidence;
@@ -1520,16 +1311,7 @@ Find the exact page/dialog/component this step happens in (inferred from the sur
 Return ONLY a JSON object, no markdown fence, no other text:
 {"instruction": "the rewritten step", "verified": true|false, "file": "apps/... or empty if not verified", "quote": "the exact code snippet proving the label, or empty", "reason": "only when verified is false — what you could not confirm"}`;
 
-  let raw;
-  try { raw = await runClaudeCli(prompt); }
-  catch (claudeErr) {
-    console.warn(`Claude CLI with MCP failed for step grounding (${claudeErr.message}), falling back to Gemini with tools...`);
-    try { raw = await runGeminiWithTools(prompt); }
-    catch (toolErr) {
-      console.warn(`Gemini with tools failed for step grounding (${toolErr.message}), falling back to Gemini direct prompt (ungrounded)...`);
-      raw = await runGeminiPrompt(`${prompt}\n\n(No codebase tools are available to you right now — do your best from the workflow context alone, and set "verified": false.)`);
-    }
-  }
+  const raw = await runClaudeCli(prompt);
   const out = extractJson(String(raw));
   if (!out?.instruction) throw new Error('AI did not return a usable step');
   return { instruction: String(out.instruction).trim(), verified: out.verified === true, file: out.file || null, quote: out.quote || null, reason: out.reason || null };
@@ -1561,16 +1343,7 @@ ${ask}
 Return ONLY a JSON object, no markdown fence, no other text:
 {"instruction": "the revised step", "verified": true|false, "file": "apps/... or empty if not verified", "quote": "the exact code snippet proving the label, or empty", "reason": "only when verified is false — what you could not confirm"}`;
 
-  let raw;
-  try { raw = await runClaudeCli(prompt); }
-  catch (claudeErr) {
-    console.warn(`Claude CLI with MCP failed for step refine (${claudeErr.message}), falling back to Gemini with tools...`);
-    try { raw = await runGeminiWithTools(prompt); }
-    catch (toolErr) {
-      console.warn(`Gemini with tools failed for step refine (${toolErr.message}), falling back to Gemini direct prompt (ungrounded)...`);
-      raw = await runGeminiPrompt(`${prompt}\n\n(No codebase tools are available to you right now — do your best from the workflow context alone, and set "verified": false.)`);
-    }
-  }
+  const raw = await runClaudeCli(prompt);
   const out = extractJson(String(raw));
   if (!out?.instruction) throw new Error('AI did not return a usable step');
   return { instruction: String(out.instruction).trim(), verified: out.verified === true, file: out.file || null, quote: out.quote || null, reason: out.reason || null };
@@ -1717,69 +1490,8 @@ function sanitizeNarrationLines(lines) {
   });
 }
 
-async function runGemini(steps, scriptName) {
-  const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
-  if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
-
-  const lines = narrationStepLines(steps).join('\n');
-
-  const prompt = `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
-Below is the ordered sequence of recorded UI actions on screen:
-
-${lines}
-
-Write voiceover narration that flows like an engaging, natural STORY — like a knowledgeable, friendly guide walking a colleague through the workflow.
-
-CRITICAL RULES — NEVER BE ROBOTIC:
-1. STRICT BAN ON MECHANICAL COMMANDS:
-   - NEVER say: "Click this button", "Click that button", "Click Next", "Click Submit", "Click on...", "Hit...", "Tap...", "Type this", "Type that", or "Enter [text] into...".
-   - The viewer sees the mouse clicks and keystrokes on screen. Do NOT narrate physical movements or dictate mechanical actions.
-   - Instead, explain user intent, workflow purpose, and what is being accomplished:
-     * BAD: "Click this button." -> GOOD: "Let's open up the control details to make our updates."
-     * BAD: "Click Next." -> GOOD: "" (silent breathing room) OR "With details in place, we can move into ownership."
-     * BAD: "Type the description." -> GOOD: "Here, we'll clarify what the control actually covers."
-     * BAD: "Click Save." -> GOOD: "Saving locks in the new procedures right away, keeping your records in sync."
-     * BAD: "Click the status dropdown and select Active." -> GOOD: "We'll set the status to Active so the rule begins monitoring immediately."
-
-2. COHESIVE STORYTELLING & NATURAL FLOW:
-   - Weave the sequence into a smooth, connected story from start to finish:
-     * Opening: Set the stage and state the goal naturally (e.g. "We'll start in the Controls list to update our procedures.").
-     * Progression: Connect steps using varied narrative bridges ("With that configured, we can now...", "From here, let's...", "Next, we'll link...", "This ensures that...").
-     * Variety: Vary sentence structures and rhythm. Do NOT start every line with "Now..." or "Next...".
-     * Closing: Conclude with the result or impact.
-
-3. BREATHING ROOM (SILENT MECHANICAL TRANSITIONS):
-   - Routine mechanical transitions (clicking 'Next' between wizard steps, closing dialogs, dismissals, or minor tab switches) do NOT all need speaking lines.
-   - For these steps, output an EMPTY string "" (no narration). A great video lets the visuals breathe rather than talking over every micro-click.
-
-4. PLATFORM & PRIVACY CONVENTIONS:
-   - Platform naming: Refer to the system as "the platform" (never say the brand name "Hadrius" out loud).
-   - Genericize sample data: The recorded names, emails, dates, and test titles are SAMPLE DATA. NEVER state specific names (e.g. "John", "Acme", "2026-04-01") out loud. Always describe them generically by role ("the test owner", "the reviewer", "the employee", "this test", "the due date").
-
-5. PACING:
-   - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
-
-${narrationOutputSpec(steps.length)}`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' },
-    }),
-  });
-
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error?.message || `Gemini API returned HTTP ${resp.status}`);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned an empty response');
-  return sanitizeNarrationLines(parseNarrationLines(text, steps.length, narrationStepLines(steps)));
-}
-
 // One narration line, rewritten per the panel's "Rephrase with AI" choice. Plain prompt (no
-// codebase tools) so the same text works for the Gemini fallback inside runClaude().
+// codebase tools needed).
 const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const hasWord = (text, w) => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(w)}(?:s|es|ed|ing|'s)?(?=$|[^\\p{L}\\p{N}])`, 'iu').test(text);
 // The model sometimes self-corrects mid-reply ({"text": A} ... "corrected:" {"text": B}); the last
@@ -1823,7 +1535,7 @@ Check your line against the task before replying, then respond with exactly ONE 
     return null;
   };
   const ask1 = async (extra) => {
-    const raw = await runClaude(prompt(extra));
+    const raw = await runClaudeCli(prompt(extra));
     const t0 = lastTextObject(raw);
     if (!t0) throw new Error('the model did not return a rephrased line');
     const t = sanitizeNarrationLines([t0])[0] || '';
@@ -1883,53 +1595,9 @@ CRITICAL RULES — NEVER BE ROBOTIC:
 ${narrationOutputSpec(steps.length)}`;
 }
 
-// Twin of buildPrompt() with the codebase-tools paragraph removed — see runClaude()'s geminiPrompt
-// param for why a Gemini call with no tools declared needs this instead of the Claude version.
-function buildPromptPlain(steps, scriptName) {
-  const lines = narrationStepLines(steps).join('\n');
-
-  return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
-Below is the exact, ordered sequence of recorded UI actions for the web app:
-
-${lines}
-
-Write voiceover narration that flows like an engaging, natural STORY — like a knowledgeable, friendly guide walking a colleague through the workflow.
-
-CRITICAL RULES — NEVER BE ROBOTIC:
-1. STRICT BAN ON MECHANICAL COMMANDS:
-   - NEVER say: "Click this button", "Click that button", "Click Next", "Click Submit", "Click on...", "Hit...", "Tap...", "Type this", "Type that", or "Enter [text] into the field".
-   - The viewer sees the mouse clicks and keystrokes on screen. Do NOT narrate physical movements or dictate mechanical actions.
-   - Instead, explain user intent, workflow purpose, and what is being accomplished:
-     * BAD: "Click this button." -> GOOD: "Let's open up the control details to make our updates."
-     * BAD: "Click Next." -> GOOD: "" (silent breathing room) OR "With details in place, we can move into ownership."
-     * BAD: "Type the description." -> GOOD: "Here, we'll clarify what the control actually covers."
-     * BAD: "Click Save." -> GOOD: "Saving locks in the new procedures right away, keeping your records in sync."
-     * BAD: "Click the status dropdown and select Active." -> GOOD: "We'll set the status to Active so the rule begins monitoring immediately."
-
-2. COHESIVE STORYTELLING & NATURAL FLOW:
-   - Weave the sequence into a smooth, connected story from start to finish:
-     * Opening: Set the stage and state the goal naturally (e.g. "We'll start in the Controls list to update our procedures.").
-     * Progression: Connect steps using varied narrative bridges ("With that configured, we can now...", "From here, let's...", "Next, we'll link...", "This ensures that...").
-     * Variety: Vary sentence structures and rhythm. Do NOT start every line with "Now..." or "Next...".
-     * Closing: Conclude with the result or impact.
-
-3. BREATHING ROOM (SILENT MECHANICAL TRANSITIONS):
-   - Routine mechanical transitions (clicking 'Next' between wizard steps, closing dialogs, dismissals, or minor tab switches) do NOT all need speaking lines.
-   - For these steps, output an EMPTY string "" (no narration). A great video lets the visuals breathe rather than talking over every micro-click.
-
-4. PLATFORM & PRIVACY CONVENTIONS:
-   - Platform naming: Refer to the system as "the platform" (never say the brand name "Hadrius" out loud).
-   - Genericize sample data: The recorded names, emails, dates, and test titles are SAMPLE DATA. NEVER state specific names (e.g. "John", "Acme", "2026-04-01") out loud. Always describe them generically by role ("the test owner", "the reviewer", "the employee", "this test", "the due date").
-
-5. PACING:
-   - Keep each spoken line concise (under 18 words) so it speaks naturally without rushing or overlapping.
-
-${narrationOutputSpec(steps.length)}`;
-}
-
 // A recipe's own log() calls double as its slides' captions (see tools/stage-lib.mjs) — accurate,
 // but written in an engineer's internal shorthand ("[act] recipients: searching..."), not narration.
-// These two mirror buildPrompt/runGemini above but take that caption text directly instead of
+// This mirrors buildPrompt above but takes that caption text directly instead of
 // recorded steps, since a recipe caption is already a human-written phrase, not a raw DOM target.
 function buildRecipePrompt(captions, scriptName) {
   const lines = captions.map((c, i) => `${i + 1}. ${c}`).join('\n');
@@ -1961,52 +1629,6 @@ CRITICAL RULES — NEVER BE ROBOTIC:
    - Keep each line under 18 words.
 
 Output ONLY a JSON array of strings, exactly one per numbered line (${captions.length} items total), no other text.`;
-}
-
-function buildRecipePromptPlain(captions, scriptName) {
-  const lines = captions.map((c, i) => `${i + 1}. ${c}`).join('\n');
-  return `You are writing voiceover narration for a screen-recorded product walkthrough video titled "${scriptName || 'walkthrough'}".
-Below is the ordered sequence of what happens on screen, described in an engineer's internal shorthand:
-
-${lines}
-
-Rewrite EACH numbered line above into voiceover narration that flows like an engaging, cohesive STORY — guiding the viewer naturally through what is happening, why it matters, and how each step connects to the next.
-
-CRITICAL RULES — NEVER BE ROBOTIC:
-1. STRICT BAN ON MECHANICAL COMMANDS:
-   - NEVER say: "Click this", "Click that", "Click Next", "Click Submit", "Hit...", "Type this", "Type that".
-   - Viewers see the actions on screen. Describe user intent, business purpose, and workflow milestones instead of mechanical commands.
-   - For pure mechanical transitions or intermediate steps (e.g. clicking 'Next' in a wizard), output an EMPTY string "" to give the video natural breathing room.
-2. COHESIVE STORYTELLING & NATURAL FLOW:
-   - Weave the sequence into a smooth, connected story.
-   - Opening introduces the workflow goal; middle explains context; closing highlights the finished state.
-   - Vary transitions and sentence structures. Do not start every sentence with "Now..." or "Next...".
-3. PLATFORM & PRIVACY CONVENTIONS:
-   - Refer to the system as "the platform" (never say "Hadrius").
-   - Genericize sample data: never state specific employee names, firm names, dates, or specific record titles aloud.
-4. PACING:
-   - Keep each line under 18 words.
-
-Output ONLY a JSON array of strings, exactly one per numbered line (${captions.length} items total), no other text.`;
-}
-
-async function runGeminiRecipe(captions, scriptName) {
-  const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
-  if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
-  const prompt = buildRecipePromptPlain(captions, scriptName);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json' } }),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error?.message || `Gemini API returned HTTP ${resp.status}`);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned an empty response');
-  const arr = JSON.parse(text);
-  if (!Array.isArray(arr)) throw new Error('Gemini output was not a JSON array');
-  return sanitizeNarrationLines(arr);
 }
 
 // ---- Publish a finished render as a Pylon knowledge base article (best-effort, fire-and-forget
@@ -2041,10 +1663,6 @@ SCREENSHOTS: [4, 9]
 ---BODY---
 <p>...</p>...[[SCREENSHOT:4]]...`;
 }
-// Note: buildKbArticlePrompt's caller (publishRenderToPylon) talks to runClaudeCli/runGeminiKbArticle
-// directly rather than through the generic runClaude() helper, and runGeminiKbArticle already builds
-// its own tool-free prompt — so it doesn't need a "Plain" twin the way buildPrompt/buildRecipePrompt do.
-
 async function findCoverageInfo(scriptName) {
   try {
     const cov = await libraryFetch('GET', null, null, COVERAGE_URL);
@@ -2204,45 +1822,6 @@ async function resolveScriptModule(name, scriptObj, coverageModule) {
   return { module: scriptObj?.module || coverageModule || null, inferred: false };
 }
 
-async function runGeminiKbArticle(title, narratedSlides, sourceFile) {
-  const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
-  if (!key) throw new Error('GEMINI_API_KEY is not set (add it to ~/.hermes/.env or .env)');
-  const lines = narratedSlides.map((s) => `${s.slide}. ${s.text}`).join('\n');
-  const prompt = `You are writing a knowledge base article for the Hadrius compliance platform's customer help center, covering the workflow "${title}".
-
-Below is the ordered narration from a walkthrough video of this exact workflow — each line is numbered by the slide it corresponds to in the video (numbers are not sequential 1..N; they're the video's own slide numbers, some slides have no narration and are omitted):
-
-${lines}
-
-Write a real knowledge base article — not a caption dump. Organize it into a short intro paragraph (what this covers and when you'd do it), then the body as either flowing paragraphs or a numbered step list (whichever reads more naturally for this workflow — not necessarily one step per narration line; group related actions together), and a brief closing note if there's a natural one (e.g. what happens next). Write it the way a real support/documentation team would, in a clear and professional tone.
-
-Pick at most ${MAX_KB_SCREENSHOTS} of the numbered slides above that would most usefully appear as a screenshot in the article — key visual moments, not every step — and insert the placeholder [[SCREENSHOT:N]] (N = that slide's number) on its own line at the point in the article where it belongs.
-
-Format your response in this EXACT structure (the first line must be a JSON array of the slide numbers you picked, then the delimiter ---BODY--- on its own line, then the article body in clean semantic HTML — <p>, <ul>, <ol>, <li>, <h3>, <strong>):
-
-[1, 3, 5]
----BODY---
-<p>This guide explains how to...</p>
-[[SCREENSHOT:1]]
-<ol>
-  <li><strong>First action:</strong> Description...</li>
-</ol>`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-    }),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error?.message || `Gemini API HTTP ${resp.status}`);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned an empty response');
-  return text.trim();
-}
-
 function formatHumanTitle(str) {
   if (!str) return 'Walkthrough';
   let t = String(str).trim();
@@ -2355,13 +1934,7 @@ async function publishRenderToPylon(name, outDir) {
   if (!narratedSlides.length) throw new Error('no narrated slides to write from');
 
   const prompt = buildKbArticlePrompt(title, narratedSlides, sourceFile);
-  let result;
-  try {
-    result = await runClaudeCli(prompt);
-  } catch (claudeErr) {
-    console.warn(`Claude CLI failed for KB article drafting (${claudeErr.message}), falling back to gemini-3.8-flash...`);
-    result = await runGeminiKbArticle(title, narratedSlides, sourceFile);
-  }
+  const result = await runClaudeCli(prompt);
   // A delimiter split, not JSON.parse — asking the model to hand-write body_html as an escaped JSON
   // string value was fragile in practice: an ordinary quote inside the HTML (quoting a real button
   // label, which the prompt explicitly invites) is exactly the kind of thing models occasionally
@@ -2527,47 +2100,6 @@ INSTRUCTIONS:
   "codeEvidence": "<1-2 sentences citing exact file/component code found via MCP>",
   "explanation": "<short plain English sentence explaining why this candidate replaces the broken step>"
 }`;
-}
-
-async function runGeminiAutoHeal(step, candidates, route) {
-  const key = GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim();
-  if (!key) throw new Error('GEMINI_API_KEY is not set');
-
-  const t = step.target || {};
-  const prompt = `You are an automated debugger repairing a broken browser walkthrough step that failed due to UI drift or button renaming in Hadrius.
-
-BROKEN STEP:
-- Action: ${step.action}
-- Route: ${route || step.route || ''}
-- Narration Intent: "${step.narration || ''}"
-- Original Target: ${JSON.stringify(t)}
-
-CANDIDATE INTERACTIVE ELEMENTS CURRENTLY ON THE LIVE PAGE:
-${JSON.stringify(candidates, null, 2)}
-
-Evaluate the candidate elements against the intended action and narration. Select the best matching candidateId.
-Output ONLY a JSON object in this format:
-{
-  "candidateId": <integer candidateId from list, or null>,
-  "confidence": <number 0.0 to 1.0>,
-  "codeEvidence": "Semantic matching of element label, role, heading, and narration intent",
-  "explanation": "<short explanation of why this element is the replacement>"
-}`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' },
-    }),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error?.message || `Gemini HTTP ${resp.status}`);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
-  return JSON.parse(text);
 }
 
 // Create ✨ tab: AI slide decks built from recorded screenshots (tools/deck-studio.mjs).
@@ -2931,7 +2463,7 @@ const server = http.createServer(async (req, res) => {
         for (let i = 0; i < Math.max(1, ask.items.length); i += BATCH) {
           const part = { title: ask.title && i === 0, items: ask.items.slice(i, i + BATCH) };
           if (!part.title && !part.items.length) break;
-          const raw = await runClaude(buildTranslationPrompt(work, part, language));
+          const raw = await runClaudeCli(buildTranslationPrompt(work, part, language));
           translation = applyTranslation(work, language, part, parseTranslationReply(raw));
           work = { ...work, translations: { ...(work.translations || {}), [language]: translation } };
         }
@@ -2972,7 +2504,6 @@ const server = http.createServer(async (req, res) => {
       product: 'hadrius-studio-beta',
       version: LOCAL_VERSION,
       library: !!LIBRARY_SECRET,
-      geminiFallback: !!(GEMINI_API_KEY || process.env.GEMINI_API_KEY),
       user: WHOAMI,
       loggedIn: fs.existsSync(PROFILE_DIR),
     }));
@@ -2987,11 +2518,9 @@ const server = http.createServer(async (req, res) => {
       checkGoogleDrive({ maxAgeMs: fresh ? 0 : 60000 }),
       checkPylon({ maxAgeMs: fresh ? 0 : 60000 }),
     ]);
-    const hasGemini = !!(GEMINI_API_KEY || (process.env.GEMINI_API_KEY || '').trim());
     return sendJson(res, 200, {
       ok: true,
-      claude: { connected: claude.loggedIn === true, detail: claude.detail, fixCommand: 'claude login' },
-      gemini: { connected: hasGemini, detail: hasGemini ? 'Gemini API connected (fallback)' : 'GEMINI_API_KEY not configured', fixCommand: null },
+      claude: { connected: claude.loggedIn === true, detail: claude.loggedIn === false ? (claude.detail || CLAUDE_LOGIN_HINT) : claude.detail, fixCommand: 'claude auth login' },
       codebase: { connected: codebase.connected === true, detail: codebase.detail, fixCommand: 'claude mcp login hadrius-codebase' },
       drive: { connected: drive.connected === true, detail: drive.detail, fixCommand: null },
       pylon: { connected: pylon.connected === true, detail: pylon.detail, fixCommand: null },
@@ -4182,24 +3711,12 @@ const server = http.createServer(async (req, res) => {
         const { steps, scriptName } = JSON.parse(body);
         if (!Array.isArray(steps) || !steps.length) throw new Error('no steps provided');
 
-        let lines = null;
-        let model = 'claude';
-        let fallbackReason = null;
-
-        try {
-          const result = await runClaudeCli(buildPrompt(steps, scriptName));
-          lines = parseNarrationLines(result, steps.length, narrationStepLines(steps));
-        } catch (claudeErr) {
-          fallbackReason = String(claudeErr?.message || claudeErr);
-          console.warn(`Claude CLI failed (${fallbackReason}), falling back to gemini-3.8-flash...`);
-          lines = await runGemini(steps, scriptName);
-          model = 'gemini-3.8-flash';
-        }
-
+        const result = await runClaudeCli(buildPrompt(steps, scriptName));
+        let lines = parseNarrationLines(result, steps.length, narrationStepLines(steps));
         if (!Array.isArray(lines)) throw new Error('model did not return a JSON array');
         lines = sanitizeNarrationLines(lines);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'claude', fallbackReason } : {}) }));
+        res.end(JSON.stringify({ ok: true, lines, model: 'claude' }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
@@ -4218,26 +3735,12 @@ const server = http.createServer(async (req, res) => {
         const { captions, scriptName } = JSON.parse(body);
         if (!Array.isArray(captions) || !captions.length) throw new Error('no captions provided');
 
-        let lines = null;
-        let model = 'claude';
-        let fallbackReason = null;
-
-        try {
-          const prompt = buildRecipePrompt(captions, scriptName);
-          const result = await runClaude(prompt, buildRecipePromptPlain(captions, scriptName));
-          const match = result.match(/\[[\s\S]*\]/);
-          lines = JSON.parse(match ? match[0] : result);
-          if (!Array.isArray(lines)) throw new Error('Claude did not return a JSON array');
-        } catch (claudeErr) {
-          fallbackReason = String(claudeErr?.message || claudeErr);
-          console.warn(`Claude drafting failed (${fallbackReason}), falling back to gemini-3.8-flash for recipe narration...`);
-          lines = await runGeminiRecipe(captions, scriptName);
-          model = 'gemini-3.8-flash';
-        }
-
-        if (!Array.isArray(lines)) throw new Error('model did not return a JSON array');
+        const result = await runClaudeCli(buildRecipePrompt(captions, scriptName));
+        const match = result.match(/\[[\s\S]*\]/);
+        let lines = JSON.parse(match ? match[0] : result);
+        if (!Array.isArray(lines)) throw new Error('Claude did not return a JSON array');
         lines = sanitizeNarrationLines(lines);
-        return sendJson(res, 200, { ok: true, lines, model, ...(fallbackReason ? { fallbackFrom: 'claude', fallbackReason } : {}) });
+        return sendJson(res, 200, { ok: true, lines, model: 'claude' });
       } catch (e) {
         return sendJson(res, 500, { ok: false, error: String(e?.message || e) });
       }
@@ -4256,21 +3759,9 @@ const server = http.createServer(async (req, res) => {
           throw new Error('step and non-empty candidates array required');
         }
 
-        let result = null;
-        let usedModel = 'claude';
-        let fallbackReason = null;
-
-        try {
-          const prompt = buildAutoHealPrompt(step, candidates, route);
-          const raw = await runClaude(prompt);
-          const match = raw.match(/\{[\s\S]*\}/);
-          result = JSON.parse(match ? match[0] : raw);
-        } catch (claudeErr) {
-          fallbackReason = String(claudeErr?.message || claudeErr);
-          console.warn(`Claude auto-heal failed (${fallbackReason}), falling back to gemini-3.8-flash...`);
-          result = await runGeminiAutoHeal(step, candidates, route);
-          usedModel = 'gemini-3.8-flash';
-        }
+        const raw = await runClaudeCli(buildAutoHealPrompt(step, candidates, route));
+        const match = raw.match(/\{[\s\S]*\}/);
+        const result = JSON.parse(match ? match[0] : raw);
 
         if (!result || result.candidateId == null) {
           throw new Error('AI could not identify a confident replacement element on this page.');
@@ -4283,8 +3774,7 @@ const server = http.createServer(async (req, res) => {
           confidence: result.confidence ?? 0.9,
           codeEvidence: result.codeEvidence || '',
           explanation: result.explanation || '',
-          model: usedModel,
-          ...(fallbackReason ? { fallbackFrom: 'claude', fallbackReason } : {})
+          model: 'claude',
         }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });

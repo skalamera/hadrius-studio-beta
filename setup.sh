@@ -316,13 +316,10 @@ if ! grep -qs '^STUDIO_LIBRARY_URL=.\+' .env 2>/dev/null; then
   echo "STUDIO_LIBRARY_URL=https://pylon-webhook-service.vercel.app/api/studio-beta-scripts" >> .env
 fi
 
-# The bridge degrades quietly without these — publishing just fails at render time, and the AI
-# fallback never kicks in — so say up front which optional keys this machine is missing.
+# The bridge degrades quietly without these — publishing just fails at render time — so say up
+# front which optional keys this machine is missing. (AI features need no key: they use the Claude CLI.)
 if ! grep -qs '^PYLON_API_TOKEN=.\+' .env 2>/dev/null; then
   echo "⚠ PYLON_API_TOKEN is not set in .env — 'Render + Article' and the Recorded tab's Pylon sync won't work until it is."
-fi
-if ! grep -qs '^GEMINI_API_KEY=.\+' .env 2>/dev/null; then
-  echo "ℹ GEMINI_API_KEY is not set in .env — optional; it's only the fallback when the Claude CLI is unavailable."
 fi
 if ! grep -qs '^ELEVENLABS_API_KEY=.\+' .env 2>/dev/null; then
   echo "ℹ ELEVENLABS_API_KEY is not set in .env — videos will use the free edge-tts voice instead of ElevenLabs (Matilda)."

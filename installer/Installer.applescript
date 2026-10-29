@@ -230,7 +230,7 @@ on offerClaude(installScript, stateDir, appIcon)
 		set checks to do shell script "cat " & quoted form of (stateDir & "/checks")
 	end try
 	if checks contains "claude=1" and checks contains "codebase=1" then return
-	set choice to button returned of (display dialog "Recommended: sign in to Claude." & return & return & "Studio uses Claude and the Hadrius codebase to write narration and plans. Click Sign In: a Terminal window opens and your browser asks you to sign in. There's nothing to type in Terminal." & return & return & "If you skip this, Studio uses Gemini instead. To sign in later, run this installer again." buttons {"Skip", "Sign In"} default button "Sign In" with title appTitle with icon appIcon)
+	set choice to button returned of (display dialog "Recommended: sign in to Claude." & return & return & "Studio uses Claude and the Hadrius codebase to write narration and plans. Click Sign In: a Terminal window opens and your browser asks you to sign in. There's nothing to type in Terminal." & return & return & "If you skip this, narration, plans and Pylon articles won't work until you sign in. To sign in later, run this installer again (or run claude in Terminal)." buttons {"Skip", "Sign In"} default button "Sign In" with title appTitle with icon appIcon)
 	if choice is "Sign In" then my claudeSignIn(installScript, stateDir)
 end offerClaude
 

@@ -2286,7 +2286,7 @@ async function stopAndNarrate() {
   const result = await send({type:'PANEL_AI_NARRATE',steps:payload,scriptName:$('#scriptName').value.trim()});
   if (result?.ok && Array.isArray(result.lines)) {
     for (let i=0;i<state.steps.length;i++) if (result.lines[i]) await send({type:'PANEL_UPDATE_STEP',index:state.steps[i].index,patch:{narration:result.lines[i],caption:result.lines[i]}});
-    $('#narrationStatus').textContent = `Narration drafted automatically with ${result.model?.startsWith('gemini')?'Gemini fallback':'Claude'}. Review any line below before rendering.`;
+    $('#narrationStatus').textContent = 'Narration drafted with Claude. Review any line below before rendering.';
     await loadState();
     startPreviewRender().catch(() => {});
     return;
@@ -3265,7 +3265,7 @@ $('#bulkDismissBtn').onclick = bulkDismissSelected;
 $('#bulkClearSelectionBtn').onclick = () => { bulkSelected.clear(); renderModules(); };
 $('#autoRecordQueueCancelBtn').onclick = cancelAutoRecordQueue;
 $('#scanBtn').onclick = async () => {
-  if (!confirm('Run a new Gemini codebase scan through the Hadrius MCP? This can take several minutes.')) return;
+  if (!confirm('Run a new Claude codebase scan through the Hadrius MCP? This can take several minutes.')) return;
   updateScanStatus({ running: true, log: ['Starting codebase scan via Hadrius MCP…'] });
   try {
     await api('/workflows', { method: 'POST' });
@@ -3960,15 +3960,17 @@ function renderToolStatus(dotEl, tooltipEl, label, state, iconName) {
 async function refreshToolStatus(fresh) {
   try {
     const s = await api(`/status/tools${fresh ? '?fresh=1' : ''}`);
-    if (s.claude?.connected) {
-      renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', s.claude, 'claude');
-      const lbl = $('#claudeLabel');
-      if (lbl) lbl.textContent = 'Claude';
-    } else {
-      renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Gemini', s.gemini || { connected: false, detail: 'Gemini fallback' }, 'gemini');
-      const lbl = $('#claudeLabel');
-      if (lbl) lbl.textContent = 'Gemini';
-    }
+    // Claude is the only AI provider: connected, or a red "Claude not connected" with the fix on hover.
+    const claude = s.claude || { connected: false };
+    const claudeOk = !!claude.connected;
+    renderToolStatus($('#claudeDot'), $('#claudeTooltip'), 'Claude', {
+      ...claude,
+      detail: claude.detail || "Claude isn't connected on this Mac. In Terminal run `claude auth login` and sign in, then click Update in Studio (or restart the bridge).",
+      fixCommand: claude.fixCommand || 'claude',
+    }, 'claude');
+    $('#claudeToolStatus')?.classList.toggle('bad', !claudeOk);
+    const lbl = $('#claudeLabel');
+    if (lbl) lbl.textContent = claudeOk ? 'Claude' : 'Claude not connected';
     renderToolStatus($('#codebaseDot'), $('#codebaseTooltip'), 'Codebase', s.codebase, 'codebase');
     if (s.drive) renderToolStatus($('#driveDot'), $('#driveTooltip'), 'Drive', s.drive, 'drive');
     if (s.pylon) renderToolStatus($('#pylonDot'), $('#pylonTooltip'), 'Pylon', s.pylon, 'pylon');

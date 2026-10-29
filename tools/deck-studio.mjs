@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, execFile } from 'node:child_process';
+import { claudeConnectionError } from './coverage-scan.mjs';
 
 const CODEBASE_TOOLS = [
   'mcp__hadrius-codebase__search_code',
@@ -120,14 +121,14 @@ export function createDeckStudio(deps) {
       const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Claude took too long (timed out)')); }, timeoutMs);
       child.stdout.on('data', (c) => (out += c));
       child.stderr.on('data', (c) => (err += c));
-      child.on('error', (e) => { clearTimeout(timer); reject(e); });
+      child.on('error', (e) => { clearTimeout(timer); reject(claudeConnectionError(e) || e); });
       child.on('close', (code) => {
         clearTimeout(timer); job?.children.delete(child);
         if (job?.cancelled) return reject(new Error('cancelled'));
         let parsed = null; try { parsed = JSON.parse(out); } catch { /* raw text */ }
         const result = parsed ? parsed.result : out;
-        if (!result) return reject(new Error(`claude exited ${code}: ${clip(err || out, 300)}`));
-        if (parsed?.is_error && !/[{[]/.test(String(result))) return reject(new Error(`claude: ${clip(result, 300)}`));
+        if (!result) return reject(claudeConnectionError(null, err || out) || new Error(`claude exited ${code}: ${clip(err || out, 300)}`));
+        if (parsed?.is_error && !/[{[]/.test(String(result))) return reject(claudeConnectionError(null, result) || new Error(`claude: ${clip(result, 300)}`));
         resolve(String(result));
       });
       child.stdin.end(prompt);

@@ -145,49 +145,23 @@ export function claudeEnv() {
   return env;
 }
 
-function getGeminiKey() {
-  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY.trim();
-  const home = process.env.HOME || process.env.USERPROFILE || '';
-  const candidates = [path.join(REPO_ROOT, '.env'), path.join(home, '.hermes/.env')];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) {
-      for (const raw of fs.readFileSync(p, 'utf8').split('\n')) {
-        const line = raw.trim();
-        if (!line || line.startsWith('#')) continue;
-        const eq = line.indexOf('='); if (eq < 0) continue;
-        const k = line.slice(0, eq).trim();
-        if (k === 'GEMINI_API_KEY') {
-          let v = line.slice(eq + 1).trim();
-          if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-          return v;
-        }
-      }
-    }
+// ---- "Claude isn't connected" — the one user-facing error every AI feature shows when the Claude
+// CLI is missing from the bridge's PATH or signed out. Studio has no other AI provider, so this has
+// to say exactly how to fix it rather than surfacing a bare ENOENT/OAuth error from deep in a job.
+export const CLAUDE_NOT_CONNECTED_MSG = "Claude isn't connected on this Mac. In Terminal run `claude auth login` and sign in, then click Update in Studio (or restart the bridge).";
+export const CLAUDE_MISSING_MSG = "Claude isn't connected on this Mac: the `claude` CLI isn't installed (or isn't on the bridge's PATH). Run ./setup.sh in the Studio folder, then in Terminal run `claude auth login` and sign in, then click Update in Studio (or restart the bridge).";
+// \b guards keep prose like "two dialog instances" from matching "log in".
+export const isClaudeAuthError = (msg) => /authenticate|OAuth|not logged in|\blog ?in\b|session expired|invalid api key/i.test(String(msg));
+/** The friendly "connect Claude" error for a failed `claude` call, or null when it's some other failure
+ *  (those keep their real text). `err` is the spawn/exec error, `text` any stderr/result text. */
+export function claudeConnectionError(err, text = '') {
+  if (err?.code === 'ENOENT') { const e = new Error(CLAUDE_MISSING_MSG); e.claudeNotConnected = true; return e; }
+  const raw = `${text || ''} ${err?.message || ''}`.trim();
+  if (raw && isClaudeAuthError(raw)) {
+    const e = new Error(`${CLAUDE_NOT_CONNECTED_MSG} (Claude said: ${raw.replace(/\s+/g, ' ').slice(0, 160)})`);
+    e.claudeNotConnected = true; return e;
   }
-  return '';
-}
-
-export async function runGeminiFallback(prompt, { systemPrompt = null, json = false } = {}) {
-  const key = getGeminiKey();
-  if (!key) throw new Error('GEMINI_API_KEY is not set');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${key}`;
-  const body = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: json ? { responseMimeType: 'application/json' } : {},
-  };
-  if (systemPrompt) {
-    body.systemInstruction = { parts: [{ text: systemPrompt }] };
-  }
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error?.message || `Gemini API HTTP ${resp.status}`);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
-  return text;
+  return null;
 }
 
 /**
@@ -221,10 +195,10 @@ function cliError(err, stderr, timeout) {
 }
 
 /**
- * execFile's own `timeout` option only signals the DIRECT child. Both the `claude` and `gemini`
- * CLIs are themselves Node launchers that fork a real worker process — killing the launcher leaves
+ * execFile's own `timeout` option only signals the DIRECT child. The `claude` CLI is itself a
+ * Node launcher that forks a real worker process — killing the launcher leaves
  * that worker running as an orphan, so the intended timeout never actually bounds wall-clock time
- * (observed: a `gemini` worker kept burning CPU for 3+ minutes after its 25s timeout should have
+ * (observed: a CLI worker kept burning CPU for 3+ minutes after its 25s timeout should have
  * fired, hanging an entire AI-recorder turn on one unanswered "consult"). Spawning `detached` makes
  * the child the leader of its own process group, so killing `-pid` (negative = the whole group)
  * reaches every descendant, not just the one Node is directly tracking.
@@ -253,11 +227,12 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
     const child = execFile('claude', args, { maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env: claudeEnv() }, (err, stdout, stderr) => {
       clearWatchdog();
       if (err?.name === 'AbortError') return reject(new Error('cancelled'));
-      if (err && !stdout) return reject(cliError(err, stderr, timeout));
+      if (err && !stdout) return reject(claudeConnectionError(err, stderr) || cliError(err, stderr, timeout));
       try {
         const parsed = JSON.parse(stdout);
         if (parsed.is_error || (parsed.subtype && parsed.subtype !== 'success')) {
-          return reject(new Error(`claude: ${parsed.result || parsed.subtype || stderr || 'unknown error'}`));
+          const msg = parsed.result || parsed.subtype || stderr || 'unknown error';
+          return reject(claudeConnectionError(null, msg) || new Error(`claude: ${msg}`));
         }
         // num_turns is the only evidence we get that the model actually went and read the codebase:
         // one turn means it answered from prior knowledge without calling a single MCP tool.
@@ -272,66 +247,15 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
 }
 
 /**
- * Run `claude -p` and return the model's text, with automatic fallback to gemini-3.8-flash.
- * Shared by the scan and the AI recorder.
+ * Run `claude -p` and return the model's text. Shared by the scan and the AI recorder. Claude is the
+ * only provider: when the CLI is missing or signed out this throws CLAUDE_NOT_CONNECTED_MSG /
+ * CLAUDE_MISSING_MSG; any other failure keeps Claude's own error text.
  *
- * opts.onMeta is called with { model, turns, costUsd } describing the run that ACTUALLY produced the
- * text, which is not always the one asked for — the fallback is silent by design, so a caller
- * recording provenance must be told, or it will faithfully record the model it intended to use while
- * a very different one wrote the output. `turns` is what makes grounding auditable: the Gemini
- * fallback has no codebase tools at all (turns: 0), and even Claude answering in a single turn never
- * opened the repo.
+ * opts.onMeta is called with { model, turns, costUsd } for the run. `turns` is what makes grounding
+ * auditable: Claude answering in a single turn never opened the repo.
  */
-function runGeminiCli(prompt, { timeout = 600000, signal, onMeta } = {}) {
-  return new Promise((resolve, reject) => {
-    const args = ['-p', prompt, '--output-format', 'json', '--approval-mode', 'plan', '--skip-trust'];
-    const env = { ...process.env, GEMINI_CLI_TRUST_WORKSPACE: 'true' };
-    // cwd matters: launchd starts the bridge with cwd "/", and gemini run from the filesystem root
-    // prints "You are running Gemini CLI in the root directory" and returns nothing usable — which
-    // is why the fallback never actually worked for jobs started by the background bridge.
-    const child = execFile('gemini', args, { cwd: REPO_ROOT, maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env }, (err, stdout, stderr) => {
-      clearWatchdog();
-      if (err?.name === 'AbortError') return reject(new Error('cancelled'));
-      if (err && !stdout) return reject(new Error(`Gemini CLI failed: ${String(stderr || err.message).trim().slice(0, 500)}`));
-      try {
-        let clean = stdout;
-        const start = stdout.indexOf('{');
-        const end = stdout.lastIndexOf('}');
-        if (start !== -1 && end > start) {
-          clean = stdout.slice(start, end + 1);
-        }
-        const parsed = JSON.parse(clean);
-        const text = parsed.response || parsed.result || parsed.content || parsed.text || parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (!text) throw new Error('Gemini CLI returned no response text');
-        const toolCalls = parsed.stats?.tools?.totalCalls ?? parsed.tool_calls?.length ?? null;
-        onMeta?.({ model: parsed.model || 'gemini-cli', turns: toolCalls, costUsd: null });
-        resolve(text);
-      } catch (parseErr) {
-        if (stdout.trim()) resolve(stdout.trim()); else reject(parseErr);
-      }
-    });
-    const clearWatchdog = killProcessGroupSoon(child, timeout, signal);
-    child.stdin?.end();
-  });
-}
-
-/** Provider order: Claude CLI + Hadrius MCP first, Gemini CLI fallback. */
 export async function runClaude(prompt, opts = {}) {
-  try {
-    return await runClaudeCli(prompt, opts);
-  } catch (claudeErr) {
-    if (opts.signal?.aborted) throw claudeErr;
-    console.warn(`Claude CLI failed (${claudeErr.message}), falling back to Gemini API...`);
-    try {
-      return await runGeminiFallback(prompt, opts);
-    } catch (geminiErr) {
-      if (opts.signal?.aborted) throw geminiErr;
-      // Report BOTH, Claude first. When only Gemini's message surfaced, a whole batch of jobs
-      // failed with "Gemini CLI failed: Warning: You are running Gemini CLI in the root directory"
-      // — pure noise that hid the actual cause (the Claude account had hit its spend limit).
-      throw new Error(`both models failed — Claude: ${claudeErr.message} | Gemini: ${geminiErr.message}`);
-    }
-  }
+  return runClaudeCli(prompt, opts);
 }
 
 /** Index of the bracket that closes the JSON object/array opening at s[start], or -1 if it never closes or a

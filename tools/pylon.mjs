@@ -2,7 +2,7 @@
 // rendered walkthrough as a knowledge base article: upload the video + a few slide screenshots as
 // attachments (POST /attachments returns a hosted url), then create the article referencing those
 // urls in its body_html (POST /knowledge-bases/{id}/articles). Bearer-token auth, same .env pattern
-// as GEMINI_API_KEY/STUDIO_SHARED_SECRET — see tools/ai-bridge.mjs's loadDotEnv().
+// as STUDIO_SHARED_SECRET — see tools/ai-bridge.mjs's loadDotEnv().
 import fs from 'node:fs';
 import path from 'node:path';
 

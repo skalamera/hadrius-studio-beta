@@ -446,8 +446,8 @@ frame on >= 2 routes (sidebar/header); a slide where > 20% of those cells change
 with narration, the claude CLI (coverage-scan `runClaude`, Read tool only, `decisionModel()`) gets ONLY today's
 screenshot + today's DOM text + the narration and must return `{accurate, claim_missing, reason, evidence,
 suggested_rewrite}`: inaccurate => `narration_review`, claim no longer on screen => `full_rerecord`, judge unavailable =>
-`narration_review`. (Given both frames it mixed them up and "saw" the recorded project ID on today's page.) The Gemini
-fallback is suppressed for these calls (placeholder key, Gemini host refused) so it never reads `.env`. Video = worst
+`narration_review`. (Given both frames it mixed them up and "saw" the recorded project ID on today's page.) Claude is the
+only provider, so the judge never reads API keys from `.env`. Video = worst
 step; `needs_fixture`/uncaptured steps are `unverified` (`complete:false`), and if chrome changed while any slide would
 be kept (unchanged/unverified) the video is `full_rerecord` (`mixed_old_new_ui`). Pilot run4 (Find-a-Project-ID):
 `full_rerecord` (slide 2 target ambiguous; slide 3 SSIM 0.765 / 95.5% coverage + narration_contradicted: no project ID

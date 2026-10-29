@@ -2,7 +2,7 @@
 // walkthrough video into the "Hadrius Academy" folder in My Drive (module subfolder matching the
 // workflow's module, same grouping as PYLON_MODULE_COLLECTION_MAP) as a shareable "Anyone with the
 // link" viewer copy, alongside the Pylon KB article. Same .env pattern as PYLON_API_TOKEN /
-// GEMINI_API_KEY — see tools/ai-bridge.mjs's loadDotEnv().
+// STUDIO_SHARED_SECRET — see tools/ai-bridge.mjs's loadDotEnv().
 //
 // Auth is a standard OAuth "installed app" refresh token (not a service account — a personal Drive
 // upload needs a real user identity, and a service account's own Drive is a separate, unrelated

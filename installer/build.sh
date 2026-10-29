@@ -25,8 +25,10 @@ ZIP="$DIST/Hadrius Studio Installer.zip"
 #   PR_WATCH_USER must be set on ONE machine only (see .env.example), STUDIO_USER is a person,
 #   KBS_BRIDGE_PORT has to match the port setup.sh registers, the rest are local paths/overrides.
 MACHINE_ONLY='PR_WATCH_USER|STUDIO_USER|KBS_BRIDGE_PORT|KBS_PROFILE_DIR|KBS_COMPANY_ID|NARRATION_PROVIDER'
+# Retired keys nothing reads any more (Studio's AI is Claude CLI only); never ship them.
+RETIRED='GEMINI_API_KEY'
 # Without these the install still works but a feature is dead on arrival.
-EXPECTED='PYLON_API_TOKEN GEMINI_API_KEY ELEVENLABS_API_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN'
+EXPECTED='PYLON_API_TOKEN ELEVENLABS_API_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN'
 
 [[ "$(uname -s)" == Darwin ]] || { echo "Build this on a Mac (it needs osacompile and codesign)." >&2; exit 1; }
 [[ -f "$SRC_ENV" ]] || { echo "No env file at $SRC_ENV" >&2; exit 1; }
@@ -52,7 +54,7 @@ chmod 755 "$RES/install.sh"
 
 {
   echo "# Hadrius Studio team credentials, built $(date '+%Y-%m-%d %H:%M') by installer/build.sh. Internal only."
-  grep -E '^[A-Za-z_][A-Za-z0-9_]*=.+' "$SRC_ENV" | grep -vE "^($MACHINE_ONLY)=" || true
+  grep -E '^[A-Za-z_][A-Za-z0-9_]*=.+' "$SRC_ENV" | grep -vE "^($MACHINE_ONLY|$RETIRED)=" || true
 } > "$RES/team.env"
 chmod 644 "$RES/team.env"
 

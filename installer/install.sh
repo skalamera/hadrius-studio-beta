@@ -210,11 +210,11 @@ try:
 except Exception:
     t = {}
 checks = {"library": library.startswith('{"ok":true')}
-for k in ("claude", "codebase", "gemini", "drive", "pylon"):
+for k in ("claude", "codebase", "drive", "pylon"):
     checks[k] = bool((t.get(k) or {}).get("connected"))
 # Claude and the codebase MCP are personal sign-ins, offered right after this; everything else
 # comes from the team credentials, so a failure there is worth telling Stephen about.
-labels = {"library": "Shared team library", "pylon": "Pylon", "drive": "Google Drive", "gemini": "Gemini"}
+labels = {"library": "Shared team library", "pylon": "Pylon", "drive": "Google Drive"}
 warnings = []
 for k, label in labels.items():
     if not checks[k]:
