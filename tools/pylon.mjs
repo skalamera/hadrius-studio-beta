@@ -108,6 +108,24 @@ export async function pylonDeleteArticle(articleId) {
   await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${articleId}`, { method: 'DELETE' });
 }
 
+/** One article with its draft/published HTML (the list endpoint strips bodies). */
+export async function pylonGetArticle(articleId) {
+  const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${encodeURIComponent(articleId)}`);
+  return out.data;
+}
+
+/** Replace an article's body (drift updates). publish=true -> publish_updated_body_html so a published
+ *  article goes live; false -> saved as a draft. Never sends is_published (an article is never unpublished). */
+export async function pylonUpdateArticleBody(articleId, { bodyHtml, publish = false }) {
+  const body = { body_html: bodyHtml, ...(publish ? { publish_updated_body_html: true } : {}) };
+  const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${encodeURIComponent(articleId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return out.data;
+}
+
 /** Rename an existing article (e.g. to strip a "-ai" collision suffix that leaked into the title). */
 export async function pylonUpdateArticleTitle(articleId, title) {
   const out = await pylonFetch(`/knowledge-bases/${PYLON_KNOWLEDGE_BASE_ID}/articles/${articleId}`, {

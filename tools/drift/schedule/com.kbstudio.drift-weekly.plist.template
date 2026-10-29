@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Weekly drift check: asks the local Studio bridge to run tools/drift/weekly.mjs on the allowlist and then
+     submit the results (a dry run unless rendered with the live option). Rendered by render-plist.mjs; installed
+     DISABLED by install.sh. The bridge holds all secrets; this agent only sends one local HTTP request. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{{LABEL}}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/curl</string>
+    <string>-sS</string>
+    <string>--fail-with-body</string>
+    <string>--max-time</string><string>30</string>
+    <string>-X</string><string>POST</string>
+    <string>-H</string><string>Content-Type: application/json</string>
+    <string>--data</string><string>{{BODY}}</string>
+    <string>{{URL}}</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>{{WEEKDAY}}</integer>
+    <key>Hour</key><integer>{{HOUR}}</integer>
+    <key>Minute</key><integer>{{MINUTE}}</integer>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>{{LOG}}</string>
+  <key>StandardErrorPath</key><string>{{LOG}}</string>
+</dict>
+</plist>

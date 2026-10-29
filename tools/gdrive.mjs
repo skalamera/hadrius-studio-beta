@@ -95,6 +95,15 @@ async function getAccessToken() {
   return cachedToken.accessToken;
 }
 
+/** fetch() with the Drive OAuth bearer added. Used by tools/drift/publish.mjs's Drive client (revisions,
+ *  in-place media upload, permission read-back), which must never go through googleDriveUploadVideo:
+ *  that helper falls back to name matching and re-asserts "anyone" sharing. */
+export async function googleDriveAuthorizedFetch(url, init = {}) {
+  if (!googleDriveConfigured()) throw new Error('Google Drive is not configured');
+  const token = await getAccessToken();
+  return fetch(url, { ...init, headers: { ...(init.headers || {}), Authorization: 'Bearer ' + token } });
+}
+
 /** Google Sheets API v4 call with the Drive OAuth token (the drive scope covers Sheets). */
 export async function googleSheetsApi(pathAndQuery, { method = 'GET', body } = {}) {
   if (!googleDriveConfigured()) throw new Error('Google Drive is not configured');

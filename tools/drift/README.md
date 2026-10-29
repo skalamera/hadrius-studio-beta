@@ -426,8 +426,8 @@ name/href, recorded and current page URL, record refs: numeric/uuid path segment
 `*_id` query params, the target href, a DOM row/data-id hint, and the entity named by an `Actions for X` opener on the
 same or previous step). Every later non-navigate step is `needs_fixture` too; later `navigate` steps are captured by
 direct GET with `prerequisiteUnverified:true`. `run.mutationPlan` holds the static plan (with fixture evidence) even
-when the run stops earlier. This read-only stop is the safe default until the fixture lifecycle (job-owned records,
-allowlist keyed to their IDs, setup/teardown journal) lands.
+when the run stops earlier. This read-only stop remains the default for any video WITHOUT a reviewed fixture spec; videos
+with one replay their data-changing steps on job-owned records (see "Fixture lifecycle" below).
 
 **Mutation guard, network layer (`createRequestGuard({allow})`).** Separate exported function (pluggable allowlist:
 `{method?, host?, path|pathRe}` or predicate, app hosts only). Every non-GET/HEAD (incl. OPTIONS) is logged with
@@ -475,10 +475,7 @@ account needs visibility of the recorded records (or job-owned fixtures) before 
 `How-to-archive-a-policy` was recorded in company 1048 and fails closed at the tenant check (`tenant_mismatch`), so its
 Archive steps were only stopped by the static plan, not reached live.
 
-**Scheduling (not installed yet).** Intended as a weekly launchd agent (e.g. Monday 06:00) running
-`node tools/drift/weekly.mjs --once --allowlist <repo>/.drift-allowlist.txt` with `WorkingDirectory` = repo and
-`PATH` containing node + claude; it must not overlap a render (capture's preflight refuses when the bridge is busy) and
-`academy-login` failures 30-33 must notify a human instead of retrying.
+**Scheduling.** See "Weekly schedule, bridge run/submit and PR-triggered early checks" below.
 
 Tests: `TMPDIR=$HOME/.hermes/cache/scratch node --test tests/drift/*.test.mjs` (`capture.test.mjs`: click guard,
 network guard + allowlist, fixture evidence, fake-browser replay that never clicks Archive and a fake write aborted at
@@ -611,9 +608,208 @@ Version 1 never updates a video without a human. Each weekly finding becomes a *
 - Bridge (`tools/ai-bridge.mjs`): `GET /drift/jobs`, `POST /drift/jobs/:id/decision {decision, note, expectedVersion}`
   (by = `STUDIO_USER`, via = extension), `GET /drift/jobs/:id/evidence/:step/before|after` (PNG only, only from the drift
   scratch dir or `out/`), `GET /drift/review?id=` (the Slack "Open in Studio" target), internal
-  `submitDriftJob(jobDetails, evidencePaths)`. Nothing schedules it yet; executing approved jobs comes after the publish
-  milestone (`DRIFT_JOBS_POLL=1` only logs approved jobs). Service missing/unconfigured → 503 with a plain message.
+  `submitDriftJob(jobDetails, evidencePaths)` (called by `POST /drift/weekly/submit`, below); executing approved jobs: see "Executing approved
+  jobs" below (`DRIFT_JOBS_EXECUTE=1`; the old `DRIFT_JOBS_POLL` logging stub is gone). Service missing/unconfigured → 503 with a plain message.
 
 Tests: `tests/drift/jobs.test.mjs`, `tests/drift/slack.test.mjs` (no network; fake fetch). Service tests:
 `cd ~/webhook-service && npm test` (`test/studio-drift.test.ts`: signatures, channel restriction, CAS races, transitions,
 idempotent create, Slack message rebuild).
+
+## Weekly schedule, bridge run/submit and PR-triggered early checks (`weekly-runner.mjs`, `weekly-submit.mjs`, `schedule/`)
+
+Everything goes through the bridge so secrets stay in its process: the launchd agent and the PR trigger only ask the
+bridge to run; the bridge spawns `weekly.mjs` (unchanged: read-only, fixture-guarded capture) with a **scrubbed env**
+(no `STUDIO_*`/`SLACK_*`/`GOOGLE_*`/`PYLON_*`/`*TOKEN*`/`*SECRET*`/`*KEY`), then submits the run itself.
+**Every entry point defaults to DRY RUN**; jobs are created / Slack is posted only with an explicit `dryRun:false`.
+
+```sh
+# run weekly.mjs (child, concurrency 1) then submit; 202 immediately, 409 if a run is active
+curl -X POST localhost:8787/drift/weekly/run -H 'Content-Type: application/json' \
+  -d '{"names":["How-to-Find-a-Project-ID"],"dryRun":true}'      # or {"allowlist":"tools/drift/allowlist.json"}
+curl localhost:8787/drift/weekly/status                            # current/last run, submit counts, PR queue
+# submit an existing run dir (weekly-* directly under ~/.hermes/cache/scratch)
+curl -X POST localhost:8787/drift/weekly/submit -d '{"runDir":"'$HOME'/.hermes/cache/scratch/weekly-…","dryRun":true}'
+```
+
+- **Run** (`createWeeklyRunner`): lock file `~/.hermes/cache/scratch/drift-weekly.lock` (pid; stale locks taken over),
+  overall timeout `videos x 16 min + 5 min` (max 12 h; SIGTERM then SIGKILL), child output appended to
+  `~/Library/Logs/kbstudio-drift-weekly.log`. The lock also stores the run + child pid, so a bridge restarted
+  mid-run adopts the orphaned child at startup (`recover()`) and submits when it exits. Extra body fields: `captureDryRun` (weekly `--dry-run`, no browser, no
+  submit), `noJudge`, `source` (`schedule`/`pr`/`manual`, used in the run dir name `weekly-<stamp>-<source>`).
+  `allowlist` only accepts `tools/drift/allowlist.json`.
+- **Submit** (`prepareSubmissions` -> `jobs.buildJobDetails`): per video `job.json` + `scripts/<name>.script.json`
+  (Drive/Pylon links), `out/<name>/assembly.json` (per-step `sdur`, duration) and the judge's `suggested_rewrite` for
+  `narration_inaccurate` steps (never for `data_missing`/`claim_missing`). Decisions:
+  `post` | `blocked_account_visibility` ("blocked: automation account can't see records": the only findings are
+  `record_not_visible`/`page_not_loaded`/`data_missing`/`page_error`, no UI-change evidence) | `skip` (unchanged, capture
+  failed/tenant mismatch, script missing) | `duplicate`. UI-change evidence = a changed step with a non-account reason,
+  or a changed sidebar/header (`chromeChanged`) — chrome-only slides are added as evidence steps so reviewers see
+  before/after. Account-unverified steps are listed in the message (`details.accountLimited`) and flagged when the
+  re-record verdict depends on them (`mixed_old_new_ui` with only account-unverified kept slides).
+- **Dedupe**: the fingerprint ignores the judge's rewrite wording (model output differs every run) and run paths, so a
+  rerun maps to the same job; the service refuses a second blocking job per video+fingerprint; before posting the bridge
+  lists the latest 200 jobs and also skips a video that already has an OPEN job under an older fingerprint (no second
+  thread). A live submit refuses to run if that list fails.
+- **Reports** in the run dir: `submit-dry-run.{json,md}` (dry run: exact Block Kit payloads as `slackMessage`, a
+  readable `slackText`, the job payloads) or `submit-<stamp>.{json,md}` (live: job ids, Slack ts, errors).
+- **PR trigger** (off by default): `DRIFT_PR_TRIGGER=1` in `.env` (bridge restart) queues allowlisted videos that
+  `pr-watch.mjs` flags (`runPrWatch` now returns `flaggedScripts`) in `out/_drift-early-queue.json`; every 5 min a batch is
+  released once 30 min passed without new flags, max 6 videos/day, each video at most once/day, never while a run is
+  active (requeued if the start fails). Early runs submit as dry runs; `DRIFT_PR_TRIGGER=post` makes them live.
+  Non-allowlisted (Sandbox/unknown tenant) names are recorded as `not_in_allowlist`.
+- **Allowlist** `tools/drift/allowlist.json`: the 41 scripts whose `environment.startUrl` has `company_id=1150` (of 216
+  local scripts: 109 are company 1048, 66 have no company). Regenerate after the library changes.
+- **Schedule**: `tools/drift/schedule/com.kbstudio.drift-weekly.plist.template` rendered by `render-plist.mjs`
+  (Monday 06:00 local, `curl` to `/drift/weekly/run` with the allowlist, `dryRun:true` unless `--live`; log
+  `~/Library/Logs/kbstudio-drift-weekly.log`). `install.sh` writes `~/Library/LaunchAgents/com.kbstudio.drift-weekly.plist`
+  and **disables** it (`launchctl disable`, not bootstrapped); `install.sh --enable [--live]` enables + loads it;
+  `uninstall.sh` unloads and removes it. Check: `launchctl print-disabled gui/$(id -u) | grep drift-weekly`.
+  The bridge must be running at fire time (it is a KeepAlive agent); a missed fire while asleep runs at wake.
+
+Tests: `tests/drift/weekly-submit.test.mjs` (visibility-only blocking, chrome evidence, proposed narration, stable
+fingerprint, dedupe, real 2026-10-29 run when present), `tests/drift/weekly-schedule.test.mjs` (runner lock/concurrency/
+timeout/env scrub with a fake spawn, PR queue debounce/cap/allowlist/requeue, plist rendering + `plutil -lint`, allowlist).
+
+## Executing approved jobs (`executor.mjs`, `publish.mjs`)
+
+Off by default. With `DRIFT_JOBS_EXECUTE=1` in the bridge env, the bridge polls the service every 10 min
+(`pollOnce`: `approved` auto_update jobs, oldest first, plus its OWN interrupted `in_progress` jobs) and executes one at a
+time (lock `~/.hermes/cache/scratch/drift-exec/executor.lock`; a lock whose pid is dead or older than 4 h is stale; a
+running render skips the tick). Failed jobs are never retried automatically.
+
+Per job (`executeJob`), state in `drift-exec/<job id>/attempt-N/journal.json`:
+1. **Claim**: PATCH progress `approved -> in_progress` with `expectedVersion` (409 = someone else claimed it -> skip).
+2. **Inputs** (`resolveInputs`): `job.details.execution` = `{schema:1, scriptName, weeklyDir?, identifiedScript?,
+   candidateManifest?, changeManifest?, rebaselineDir?, buildDir?, recordingsDir?, reportPath?}`. Without it, `weeklyDir`
+   is the folder holding `job.json` + `identified-base.script.json` above a change's evidence path; recordings =
+   `out/_recordings/<recording.id>`, build = `out/<name>/_build` (required), report = `out/<name>/report.json`.
+   **Weekly submitters should set `details.execution.weeklyDir` (and `rebaselineDir` when one exists).**
+3. **Change manifest** (`buildChangeManifest`), only from what was approved: screenshot/target changes from the weekly
+   `candidate-manifest.json` (every step must be in `details.changes`, and the PNG must be byte-identical to the approved
+   "after" evidence: `approved_evidence_mismatch`), narration from `details.changes[].newNarration` (`oldText` must equal
+   the script). Bound to the rebaseline's `baseline-manifest.json` sha256.
+4. **Rebaseline** when none is given: `renderer.rebaseline` into the attempt dir (disclosed lossy re-encode, said in Slack
+   and recorded as `rebaselineBuilt`).
+5. **Render** `renderer.drift_update` (ElevenLabs take mode, 75 min timeout) and `checkVerification`: `ok:true`, not a
+   dry run, not a no-op, candidate sha256 matches, `source_unchanged`. Frames preserved % = reused cells / new frames.
+6. **Publish** (`publishCandidate`), preflight first, all read-only, so a block writes nothing:
+   - Drive: file exists, not trashed; its md5 must equal `out/<name>/<name>.mp4` (the rebaseline's original), else
+     `drive_content_changed_since_baseline`. Never created, never found by name.
+   - Pylon: GET the article; published + non-empty draft different from the published body = `pylon_pending_draft`;
+     review `needs_review`/`changes_requested` = `pylon_pending_review`; exactly one `<video src>` (else
+     `no_video_embed` / `ambiguous_video_embed` / `unsupported_video_markup`); no `<video>` but a link to the same Drive
+     id = `drive_link` (nothing to edit).
+   - Library: the shared script's steps (ignoring stable `id`s) must equal the identified base
+     (`script_changed_since_detection`); the candidate may differ only in `steps`/`recording`.
+   Then in order: **Drive** (head revision `keepForever:true`, `files.update` media upload, read-back: same id/name/parents,
+   md5 = candidate, new head revision, permissions identical, previous revision still kept) -> **Pylon** (upload the
+   MP4 as an attachment, swap ONLY the src value, prefix/suffix asserted byte-identical, `PATCH {body_html,
+   publish_updated_body_html:true}` for published articles or `{body_html}` for drafts, never `is_published`; read-back
+   equals the new body, no pending draft left) -> **library** (new captures copied to `out/_recordings/<new id>` and
+   Drive `_recordings`, previous library + local script saved as `prev-*-script.json`, `POST` script with
+   `driftUpdate:{jobId,...}`, read-back, local `scripts/<name>.script.json` updated).
+   Any failure after a write rolls back what was attempted (library -> Pylon -> Drive) and reports it.
+7. **Finish**: `published` with links `{drive, pylon, undo}` or `failed` with `stage: reason`.
+
+Slack: notes go to the job's thread via the service (`POST ?action=note`) — started (+rebaseline disclosure), verified
+(frames preserved, old -> new duration, ElevenLabs characters), published (links + "↩️ Undo update" =
+`/api/studio-open?job=<id>`), or failed (stage, reason, what was / wasn't changed, rollback result). While the deployed
+service predates `action=note` (400), notes are posted directly with the Studio bot token. Progress PATCH replies now quote
+the executor's note (service change, tested, **not deployed**).
+
+Crash safety: every remote write is journaled before (intent) and after (done). A re-run of our own `in_progress` job
+reuses a verified render and reconciles by read-back: Drive md5 already = candidate -> verify instead of re-upload;
+Pylon body already = expected -> done; library `driftUpdate.jobId` = this job -> done. If the job finished locally but
+the final PATCH was lost, only the status is re-sent.
+
+**Undo** (`rollbackJob`, bridge `POST /drift/jobs/:id/rollback`, panel Updates card "↩️ Undo update" on published jobs
+that have a local record; `GET /drift/jobs` adds `local:{canRollback, rolledBackAt}`): restores the shared + local
+script, the previous Pylon body (published again if it was published), and the Drive file (downloads the kept-forever
+revision, checks its md5, uploads it as new content of the same id, verifies md5/id/name/permissions). Each step first
+checks the destination still holds what was published; later edits are reported as conflicts and never overwritten.
+Only the machine that executed the job holds the rollback record. New `_recordings/<id>` captures are left (additive).
+
+Live checks (2026-10-29): Drive replace + keepForever + restore on a throwaway file in a new "[Studio QA] drift publish
+test" folder (deleted afterwards); read-only Pylon dry run on a real published article (diff touches only the video src,
+40 bytes kept before, 2431 after); full executor on synthetic approved routing-check jobs with the real service + Slack
+thread and a real `drift_update` render of the pilot, Drive/Pylon/library faked.
+
+Tests: `tests/drift/publish.test.mjs` (body edit, pending draft/review, baseline/script guards, Drive/Pylon/library
+failures with rollback, crash after upload / after PATCH, rollback conflicts) and `tests/drift/executor.test.mjs`
+(claim race, verification failure, Pylon-after-Drive failure, pending draft, crash + resume, note fallback, rebaseline
+build, manual rollback once, manifest guards, lock, poll); fakes in `tests/drift/publish-fakes.mjs`.
+
+## Fixture lifecycle: replaying data-changing steps on job-owned '[Studio QA]' records (`fixtures.mjs`, `journal.mjs`)
+
+```sh
+node tools/drift/fixtures.mjs --run --script scripts/<name>.script.json [--spec SPEC] [--out NEW_DIR]   # reconcile+sweep, replay, teardown
+node tools/drift/fixtures.mjs --reconcile        # reconcile unfinished runs + 24 h sweep only (no replay)
+node tools/drift/fixtures.mjs --status           # journal state per run
+node tools/drift/fixtures.mjs --draft --script S --requests RUN/requests.json [--out spec.json]   # DRAFT spec, unreviewed
+```
+
+Academy prod (company 1150) only, automation account + `.browser-profile-drift` (same preflight/sign-in/tenant check as
+`capture.mjs`; `captureRun({fixture})` is the integration point for `weekly.mjs`). A single-runner lock
+(`out/_drift-fixtures/journal/fixtures.lock`, stale when its pid is dead) prevents overlapping runs.
+
+**Spec** (`tools/drift/fixture-specs/<video>.fixture.json`, reviewed once; `reviewed:{by,at}` required, unreviewed or
+invalid specs are refused): `labelKey`, `companyId:1150`, `apiHost`, `recordTypes` (`list`/`item`/`create`/`cleanup` paths,
+all `/api/company/{companyId}/...`, `{fixtureId}` in item/cleanup, `nameField`), `fixtures` (`key`, `recordType`, `name`
+starting with `{label}`, `create:{via:'ui', steps:[i]}` or `{via:'api', body}`), `steps` (`ui_only` | `type` (value
+template `{fixture.<key>.name}` / `{recorded}`) | `set_slider` (spec selector, exactly one match) | `create` | `mutate`
+(`expectedRequest.pathPattern` must contain `{fixtureId}`), `reversible`, `undo`, `effect:'confined'|'unconfined'`,
+`verify`), `cleanupOrder`, `postconditions`. Label: `[Studio QA] <labelKey> <runId>`, runId = `YYYYMMDDTHHMMSSZ-xxxxxx`
+(the sweep ages records by it). Every statically mutating script step must be in the spec, otherwise the replay stops
+there as before (`needs_fixture`); `effect:'unconfined'` steps are `needs_human`, never performed.
+
+**Network layer (fixture mode).** `fixtureAllow(spec, state)` is added to `createRequestGuard({allow})` (predicates now
+receive `postData` and may return a reason). On the API host only, a non-GET passes when it is (a) the fixture's own
+create request — right method/path, during that fixture's create step (or setup phase for `via:'api'`), body name field
+EXACTLY equal to the run's labelled name, at most once — or (b) on an item/cleanup path of that record type whose
+`{fixtureId}` is one of this run's ids (or ids journaled/found during reconcile/sweep). Everything else follows the old
+rules: aborted and fails the run (telemetry beacon aborted without failing). Every non-GET is logged in `requests.json`
+with `step` (`prepare`/index/`teardown`), decision and reason (`fixture_create:<key>`, `fixture_id:<type>:<id>`).
+
+**API calls from the page.** Reconcile/sweep/verify/cleanup use the same REST endpoints as the app, issued by
+`page.evaluate` inside the signed-in page. An init script remembers the app's own `jwt` request header in a closure and
+exposes `window.__studioFixtureApi(method, path, body)` returning only `{status, json}`; the header never reaches Node,
+logs or files. These calls go through the same route guard. Ids are read from create responses by the labelled name
+(the firm-oversight endpoints answer with the whole list), else by listing.
+
+**Journal** (`out/_drift-fixtures/journal/<runId>.jsonl`, gitignored via `out/`): `run_begin`, `create_intent` (name +
+label BEFORE the click/API call), `created` (id), `verified_present`, `mutate_intent`/`mutated`, `cleanup_intent`,
+`cleaned`, `verified_absent`, `run_end`. Each line is fsync'd; a torn last line is ignored and terminated before the
+next append. A run is open while it has no `run_end` or any fixture with a create intent is not `verified_absent`.
+Order of every run: tenant check on the start page -> **reconcile** open runs (delete by journaled id, or find by the
+unique name when the crash came before the id; verify absent; `run_end reconciled`) -> **sweep** (`[Studio QA]` records of
+the specs' types whose label is > 24 h old and whose run is not open; unparsable labels reported as `unknown_age`, never
+deleted) -> replay (journal before each create/mutate) -> teardown in `captureRun`'s `finally` (also after errors and
+network-guard aborts) -> `run_end` (`*_dirty` if anything could not be verified absent).
+
+**Live pilot (2026-10-29, `How-to-Populate-Controls-and-Risks-Manually`, Testing program > Risks/Controls).** Endpoints
+observed live: `POST .../firm_oversight/risks/` `{scenario, inherent_risk_impact, ...}`, `POST .../controls/`
+`{display_name, ...}`, row-menu Delete -> `DELETE .../risks/{id}/`, `.../controls/{id}/` (hard delete; item GET is 405, so
+presence is checked on the list). Records have no `created_by`: ownership = unique label + journal + this run's create
+response. Effect is confined (unlinked risk/control, no recipients). Today's risk form refuses to create without an
+impact, which the recording set during a "hover" (value 2 visible in step 4's media): spec `set_slider`.
+- run `20261029T115859Z-typud3`: step 2's field name check failed (capture's re-check did not know form-field labels; fixed),
+  so the risk create went out with an empty scenario and the guard ABORTED it (`unclassified_app_post`); nothing created.
+- run `20261029T120041Z-wootjk`: all 12 slides captured; risk 48743 + control 51780 created by the walkthrough's own clicks
+  (`fixture_create:*`), verified listed, deleted (`fixture_id:*`, 200), verified absent; journal 14 entries, `run_end captured`.
+- crash run `20261029T120406Z-qir6c3` (`--simulate-crash-after-step 4`, SIGKILL): risk 48744 left, journal open; Chromium
+  exited with the parent (no `SingletonLock`). Next run `20261029T120600Z-o0vzrp` reconciled it first (`prepare DELETE
+  .../risks/48744/` allowlisted from the journal, verified absent, `run_end reconciled`), then replayed and cleaned 48745/51781.
+- Afterwards: 0 `[Studio QA]` risks/controls; list counts back to 26 risks / 23 controls.
+
+Limits: compare/classify still see the labelled names typed into the form and listed in the registers as screenshot
+changes (re-record such videos once on fixtures before relying on weekly comparisons); while a run is active (~2 min)
+its records are visible to teammates (e.g. in the control dialog's "Associated risks"). `via:'api'` setup, `mutate`
+steps (guard path only) and the sweep's delete path are unit-tested with fakes only (the pilot creates its records
+through the UI and there were no > 24 h leftovers). Rewriting recorded record ids in step URLs to fixture ids (needed for
+walkthroughs that open an existing record, e.g. a marketing project) is NOT implemented yet. The read-named-POST/GraphQL-query allowances of the base
+guard still apply in fixture mode. Not yet called by `weekly.mjs`.
+
+Tests: `tests/drift/fixtures.test.mjs` (labels/templates, spec validation, fixture guard on synthetic requests, page-API
+init, journal torn line + lock, happy path, crash at EVERY journal write/backend op then reconcile (teammate records
+kept), reconcile by name, sweep rules, draft, and `captureRun` in fixture mode with a fake browser: full replay +
+teardown, a mis-click on a teammate record aborted at the network layer with teardown still cleaning, uncovered step stops).

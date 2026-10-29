@@ -35,6 +35,10 @@ export function normalizeName(s){return clean(s).toLowerCase().replace(new RegEx
 // ---------- request guard ----------
 const ABORT_PATH_RE=/(create|update|delete|archive|mutation|mutate|remove|destroy|upsert)/i;
 const READ_PATH_RE=/(^|[/_-])(search|list|query|filter|count|lookup|batch-get|get)([/_.-]|$)/i;
+// POSTs the app uses purely to read, each confirmed in hadrius_backend. Library permissions preview:
+// POST /api/company/<id>/library/audience/compute/ -> document_library/views_audience.py
+// post_compute_library_audience (@non_mutating, @no_audit_trail, validated_api read_only=True).
+const KNOWN_READ_POST_RE=/^\/api\/company\/\d+\/library\/audience\/compute\/?$/;
 // The live app's backend is hadriusapi.com (observed), the SPA is app.hadrius.com.
 const isAppHost=(h)=>['hadrius.com','hadriusapi.com'].some(d=>h===d||h.endsWith('.'+d));
 const isCognitoHost=(h)=>/^cognito-(idp|identity)\.[a-z0-9-]+\.amazonaws\.com$/.test(h);
@@ -48,7 +52,7 @@ function graphqlOps(postData){let body;try{body=JSON.parse(postData??'');}catch{
 // Analytics beacons the app fires on every page view (observed: 4 per pilot recapture). Still ABORTED at the
 // network layer (never reach the server) but they do not fail the video; everything else unknown does.
 export const TELEMETRY_PATH_RE=/^\/api\/users\/analytics\/\d+\/track-event\/?$/;
-const allowMatch=(entry,{method,host,path})=>{if(typeof entry==='function')return entry({method,host,path});
+const allowMatch=(entry,{method,host,path,postData})=>{if(typeof entry==='function')return entry({method,host,path,postData});
   if(!entry||typeof entry!=='object')return false;if(entry.method&&String(entry.method).toUpperCase()!==method)return false;
   if(entry.host&&entry.host!==host)return false;if(entry.path!=null&&entry.path!==path)return false;if(entry.pathRe&&!new RegExp(entry.pathRe).test(path))return false;
   return entry.path!=null||!!entry.pathRe;};
@@ -77,7 +81,8 @@ export function classifyRequest({method,url,postData,headers},{mode='recapture',
   // App hosts (app.hadrius.com, hadriusapi.com): only auth refresh, known read-only POSTs and an explicit
   // allowlist (future: fixture record IDs) pass. Every other non-GET is aborted AND fails the video.
   if(/\/oauth2\/token$/.test(path)&&/grant_type=refresh_token/.test(postData??''))return {decision:'allow_logged',reason:'oauth_token_refresh'};
-  if((allow||[]).some(e=>allowMatch(e,{method:m,host,path})))return {decision:'allow_logged',reason:'allowlisted'};
+  // Fixture mode (fixtures.mjs): a predicate may return a reason string, e.g. 'fixture_create:risk' / 'fixture_id:<type>:<id>'.
+  for(const e of allow||[]){const hit=allowMatch(e,{method:m,host,path,postData});if(hit)return {decision:'allow_logged',reason:typeof hit==='string'?hit:'allowlisted'};}
   if(ABORT_PATH_RE.test(path))return {decision:'abort',reason:'mutation_named_path'};
   if(m==='POST'&&TELEMETRY_PATH_RE.test(path))return {decision:'block',reason:'telemetry_blocked'};
   if(m!=='POST')return {decision:'abort',reason:'app_write_method'};
@@ -85,6 +90,7 @@ export function classifyRequest({method,url,postData,headers},{mode='recapture',
     if(ops.some(q=>/^(mutation|subscription)\b/i.test(q)))return {decision:'abort',reason:'graphql_mutation'};
     return {decision:'allow_logged',reason:'graphql_query'};}
   if(READ_PATH_RE.test(path))return {decision:'allow_logged',reason:'read_named_post'};
+  if(KNOWN_READ_POST_RE.test(path))return {decision:'allow_logged',reason:'known_read_only_post'};
   return {decision:'abort',reason:'unclassified_app_post'};
 }
 
@@ -94,16 +100,16 @@ export function classifyRequest({method,url,postData,headers},{mode='recapture',
  *  Every non-GET/HEAD is logged as {method, host, path, decision, reason}; an 'abort' decision aborts the request
  *  AND records the first failure, which fails the video. */
 export function createRequestGuard({allow=[],requests=[],hostCounts={}}={}){
-  let fail=null;
+  let fail=null,step=null;
   const decide=(desc,mode='recapture',phase=mode)=>{
     const method=String(desc.method||'GET').toUpperCase();let host='',path='';try{const u=new URL(desc.url);host=u.hostname;path=u.pathname;}catch{}
     if(method==='GET'||method==='HEAD'){hostCounts[host]=(hostCounts[host]??0)+1;return {decision:'allow',reason:'read_method'};}
     const c=classifyRequest(desc,{mode,allow});
     let op=null;try{const b=JSON.parse(desc.postData??'');op=(Array.isArray(b)?b:[b]).map(x=>x?.operationName??null);}catch{}
-    requests.push({at:new Date().toISOString(),phase,mode,method,host,path,url:String(desc.url).split('?')[0],decision:c.decision,reason:c.reason,operationName:op});
+    requests.push({at:new Date().toISOString(),phase,mode,step,method,host,path,url:String(desc.url).split('?')[0],decision:c.decision,reason:c.reason,operationName:op});
     if(c.decision==='abort'&&!fail)fail=`network_guard: ${method} ${host}${path} (${c.reason})`;
     return c;};
-  return {requests,hostCounts,decide,failure:()=>fail,
+  return {requests,hostCounts,decide,failure:()=>fail,setStep:(i)=>{step=i??null;},
     attach:async(ctx,mode='recapture',phase=mode)=>ctx.route('**/*',async(route)=>{const req=route.request();
       const c=decide({method:req.method(),url:req.url(),postData:req.postData(),headers:req.headers()},mode,phase);
       if(c.decision==='allow'||c.decision==='allow_logged')return route.continue();
@@ -136,6 +142,8 @@ export function resolveTarget(target,candidates,{requireHref=null}={}){
     const exact=vis.filter(x=>roleOk(x)&&clean(x.c.name)===clean(target.name));if(exact.length)return done('role_name',exact);
     const norm=vis.filter(x=>roleOk(x)&&normalizeName(x.c.name)===normalizeName(target.name));if(norm.length)return done('role_name_normalized',norm);
   }
+  // Form fields: the recorder names an unlabelled field by its placeholder; today it may carry a <label>.
+  if(target.placeholder){const ph=vis.filter(x=>roleOk(x)&&x.c.placeholder&&clean(x.c.placeholder)===clean(target.placeholder));if(ph.length)return done('role_placeholder',ph);}
   const css=vis.filter(x=>x.c.cssMatch&&roleOk(x));if(css.length)return done('css',css);
   return {status:'missing',method:null,index:null,candidate:null,matches:[],notes};
 }
@@ -203,7 +211,7 @@ export function mutationPlan(script){const steps=script?.steps??[];return steps.
   return {index:s.index,action:s.action,...m,...(m.mutating?{fixture:fixtureEvidence(s,{prevStep:steps[i-1]??null})}:{})};});}
 
 // ---------- in-page helpers (strings evaluated by Playwright) ----------
-const CANDIDATE_SEL='a,button,input,textarea,select,[role="link"],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="option"],[role="checkbox"],[role="switch"],[role="radio"],[role="combobox"],[role="row"],tbody tr';
+const CANDIDATE_SEL='a,button,input,textarea,select,[role="slider"],[role="link"],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="option"],[role="checkbox"],[role="switch"],[role="radio"],[role="combobox"],[role="row"],tbody tr';
 // Mirrors ai-record DOM_HELPERS_JS implicitRole/accessibleName (links/buttons/controls). The recorded CSS
 // selector's matches are added so role-less targets (div/span/td) can still be resolved and compared.
 const CANDIDATES_FN=`({sel, css}) => {
@@ -211,14 +219,17 @@ const CANDIDATES_FN=`({sel, css}) => {
   const roleOf = (el) => { const r = el.getAttribute('role'); if (r) return r; const t = el.tagName.toLowerCase(); if (t === 'button') return 'button'; if (t === 'a' && el.href) return 'link';
     if (t === 'tr' && el.closest('tbody')) return 'row'; if (t === 'textarea') return 'textbox'; if (t === 'select') return 'combobox';
     if (t === 'input') { const ty = (el.type || 'text').toLowerCase(); if (['checkbox', 'radio'].includes(ty)) return ty; if (ty === 'submit' || ty === 'button') return 'button'; return 'textbox'; } return null; };
-  const nameOf = (el) => { const a = el.getAttribute('aria-label'); if (a) return clean(a); if (el.title) return clean(el.title); const t = clean(el.innerText || el.textContent); return t.length <= 80 ? t : t.slice(0, 80); };
+  const nameOf = (el) => { const a = el.getAttribute('aria-label'); if (a) return clean(a);
+    if (/^(input|textarea|select)$/i.test(el.tagName)) { if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) return clean(l.textContent); }
+      const w = el.closest('label'); if (w) return clean(w.textContent); if (el.placeholder) return clean(el.placeholder); }
+    if (el.title) return clean(el.title); const t = clean(el.innerText || el.textContent); return t.length <= 80 ? t : t.slice(0, 80); };
   let cssList = []; try { cssList = Array.from(document.querySelectorAll(css)); } catch {}
   const cssSet = new Set(cssList); const all = Array.from(new Set([...document.querySelectorAll(sel), ...cssList]));
   window.__driftCandidates = all;
   return all.map((el, i) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); const t = el.tagName.toLowerCase(); const form = el.closest('form');
     const ty = (el.getAttribute('type') || '').toLowerCase();
     const submits = (t === 'button' && (ty === 'submit' || (!ty && !!form))) || (t === 'input' && ty === 'submit');
-    return { i, tag: t, role: roleOf(el), name: nameOf(el), ariaLabel: el.getAttribute('aria-label') || null, href: el.href || null, cssMatch: cssSet.has(el),
+    return { i, tag: t, role: roleOf(el), name: nameOf(el), ariaLabel: el.getAttribute('aria-label') || null, placeholder: el.getAttribute('placeholder') || null, href: el.href || null, cssMatch: cssSet.has(el),
       recordHint: (() => { const holder = el.closest('[data-id],[data-row-key],[data-record-id],tr,[role="row"],[role="menu"]');
         if (!holder) return null; const id = holder.getAttribute('data-id') || holder.getAttribute('data-row-key') || holder.getAttribute('data-record-id');
         const label = holder.getAttribute('role') === 'menu' ? null : clean(holder.innerText || '').slice(0, 80); return id || label ? { id: id || null, label: label || null } : null; })(),
@@ -271,14 +282,16 @@ const urlKey=(u)=>{try{const x=new URL(u);return x.pathname+x.search;}catch{retu
 const pathOf=(u)=>{try{return new URL(u).pathname;}catch{return null;}};
 
 export async function captureRun({scriptPath,profileDir=DEFAULT_PROFILE,outDir,base=APP_BASE,expectedCompany='1150',log=console.log,
-  ensureSession=ensureAcademySession,chromium:chromiumOverride=null,limits=LIMITS,networkAllow=[]}){
+  ensureSession=ensureAcademySession,chromium:chromiumOverride=null,limits=LIMITS,networkAllow=[],fixture=null}){
   const script=JSON.parse(readFileSync(scriptPath,'utf8'));
   if(existsSync(outDir))throw new Error('output_exists');
   mkdirSync(outDir,{mode:0o700});
   const plan=mutationPlan(script);
   const run={schema:2,script:script.name,scriptPath,recordingId:script.recording?.id??null,profile:profileDir,startedAt:new Date().toISOString(),viewport:VIEWPORT,
     session:null,signedIn:null,manualSignIn:false,tenantVerified:false,status:'running',findings:[],mutationPlan:plan,mutationStop:null,steps:[],aborted:null};
-  const net=createRequestGuard({allow:networkAllow});const {requests,hostCounts}=net;let abortReason=null;
+  // Fixture mode (fixtures.mjs session): its predicate admits only this run's fixture ids / own create requests.
+  const net=createRequestGuard({allow:fixture?[...networkAllow,fixture.allow]:networkAllow});const {requests,hostCounts}=net;let abortReason=null;
+  if(fixture)run.fixture={runId:fixture.runId,label:fixture.label,journal:fixture.journal.file,status:'pending'};
   const save=()=>{writeFileSync(join(outDir,'run.json'),JSON.stringify(run,null,2)+'\n');writeFileSync(join(outDir,'requests.json'),JSON.stringify({nonGet:requests,getCountsByHost:hostCounts},null,2)+'\n');};
   save();
   // Preflight (bridge idle, profile unused) is re-checked here, immediately before any launch.
@@ -326,7 +339,10 @@ export async function captureRun({scriptPath,profileDir=DEFAULT_PROFILE,outDir,b
   // 3) Headless read-only recapture with the mutation guard.
   ctx=await chromium.launchPersistentContext(profileDir,{...ctxOpts,headless:true});
   const overall=setTimeout(()=>{abortReason=abortReason??'overall_timeout';ctx.close().catch(()=>{});},limits.totalMs);
-  try{await guard(ctx);const page=ctx.pages()[0]||await ctx.newPage();await page.setViewportSize(VIEWPORT);
+  let page=null;
+  try{await guard(ctx);if(fixture?.pageInit)await ctx.addInitScript(fixture.pageInit);page=ctx.pages()[0]||await ctx.newPage();await page.setViewportSize(VIEWPORT);
+    if(fixture)page.on('response',(r)=>{const q=r.request();if(['GET','HEAD','OPTIONS'].includes(q.method()))return;let u;try{u=new URL(q.url());}catch{return;}
+      fixture.onResponse({method:q.method(),host:u.hostname,path:u.pathname,status:r.status(),json:()=>r.json()});});
     page.on('dialog',d=>d.dismiss().catch(()=>{}));page.on('download',d=>d.cancel().catch(()=>{}));page.on('filechooser',()=>{});
     const checkAbort=()=>{if(syncAbort())throw new Error(`aborted: ${abortReason}`);};
     const settle=async()=>{await page.waitForLoadState('networkidle',{timeout:limits.idleMs}).catch(()=>{});await page.waitForTimeout(limits.settleMs);};
@@ -336,7 +352,11 @@ export async function captureRun({scriptPath,profileDir=DEFAULT_PROFILE,outDir,b
       // Grounding for the narration judge (classify.mjs): what is actually rendered as text right now.
       rec.visibleText=await page.evaluate(`(document.body?.innerText||'').replace(/\\n{2,}/g,'\\n').slice(0,4000)`).catch(()=>null);};
     let stopped=null;
-    for(const step of script.steps){
+    // Fixture mode: verify the tenant on the start page, then reconcile/sweep/setup BEFORE any slide is captured.
+    if(fixture){net.setStep('prepare');await page.goto(script.environment.startUrl,{waitUntil:'domcontentloaded',timeout:30000});const p=await probe(page);
+      if(!p.signedIn||companyIdOf(page.url())!==expectedCompany||!p.academy)throw new Error('aborted: fixture_tenant_check_failed');
+      await settle();checkAbort();await fixture.prepare(page);checkAbort();run.fixture.prepared=true;}
+    for(const step of script.steps){net.setStep(step.index);
       const rec={index:step.index,action:step.action,url:step.url,route:step.route??null,recordedMedia:step.media?.pre??null,mutation:plan.find(p=>p.index===step.index)??null};run.steps.push(rec);
       if(stopped!==null&&step.action!=='navigate'){const prev=script.steps.find(s=>s.index===step.index-1);
         rec.mutationGuard={status:'needs_fixture',performed:false,reason:`replay stopped at data-changing step ${stopped}`,ownMutation:rec.mutation,fixture:fixtureEvidence(step,{prevStep:prev})};save();continue;}
@@ -344,13 +364,18 @@ export async function captureRun({scriptPath,profileDir=DEFAULT_PROFILE,outDir,b
         checkAbort();
         // Before a stop, a non-navigate step whose route differs is reached by direct GET navigation (recorded url).
         if(step.action==='navigate'||urlKey(page.url())!==step.route){
-          const to=step.action==='navigate'?step.value??step.url:step.url;
+          const to=step.action==='navigate'?step.value||step.url:step.url;
           if(rec.index>0&&step.action!=='navigate')rec.reachedByDirectNavigation=true;
           await page.goto(to,{waitUntil:'domcontentloaded',timeout:30000});}
         if(stopped!==null){rec.prerequisiteUnverified=true;rec.mutationGuard={status:'captured_by_direct_navigation',performed:false,reason:`earlier mutating step ${stopped} was not replayed; state before this navigate is unverified`};}
         const p=await probe(page);checkAbort();
         if(!p.signedIn){rec.error='signed_out_midrun';throw new Error('signed_out_midrun');}
-        if(rec.index===0){const cid=companyIdOf(page.url());run.tenant={urlCompanyId:cid,academyVisible:p.academy,session:run.session?.companyIds??null};run.tenantVerified=cid===expectedCompany&&p.academy;
+        if(rec.index===0){const cid=companyIdOf(page.url());const sess=run.session?.companyIds??null;
+          // Some scripts start on a URL without ?company_id=. The Academy-only automation session can only
+          // be in its own company, so a session scoped to exactly the expected company (plus Academy
+          // visible on the page) verifies the tenant just as well.
+          const sessionOnly=Array.isArray(sess)&&sess.length===1&&String(sess[0])===String(expectedCompany);
+          run.tenant={urlCompanyId:cid,academyVisible:p.academy,session:sess,viaSession:cid==null&&sessionOnly};run.tenantVerified=(cid===expectedCompany||(cid==null&&sessionOnly))&&p.academy;
           if(!run.tenantVerified){rec.error='tenant_mismatch';throw new Error('tenant_mismatch');}}
         await settle();checkAbort();
         // A page still showing only a loading indicator is not today's UI: wait a bit longer, then record it.
@@ -370,19 +395,35 @@ export async function captureRun({scriptPath,profileDir=DEFAULT_PROFILE,outDir,b
         // Mutation guard: recorded semantics AND today's resolved element are both checked before acting.
         // Today's element only counts when it was found by name: a CSS-only match is never acted on anyway.
         const m=classifyStepMutation(step,res?.status==='resolved'&&res.method!=='css'?today:null);rec.mutation={...m,static:rec.mutation};
-        if(m.mutating||rec.mutation.static?.mutating){stopped=rec.index;run.mutationStop={index:rec.index,action:step.action,reason:m.mutating?m.reason:rec.mutation.static.reason,targetName:step.target?.name??null};
-          rec.mutationGuard={status:'needs_fixture',performed:false,reason:run.mutationStop.reason,
+        const isMut=m.mutating||!!rec.mutation.static?.mutating;
+        // A reviewed fixture spec may authorise this step on the run's own '[Studio QA]' records (network guard still applies).
+        const fd=fixture?fixture.stepDecision(step,{mutating:isMut}):null;if(fd&&(fd.perform||fd.status))rec.fixtureDecision=fd;
+        if(isMut&&!fd?.perform){stopped=rec.index;run.mutationStop={index:rec.index,action:step.action,reason:fd?.reason??(m.mutating?m.reason:rec.mutation.static.reason),targetName:step.target?.name??null};
+          rec.mutationGuard={status:fd?.status??'needs_fixture',performed:false,reason:run.mutationStop.reason,
             fixture:fixtureEvidence(step,{pageUrl:page.url(),today,prevStep:script.steps.find(s=>s.index===step.index-1)})};
           run.mutationStop.fixture=rec.mutationGuard.fixture;
           run.findings.push({step:rec.index,kind:'mutation_guard_stop',reason:run.mutationStop.reason,detail:'pre-action screenshot taken; action NOT performed (needs a job-owned fixture record); later non-navigate steps not replayed'});return;}
+        // Spec-provided input on a control the recorder could not capture (e.g. a slider dragged during a 'hover'):
+        // located by the spec's selector, which must match exactly one element.
+        if(fd?.perform&&fd.kind==='set_slider'){fixture.beforeStep(step);rec.mutationGuard={status:'performed_on_fixture',performed:true,kind:fd.kind,fixture:fd.fixture};
+          const sl=page.locator(fd.selector);const n=await sl.count();if(n!==1)throw new Error(`fixture_slider_not_unique:${n}`);await sl.hover({timeout:10000});await sl.focus();
+          for(let k=0;k<20&&String(await sl.getAttribute('aria-valuenow'))!==String(fd.value);k++){const v=Number(await sl.getAttribute('aria-valuenow'));
+            await page.keyboard.press(Number.isFinite(v)&&v>fd.value?'ArrowLeft':'ArrowRight');await page.waitForTimeout(150);}
+          rec.performed=`set_slider:${await sl.getAttribute('aria-valuenow')}`;await settle();checkAbort();rec.fixtureCheck=await fixture.afterStep(step,requests,page);return;}
         if(step.action==='press'&&!step.target){await page.keyboard.press(String(step.key??step.value));rec.performed=`press:${step.key??step.value}`;await settle();return;}
         if(!res){rec.performed=false;run.findings.push({step:rec.index,kind:'no_target',detail:`${step.action} without a target; not performed`});return;}
         if(res.status!=='resolved'){rec.clicked=false;run.findings.push({step:rec.index,kind:`target_${res.status}`,matches:res.matches.length,notes:res.notes});return;}
         // A CSS-only match means the recorded name is gone: never act on an element we cannot name.
         if(res.method==='css'){rec.clicked=false;rec.target.notClickedReason='css_only_match';run.findings.push({step:rec.index,kind:'target_renamed',today:res.candidate.name,recorded:step.target.name});return;}
         const h=await page.evaluateHandle((i)=>window.__driftCandidates?.[i]??null,res.index);
-        const again=await h.evaluate(el=>el?{name:(el.getAttribute('aria-label')||el.title||(el.innerText||el.textContent||'')).replace(/\s+/g,' ').trim().slice(0,80),href:el.href||null}:null).catch(()=>null);
+        // Same naming as CANDIDATES_FN (form fields: label[for] / wrapping label / placeholder).
+        const again=await h.evaluate(el=>{if(!el)return null;const c=(x)=>(x||'').replace(/\s+/g,' ').trim();let n=el.getAttribute('aria-label');
+          if(!n&&/^(input|textarea|select)$/i.test(el.tagName)){const l=el.id&&document.querySelector('label[for="'+CSS.escape(el.id)+'"]');n=l?l.textContent:(el.closest('label')?.textContent||el.placeholder||'');}
+          if(!n)n=el.title||el.innerText||el.textContent||'';n=c(n);return {name:n.length<=80?n:n.slice(0,80),href:el.href||null};}).catch(()=>null);
         if(!again||again.href!==(res.candidate.href??null)||again.name!==res.candidate.name){rec.target.status='ambiguous';rec.target.notes.push('dom_changed_before_action');run.findings.push({step:rec.index,kind:'target_ambiguous',detail:'element changed between resolve and action; not performed'});return;}
+        if(fd?.perform){fixture.beforeStep(step);rec.mutationGuard={status:'performed_on_fixture',performed:true,kind:fd.kind,fixture:fd.fixture};}
+        const fixtureDone=async()=>{if(fd?.perform){checkAbort();rec.fixtureCheck=await fixture.afterStep(step,requests,page);}};
+        if(fd?.perform&&fd.kind==='type'){await h.fill(String(fd.value),{timeout:10000});rec.performed='type';rec.typedValue=fd.value;await settle();await fixtureDone();return;}
         if(step.action==='hover'){await h.hover({timeout:10000});rec.performed='hover';await page.waitForTimeout(800);return;}
         if(step.action==='press'){await h.focus().catch(()=>{});await page.keyboard.press(String(step.key??step.value));rec.performed=`press:${step.key??step.value}`;await settle();return;}
         const before=page.url();await h.click({timeout:10000});rec.clicked=true;rec.performed='click';
@@ -390,17 +431,43 @@ export async function captureRun({scriptPath,profileDir=DEFAULT_PROFILE,outDir,b
         const next=script.steps.find(s=>s.index===step.index+1);
         if(next?.url&&next.url!==step.url&&pathOf(page.url())!==pathOf(next.url))run.findings.push({step:rec.index,kind:'click_destination_differs',expected:next.url,actual:page.url()});
         if(next?.url&&next.url===step.url&&pathOf(page.url())!==pathOf(step.url))run.findings.push({step:rec.index,kind:'click_navigated_unexpectedly',expected:step.url,actual:page.url()});
-        checkAbort();
+        checkAbort();await fixtureDone();
       })(),limits.stepMs,`step${step.index}`);}
       catch(e){rec.error=rec.error??e.message;if(/aborted|tenant|signed_out|overall/.test(e.message)||syncAbort()){run.aborted=abortReason??e.message;break;}}
       if(syncAbort()){run.aborted=abortReason;save();break;}
       save();
     }
-    const unverified=run.steps.filter(s=>s.mutationGuard?.status==='needs_fixture').length;
-    run.status=run.aborted?'aborted':run.steps.length===script.steps.length&&run.steps.every(s=>s.screenshot||s.mutationGuard?.status==='needs_fixture')?(unverified?'captured_partial_mutation_guard':'captured'):'partial';
-  }catch(e){run.status='error';run.error=e.message;run.aborted=run.aborted??syncAbort();}
-  finally{clearTimeout(overall);await ctx.close().catch(()=>{});if(syncAbort()&&run.status!=='error'){run.status='aborted';run.aborted=abortReason;}run.finishedAt=new Date().toISOString();save();}
+    const unverified=run.steps.filter(s=>['needs_fixture','needs_human'].includes(s.mutationGuard?.status)).length;
+    run.status=run.aborted?'aborted':run.steps.length===script.steps.length&&run.steps.every(s=>s.screenshot||['needs_fixture','needs_human'].includes(s.mutationGuard?.status))?(unverified?'captured_partial_mutation_guard':'captured'):'partial';
+    if(fixture&&run.steps.some(s=>s.fixtureCheck&&!s.fixtureCheck.ok)&&run.status==='captured')run.status='captured_fixture_check_failed';
+  }catch(e){run.status=/^aborted/.test(e.message)?'aborted':'error';run.error=e.message;run.aborted=run.aborted??syncAbort()??(/^aborted/.test(e.message)?e.message:null);}
+  finally{clearTimeout(overall);
+    // Fixture teardown always runs (error/abort included) while the signed-in page is still open; whatever it
+    // cannot finish stays journaled and is reconciled by the next run.
+    if(fixture){net.setStep('teardown');try{if(page&&!page.isClosed())await fixture.teardown(page);else run.fixture.teardownSkipped='page_closed';}catch(e){run.fixture.teardownError=String(e?.message||e).slice(0,200);}
+      const fin=fixture.finish(run.status);Object.assign(run.fixture,{status:fin.clean?'clean':'dirty',dirty:fin.dirty,report:fixture.report});}
+    await ctx.close().catch(()=>{});if(syncAbort()&&run.status!=='error'){run.status='aborted';run.aborted=abortReason;}run.finishedAt=new Date().toISOString();save();}
   return run;
+}
+
+/** Signed-in, tenant-verified, guarded headless page for fixture maintenance (reconcile/sweep without a replay).
+ *  Same preflight + unattended sign-in as captureRun; every non-GET goes through createRequestGuard({allow}). */
+export async function withAppPage({profileDir=DEFAULT_PROFILE,startUrl,expectedCompany='1150',allow=[],pageInit=null,fn,log=console.log,
+  ensureSession=ensureAcademySession,chromium:chromiumOverride=null}){
+  let bridgeStatus=null;try{bridgeStatus=await (await fetch('http://127.0.0.1:8787/render/status',{signal:AbortSignal.timeout(5000)})).json();}catch{}
+  const problems=preflight({profileDir,bridgeStatus,psOutput:execFileSync('ps',['-axww','-o','pid,command'],{encoding:'utf8'})});
+  if(problems.length)return {status:'preflight_failed',problems};
+  const {chromium}=chromiumOverride?{chromium:chromiumOverride}:await import('playwright');const net=createRequestGuard({allow});
+  if(isDriftProfile(profileDir)){const guarded={launchPersistentContext:async(dir,opts)=>{const c=await chromium.launchPersistentContext(dir,{...opts,serviceWorkers:'block'});await net.attach(c,'auto_login','session');return c;}};
+    const res=await ensureSession({profileDir,chromium:guarded,onLog:(m)=>log(`[session] ${m}`)}).catch(e=>({status:'unexpected',detail:String(e?.message||e)}));
+    if(!SESSION_OK.includes(res?.status))return {status:'session_failed',session:res?.status,requests:net.requests};}
+  const ctx=await chromium.launchPersistentContext(profileDir,{viewport:VIEWPORT,acceptDownloads:false,serviceWorkers:'block',headless:true});
+  try{await net.attach(ctx);if(pageInit)await ctx.addInitScript(pageInit);const page=ctx.pages()[0]||await ctx.newPage();
+    await page.goto(startUrl,{waitUntil:'domcontentloaded',timeout:30000});await page.waitForLoadState('networkidle',{timeout:15000}).catch(()=>{});await page.waitForTimeout(1500);
+    const p=await page.evaluate(`(${PROBE_FN})()`).catch(()=>null);
+    if(!p||!signedInFromProbe(p)||companyIdOf(page.url())!==expectedCompany||!p.academy)return {status:'tenant_check_failed',requests:net.requests};
+    const result=await fn(page);return {status:net.failure()?'aborted':'ok',aborted:net.failure(),result,requests:net.requests};
+  }finally{await ctx.close().catch(()=>{});}
 }
 
 function arg(args,name){const i=args.indexOf(name);return i>=0?args[i+1]:undefined;}

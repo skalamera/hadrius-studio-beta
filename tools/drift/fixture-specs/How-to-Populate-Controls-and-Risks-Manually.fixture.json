@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "video": "How-to-Populate-Controls-and-Risks-Manually",
+  "labelKey": "populate-risks-controls",
+  "companyId": 1150,
+  "apiHost": "hadriusapi.com",
+  "reviewed": {
+    "by": "fixtures subagent (Hermes), live-verified",
+    "at": "2026-10-29",
+    "notes": "Endpoints observed live with the automation account (stephen+hstudio, tenant [1150]): Create risk -> POST /api/company/1150/firm_oversight/risks/ {scenario, guidance, notes, manual_id:-1, inherent_risk_impact}; Create Control -> POST /api/company/1150/firm_oversight/controls/ {display_name, description, risk_ids:[], test_ids:[], policy, procedures, manual_id:-1}. Both respond 200 with the WHOLE list ({data:[...]}), so the id is taken from the item whose name equals the run's labelled name. Row menu Delete -> DELETE .../risks/{id}/ and .../controls/{id}/ (200, hard delete; item GET is 405, so presence/absence is checked on the list). Effects are confined: a standalone risk/control with no links (risk_ids/test_ids empty, no manual) sends nothing to anyone; the only side effects are analytics beacons, which the guard aborts. Records carry no created_by field, so ownership = unique run label + this run's journal + the create response observed in this run."
+  },
+  "recordTypes": {
+    "firm_oversight.risk": {
+      "list": { "path": "/api/company/{companyId}/firm_oversight/risks/", "nameField": "scenario" },
+      "item": { "path": "/api/company/{companyId}/firm_oversight/risks/{fixtureId}/" },
+      "create": { "method": "POST", "path": "/api/company/{companyId}/firm_oversight/risks/", "nameField": "scenario" },
+      "cleanup": { "method": "DELETE", "path": "/api/company/{companyId}/firm_oversight/risks/{fixtureId}/" }
+    },
+    "firm_oversight.control": {
+      "list": { "path": "/api/company/{companyId}/firm_oversight/controls/", "nameField": "display_name" },
+      "item": { "path": "/api/company/{companyId}/firm_oversight/controls/{fixtureId}/" },
+      "create": { "method": "POST", "path": "/api/company/{companyId}/firm_oversight/controls/", "nameField": "display_name" },
+      "cleanup": { "method": "DELETE", "path": "/api/company/{companyId}/firm_oversight/controls/{fixtureId}/" }
+    }
+  },
+  "fixtures": [
+    { "key": "risk", "recordType": "firm_oversight.risk", "name": "{label} Advisors share client data with unapproved AI tools", "create": { "via": "ui", "steps": [4] } },
+    { "key": "control", "recordType": "firm_oversight.control", "name": "{label} Approved AI Tools Review", "create": { "via": "ui", "steps": [10] } }
+  ],
+  "steps": [
+    { "stepIndex": 1, "kind": "ui_only", "why": "'Add risk' only opens the dialog; no write expected", "expectedRequests": [] },
+    { "stepIndex": 2, "kind": "type", "fixture": "risk", "value": "{fixture.risk.name}", "why": "the scenario IS the record name: it carries the run label" },
+    { "stepIndex": 3, "kind": "set_slider", "selector": "[role=dialog] [role=slider]", "value": 2, "why": "recorded as a hover, but the recording set Inherent impact = 2 (visible in step 4's media) and today's form refuses to create without it ('Set the inherent risk impact')" },
+    { "stepIndex": 4, "kind": "create", "fixture": "risk", "expectedRequest": { "method": "POST", "pathPattern": "/api/company/{companyId}/firm_oversight/risks/" }, "reversible": true, "undo": "cleanup", "effect": "confined", "verify": { "present": true } },
+    { "stepIndex": 7, "kind": "ui_only", "why": "'Add control' only opens the dialog", "expectedRequests": [] },
+    { "stepIndex": 8, "kind": "type", "fixture": "control", "value": "{fixture.control.name}" },
+    { "stepIndex": 9, "kind": "type", "fixture": "control", "value": "{recorded}" },
+    { "stepIndex": 10, "kind": "create", "fixture": "control", "expectedRequest": { "method": "POST", "pathPattern": "/api/company/{companyId}/firm_oversight/controls/" }, "reversible": true, "undo": "cleanup", "effect": "confined", "verify": { "present": true } }
+  ],
+  "cleanupOrder": ["control", "risk"],
+  "postconditions": [
+    { "fixture": "risk", "absent": true, "how": "no item with this id or name in GET risks list" },
+    { "fixture": "control", "absent": true, "how": "no item with this id or name in GET controls list" }
+  ]
+}

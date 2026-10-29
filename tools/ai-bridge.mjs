@@ -12,13 +12,18 @@ import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding } from './coverage-scan.mjs';
-import { pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
+import { pylonGetArticle, pylonUpdateArticleBody, pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
 import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
-import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording, googleDriveUploadDeck, googleDriveListDeckFiles, googleDriveFetchFile, googleDriveDeleteDeck, SLIDE_DECKS_FOLDER_ID } from './gdrive.mjs';
+import { googleDriveAuthorizedFetch, googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording, googleDriveUploadDeck, googleDriveListDeckFiles, googleDriveFetchFile, googleDriveDeleteDeck, SLIDE_DECKS_FOLDER_ID } from './gdrive.mjs';
 import { getAcademyLessons, recordAcademyVideoLink } from './academy-lessons.mjs';
 import { createDeckStudio } from './deck-studio.mjs';
 import { createJobsClient, serviceUrlFrom } from './drift/jobs.mjs';
 import { createSlackClient, submitDriftJob as submitDriftJobCore } from './drift/slack.mjs';
+import { executeJob as executeDriftJob, pollOnce as pollDriftJobsOnce, rollbackJob as rollbackDriftJob, localJobState as driftLocalJobState } from './drift/executor.mjs';
+import { createDriveClient as createDriftDriveClient, createPylonClient as createDriftPylonClient, createLibraryClient as createDriftLibraryClient } from './drift/publish.mjs';
+import { buildDriftMessage } from './drift/slack.mjs';
+import { prepareSubmissions, dedupeAgainst, humanSummary, blocksToText } from './drift/weekly-submit.mjs';
+import { createWeeklyRunner, createEarlyCheckQueue, readAllowlist } from './drift/weekly-runner.mjs';
 import { normalizeLanguage, translationStatus, translationProblems, translationRequest, buildTranslationPrompt, parseTranslationReply, applyTranslation, buildLocalizedScript, localizedName, driveTitleFor, renderModeFor, allowsPylon, carryOverTranslations } from './translation.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
@@ -581,6 +586,7 @@ async function prWatchTick() {
       loadScripts: loadAllLibraryScripts, loadFlags: loadDriftFlags, saveFlags: saveDriftFlags,
     });
     if (r.prs) console.log(`[pr-watch] checked ${r.prs} merged PR(s) in ${FRONTEND_REPO}; ${r.flagged} new flag(s)`);
+    if (r.flaggedScripts?.length) driftPrTriggerEnqueue(r.flaggedScripts);
   } catch (e) { console.warn(`[pr-watch] ${String(e?.message || e)}`); }
   finally { prWatchRunning = false; }
 }
@@ -1026,17 +1032,139 @@ function driftEvidenceFile(p) {
   } catch { return null; }
 }
 let driftPollTimer = null;
-/** Stub: lists approved jobs and logs them. Execution comes after the publish milestone. Off unless DRIFT_JOBS_POLL=1. */
-function startDriftJobPoller() {
-  if ((process.env.DRIFT_JOBS_POLL || repoEnv('DRIFT_JOBS_POLL')) !== '1' || driftPollTimer) return;
-  const tick = async () => {
-    try {
-      const { jobs = [] } = await driftJobs.list({ status: 'approved', kind: 'auto_update', limit: 50 });
-      console.log(`[drift-jobs] ${jobs.length} approved job(s) waiting${jobs.length ? ': ' + jobs.map((j) => `${j.video_name} (${j.id}, approved by ${j.decided_by})`).join('; ') : ''} — execution not enabled yet`);
-    } catch (e) { console.log(`[drift-jobs] poll failed: ${e?.message || e}`); }
+// ---- Executing approved drift jobs (tools/drift/executor.mjs + publish.mjs). Real clients are wired here so
+// credentials stay in the bridge env. Off unless DRIFT_JOBS_EXECUTE=1.
+const driftScriptPath = (n) => path.join(REPO_ROOT, 'scripts', `${safeName(n)}.script.json`);
+async function driftLibraryGet(name) {
+  try { const r = await libraryFetch('GET', { name }); return (r.item || (r.items || []).find((i) => i.name === name))?.script || null; }
+  catch (e) { if (/^not found$/i.test(String(e?.message || ''))) return null; throw e; }
+}
+function driftExecDeps() {
+  const slack = repoEnv('SLACK_STUDIO_BOT_TOKEN') ? createSlackClient({ getToken: () => repoEnv('SLACK_STUDIO_BOT_TOKEN') }) : null;
+  return {
+    jobs: driftJobs, whoami: WHOAMI, repo: REPO_ROOT, log: (m) => console.log(m),
+    isBusy: () => !!render.running,
+    publishDeps: {
+      drive: createDriftDriveClient({ fetchAuthorized: googleDriveAuthorizedFetch }),
+      pylon: createDriftPylonClient({ getArticle: pylonGetArticle, uploadAttachment: pylonUploadAttachment, updateBody: pylonUpdateArticleBody, articleUrl: pylonArticleUrl }),
+      library: createDriftLibraryClient({ get: driftLibraryGet, put: (script) => libraryFetch('POST', null, { script, updated_by: WHOAMI }) }),
+      local: {
+        read: (n) => { try { return JSON.parse(fs.readFileSync(driftScriptPath(n), 'utf8')); } catch { return null; } },
+        write: (n, script) => { const f = driftScriptPath(n); fs.writeFileSync(`${f}.tmp`, JSON.stringify(script, null, 2) + '\n'); fs.renameSync(`${f}.tmp`, f); },
+      },
+      // New captures of the candidate: copied next to the other recordings and mirrored to Drive _recordings (additive).
+      recordings: { async publish(id, dir) {
+        const dest = recordingDirOf(id); fs.mkdirSync(dest, { recursive: true });
+        const files = fs.readdirSync(dir).filter((f) => f.endsWith('.png'));
+        for (const f of files) if (!fs.existsSync(path.join(dest, f))) fs.copyFileSync(path.join(dir, f), path.join(dest, f));
+        await googleDriveUploadRecording(id, dest, files);
+      } },
+    },
+    getTargets: async (name) => {
+      const lib = await driftLibraryGet(name);
+      let local = null; try { local = JSON.parse(fs.readFileSync(driftScriptPath(name), 'utf8')); } catch { /* library only */ }
+      const s = lib || local || {};
+      if (lib && local && ((local.driveVideoId && local.driveVideoId !== lib.driveVideoId) || (local.pylonArticleId && local.pylonArticleId !== lib.pylonArticleId))) {
+        throw Object.assign(new Error('the local and shared scripts point at different Drive/Pylon ids; fix that before updating'), { code: 'target_ids_disagree' });
+      }
+      return { driveFileId: s.driveVideoId || null, pylonArticleId: s.pylonArticleId || null, title: s.title || null };
+    },
+    slackThreadReply: slack ? (job, text) => slack.call('chat.postMessage', { channel: job.slack_channel, thread_ts: job.slack_ts, text, unfurl_links: false, unfurl_media: false }) : null,
+    undoUrl: (job) => `${serviceUrlFrom(LIBRARY_URL).replace(/\/api\/studio-drift$/, '')}/api/studio-open?job=${job.id}`,
   };
-  console.log('[drift-jobs] poller enabled (DRIFT_JOBS_POLL=1): logging approved jobs every 10 min, executing nothing');
-  setTimeout(tick, 20000); driftPollTimer = setInterval(tick, 10 * 60 * 1000);
+}
+let driftExecRunning = false;
+/** Poll approved drift jobs every 10 min and execute them one at a time. Off unless DRIFT_JOBS_EXECUTE=1. */
+function startDriftJobPoller() {
+  if ((process.env.DRIFT_JOBS_EXECUTE || repoEnv('DRIFT_JOBS_EXECUTE')) !== '1' || driftPollTimer) return;
+  const tick = async () => {
+    if (driftExecRunning) return;
+    driftExecRunning = true;
+    try {
+      const results = await pollDriftJobsOnce(driftExecDeps());
+      for (const r of results) if (r.status !== 'skipped' || !/^(status_|in_progress_elsewhere)/.test(r.reason || '')) console.log(`[drift-exec] ${r.id}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`);
+    } catch (e) { console.log(`[drift-exec] poll failed: ${e?.message || e}`); }
+    finally { driftExecRunning = false; }
+  };
+  console.log('[drift-exec] executor enabled (DRIFT_JOBS_EXECUTE=1): approved drift jobs are rendered, verified and published, one at a time, every 10 min');
+  setTimeout(tick, 30000); driftPollTimer = setInterval(tick, 10 * 60 * 1000);
+}
+
+// ---- Weekly drift run + submit (tools/drift/weekly-runner.mjs, weekly-submit.mjs) ----
+// POST /drift/weekly/run spawns weekly.mjs (read-only, fixture-guarded capture) as a child with a scrubbed env,
+// then submits the run. POST /drift/weekly/submit turns a run dir into drift jobs. Both default to DRY RUN:
+// jobs are created / Slack is posted only when the caller sends dryRun:false.
+const DRIFT_SCRATCH = process.env.HADRIUS_DRIFT_SCRATCH || path.join(process.env.HOME || '', '.hermes', 'cache', 'scratch');
+const DRIFT_WEEKLY_LOG = path.join(process.env.HOME || '', 'Library', 'Logs', 'kbstudio-drift-weekly.log');
+const DRIFT_ALLOWLIST = path.join(REPO_ROOT, 'tools', 'drift', 'allowlist.json');
+const driftStudioUrl = (job) => `${serviceUrlFrom(LIBRARY_URL).replace(/\/api\/studio-drift$/, '')}/api/studio-open?job=${job.id}`;
+/** A weekly-* run directory directly under the drift scratch dir that has a summary.json; else null. */
+function driftRunDir(p) {
+  try {
+    const real = fs.realpathSync(String(p || ''));
+    const root = fs.realpathSync(DRIFT_SCRATCH);
+    return path.dirname(real) === root && /^weekly-[\w.-]+$/.test(path.basename(real)) && fs.existsSync(path.join(real, 'summary.json')) ? real : null;
+  } catch { return null; }
+}
+async function submitWeeklyRun({ runDir, names = null, dryRun = true, prsByName = {} }) {
+  const dir = driftRunDir(runDir);
+  if (!dir) throw Object.assign(new Error(`runDir must be a weekly-* run directory (with summary.json) directly under ${DRIFT_SCRATCH}`), { status: 400 });
+  const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+  const rows = prepareSubmissions({
+    summary: readJson(path.join(dir, 'summary.json')), runDir: dir, names: Array.isArray(names) && names.length ? names : null, prsByName, pylonUrl: pylonArticleUrl, createdBy: WHOAMI,
+    io: { readJson, readScript: (n) => readJson(path.join(REPO_ROOT, 'scripts', `${n}.script.json`)), readAssembly: (n) => readJson(path.join(REPO_ROOT, 'out', n, 'assembly.json')) },
+  });
+  let existing = null, existingError = null;
+  if (rows.some((r) => r.decision === 'post')) {
+    try { existing = (await driftJobs.list({ limit: 200 })).jobs || []; dedupeAgainst(rows, existing); } catch (e) { existingError = String(e?.message || e); }
+  }
+  if (!dryRun && existingError) throw Object.assign(new Error(`could not check existing drift jobs, not submitting: ${existingError}`), { status: 503 });
+  for (const r of rows) {
+    if (r.decision !== 'post') continue;
+    if (dryRun) {
+      r.slackMessage = buildDriftMessage({ id: 'DRY-RUN-NOT-A-JOB', status: 'pending_approval', ...r.payload }, { studioUrl: driftStudioUrl({ id: 'DRY-RUN-NOT-A-JOB' }) });
+      r.slackText = blocksToText(r.slackMessage);
+    } else {
+      try { const out = await submitDriftJob(r.payload); r.job = { id: out.job?.id ?? null, status: out.job?.status ?? null, created: !!out.created, duplicate: !!out.duplicate }; r.slack = out.slack; }
+      catch (e) { r.decision = 'error'; r.reason = String(e?.message || e); }
+    }
+  }
+  const counts = rows.reduce((a, r) => { a[r.decision] = (a[r.decision] || 0) + 1; return a; }, {});
+  const generatedAt = new Date().toISOString();
+  const base = dryRun ? 'submit-dry-run' : `submit-${generatedAt.replace(/[-:]/g, '').replace('T', '-').slice(0, 15)}`;
+  const report = { schema: 1, dryRun, runDir: dir, generatedAt, existingJobsChecked: !!existing, existingError, counts, videos: rows, reportPath: path.join(dir, `${base}.json`), summaryPath: path.join(dir, `${base}.md`) };
+  fs.writeFileSync(report.reportPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
+  fs.writeFileSync(report.summaryPath, humanSummary(rows, { runDir: dir, dryRun, generatedAt }) + (existingError ? `\n_Existing jobs not checked: ${existingError}_\n` : ''), { mode: 0o600 });
+  console.log(`[drift-weekly] submit ${dryRun ? 'DRY RUN' : 'LIVE'} ${dir}: ${JSON.stringify(counts)}`);
+  return report;
+}
+const driftWeeklyRunner = createWeeklyRunner({
+  repo: REPO_ROOT, scratch: DRIFT_SCRATCH, logPath: DRIFT_WEEKLY_LOG, log: (m) => console.log(m),
+  onFinished: async (run) => {
+    if (run.captureDryRun) return { ok: true, skipped: 'capture_dry_run' };
+    if (!fs.existsSync(path.join(run.outDir, 'summary.json'))) return { ok: false, error: 'weekly run wrote no summary.json' };
+    const r = await submitWeeklyRun({ runDir: run.outDir, dryRun: run.submitDryRun, prsByName: run.prsByName });
+    return { ok: true, dryRun: r.dryRun, counts: r.counts, report: r.reportPath, summary: r.summaryPath };
+  },
+});
+// PR-triggered early checks: DRIFT_PR_TRIGGER=1 -> flagged allowlisted videos get an early run (dry-run submit);
+// DRIFT_PR_TRIGGER=post -> same, but the submit is live. Off by default.
+const driftPrTriggerMode = () => { const v = (process.env.DRIFT_PR_TRIGGER || repoEnv('DRIFT_PR_TRIGGER') || '').trim(); return v === '1' || v === 'post' ? v : ''; };
+const driftEarlyQueue = createEarlyCheckQueue({ statePath: path.join(REPO_ROOT, 'out', '_drift-early-queue.json'), debounceMs: 30 * 60 * 1000, maxPerDay: 6 });
+function driftPrTriggerEnqueue(items) {
+  if (!driftPrTriggerMode() || !items?.length) return;
+  let allowed; try { allowed = new Set(readAllowlist(DRIFT_ALLOWLIST)); } catch { allowed = new Set(); } // unreadable allowlist = queue nothing
+  const r = driftEarlyQueue.enqueue(items, { allowed });
+  console.log(`[drift-weekly] PR trigger queued ${r.added.length} video(s)${r.skipped.length ? `; not in allowlist: ${r.skipped.join(', ')}` : ''}`);
+}
+function driftPrTriggerTick() {
+  const mode = driftPrTriggerMode();
+  if (!mode) return;
+  const batch = driftEarlyQueue.take({ busy: driftWeeklyRunner.busy });
+  if (!batch) return;
+  const r = driftWeeklyRunner.start({ names: batch.names, source: 'pr', submitDryRun: mode !== 'post', prsByName: batch.prsByName });
+  if (!r.started) { driftEarlyQueue.requeue(batch); console.log(`[drift-weekly] PR early check not started (${r.error}); requeued`); }
+  else console.log(`[drift-weekly] PR early check started for ${batch.names.join(', ')} -> ${r.run.outDir}`);
 }
 
 function runClaudeCli(prompt) {
@@ -2495,10 +2623,33 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'POST' && u.pathname === '/drift/weekly/submit') {
+    try {
+      const body = await readJsonBody(req);
+      const r = await submitWeeklyRun({ runDir: body.runDir, names: body.names, dryRun: body.dryRun !== false });
+      return sendJson(res, 200, { ok: true, ...r });
+    } catch (e) { return sendJson(res, e?.status || driftErrorStatus(e), { ok: false, error: String(e?.message || e) }); }
+  }
+  if (req.method === 'POST' && u.pathname === '/drift/weekly/run') {
+    try {
+      const body = await readJsonBody(req);
+      let allowlistPath = null;
+      if (body.allowlist) {
+        allowlistPath = body.allowlist === true ? DRIFT_ALLOWLIST : path.resolve(REPO_ROOT, String(body.allowlist));
+        if (allowlistPath !== DRIFT_ALLOWLIST) return sendJson(res, 400, { ok: false, error: 'allowlist must be tools/drift/allowlist.json' });
+      }
+      if (!allowlistPath && !(Array.isArray(body.names) ? body.names.length : body.names)) return sendJson(res, 400, { ok: false, error: 'names or allowlist required' });
+      const r = driftWeeklyRunner.start({ names: allowlistPath ? null : body.names, allowlistPath, source: String(body.source || 'manual'), submitDryRun: body.dryRun !== false, captureDryRun: !!body.captureDryRun, noJudge: !!body.noJudge });
+      return sendJson(res, r.started ? 202 : (String(r.error).startsWith('busy') ? 409 : 400), { ok: !!r.started, ...r });
+    } catch (e) { return sendJson(res, 400, { ok: false, error: String(e?.message || e) }); }
+  }
+  if (req.method === 'GET' && u.pathname === '/drift/weekly/status') {
+    return sendJson(res, 200, { ok: true, ...driftWeeklyRunner.status(), prTrigger: driftPrTriggerMode() || 'off', earlyQueue: driftEarlyQueue.state() });
+  }
   if (req.method === 'GET' && u.pathname === '/drift/jobs') {
     try {
       const out = await driftJobs.list({ status: u.searchParams.get('status') || undefined, kind: u.searchParams.get('kind') || undefined, limit: u.searchParams.get('limit') || 50 });
-      const jobs = out.jobs || [];
+      const jobs = (out.jobs || []).map((j) => (j.status === 'published' || j.status === 'failed' ? { ...j, local: driftLocalJobState(j.id) } : j));
       return sendJson(res, 200, { ok: true, jobs, pending: jobs.filter((j) => j.status === 'pending_approval' || j.status === 'needs_rerecord').length, me: WHOAMI });
     } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e), code: e?.code || null }); }
   }
@@ -2510,6 +2661,19 @@ const server = http.createServer(async (req, res) => {
       console.log(`[drift-jobs] ${WHOAMI}: ${body.decision} ${driftDecisionMatch[1]}`);
       return sendJson(res, 200, { ok: true, job: out.job, slack: out.slack || null });
     } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e), code: e?.code || null, job: e?.body?.job || null, decided_by: e?.body?.decided_by || null }); }
+  }
+  // One-click Undo of a published drift update (restores the previous Drive revision, Pylon body and shared
+  // script). Only the machine that executed the job holds the rollback record.
+  const driftRollbackMatch = req.method === 'POST' && u.pathname.match(/^\/drift\/jobs\/([0-9a-f-]{36})\/rollback$/i);
+  if (driftRollbackMatch) {
+    try {
+      const out = await rollbackDriftJob(driftRollbackMatch[1], driftExecDeps());
+      console.log(`[drift-exec] ${WHOAMI}: rollback ${driftRollbackMatch[1]} -> ${out.ok ? 'ok' : JSON.stringify(out.steps)}`);
+      return sendJson(res, out.ok ? 200 : 409, { ok: out.ok, steps: out.steps, local: driftLocalJobState(driftRollbackMatch[1]) });
+    } catch (e) {
+      const code = e?.code || null;
+      return sendJson(res, code === 'no_local_record' ? 404 : code === 'busy' ? 409 : code ? 400 : 500, { ok: false, code, error: String(e?.message || e) });
+    }
   }
   const driftEvidenceMatch = req.method === 'GET' && u.pathname.match(/^\/drift\/jobs\/([0-9a-f-]{36})\/evidence\/(\d{1,4})\/(before|after)$/i);
   if (driftEvidenceMatch) {
@@ -4606,6 +4770,8 @@ server.listen(PORT, '127.0.0.1', () => {
   // Team-added voices: load the shared list now so a render that names one is accepted straight away.
   refreshCustomVoices({ force: true }).catch(() => {});
   startDriftJobPoller();
+  setInterval(driftPrTriggerTick, 5 * 60 * 1000); // no-op unless DRIFT_PR_TRIGGER is set
+  try { driftWeeklyRunner.recover(); } catch (e) { console.log(`[drift-weekly] recover failed: ${e?.message || e}`); }
   if (PR_WATCH_USER) {
     console.log(`[pr-watch] watching ${FRONTEND_REPO} for merged PRs as ${PR_WATCH_USER}, every ${PR_WATCH_INTERVAL_MS / 60000} min`);
     setTimeout(prWatchTick, 15000);

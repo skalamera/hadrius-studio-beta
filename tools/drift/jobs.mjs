@@ -54,6 +54,8 @@ export function createJobsClient({ baseUrl, getSecret, fetchImpl = globalThis.fe
     decide: ({ id, decision, by, via, note = null, expectedVersion = null }) => call('POST', { query: { action: 'decide' }, body: { id, decision, by, via, note, expectedVersion } }),
     progress: ({ id, status, note = null, links = null, by = null, expectedVersion = null }) => call('PATCH', { body: { id, status, note, links, by, expectedVersion } }),
     attachSlack: ({ id, channel, ts, blocks = null }) => call('POST', { query: { action: 'slack' }, body: { id, channel, ts, blocks } }),
+    /** Thread reply on the job's Slack message (executor progress notes); no state change. */
+    note: ({ id, note, by = null }) => call('POST', { query: { action: 'note' }, body: { id, note, by } }),
   };
 }
 

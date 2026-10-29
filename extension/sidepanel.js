@@ -4073,7 +4073,7 @@ function driftStatusText(j) {
     case 'approved': return `✅ Approved by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)} — queued for update${note}`;
     case 'denied': return `🚫 Denied by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)}${note}`;
     case 'in_progress': return j.kind === 'manual_rerecord' ? `🎬 ${esc(j.claimed_by || 'Someone')} is re-recording this${at(j.claimed_at)}` : '⚙️ Update in progress';
-    case 'published': return '🚀 Updated video published';
+    case 'published': return j.local?.rolledBackAt ? `↩️ Update published, then undone${at(j.local.rolledBackAt)}` : '🚀 Updated video published';
     case 'failed': return '⚠️ Update failed';
     case 'rerecorded': return `✅ Re-recorded — marked by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)}${note}`;
     case 'dismissed': return `🗑️ Dismissed by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)}${note}`;
@@ -4122,6 +4122,9 @@ function driftJobHtml(j) {
       ? (j.status === 'needs_rerecord' ? `<button class="primary" data-drift="claim">🙋 I'll re-record it</button>` : '') + `<button class="secondary" data-drift="rerecorded">✅ Mark re-recorded</button><button class="secondary" data-drift="dismiss">Dismiss</button>`
       : (j.status === 'pending_approval' ? `<button class="primary" data-drift="approve">✅ Approve</button><button class="danger" data-drift="deny">🚫 Deny</button>` : '');
     if (btns) actions = `<div class="drift-actions" data-id="${esc(j.id)}">${manual && j.status === 'needs_rerecord' ? '' : `<input type="text" class="drift-note-input" maxlength="1000" placeholder="Note (optional)${manual ? '' : ', e.g. why you denied it'}">`}${btns.replace(/<button /g, `<button ${busy ? 'disabled ' : ''}`)}<span class="drift-action-error" hidden></span></div>`;
+  }
+  if (j.status === 'published' && j.local?.canRollback) {
+    actions = `<div class="drift-actions" data-id="${esc(j.id)}"><button class="secondary" data-drift="undo" ${busy ? 'disabled' : ''} title="Restore the previous Drive revision, Pylon article body and shared script">↩️ Undo update</button><span class="drift-action-error" hidden></span></div>`;
   }
   const status = driftStatusText(j);
   return `<div class="drift-job${open ? ' pending' : ''}" data-id="${esc(j.id)}">
@@ -4209,6 +4212,22 @@ async function decideDriftJob(id, decision, note, row) {
     else if (errEl) { errEl.textContent = e.message; errEl.hidden = false; }
   }
 }
+/** Undo a published drift update on the machine that published it (bridge POST /drift/jobs/:id/rollback). */
+async function undoDriftJob(id, row) {
+  const errEl = row?.querySelector('.drift-action-error');
+  driftUpdates.busy.add(id); row?.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  try {
+    const r = await fetch(`${BRIDGE}/drift/jobs/${encodeURIComponent(id)}/rollback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || !body.ok) throw new Error(body.error || (body.steps ? `Undo incomplete: ${Object.entries(body.steps).map(([k, v]) => `${k}: ${v.ok ? 'restored' : v.conflict || v.error}`).join('; ')}` : `Bridge returned HTTP ${r.status}`));
+    toast('↩️ Update undone — previous video, article and script restored');
+    driftUpdates.busy.delete(id); await loadDriftJobs();
+  } catch (e) {
+    driftUpdates.busy.delete(id); renderDriftUpdates();
+    const slot = $(`#driftUpdatesList .drift-job[data-id="${CSS.escape(id)}"] .drift-action-error`) || errEl;
+    if (slot) { slot.textContent = e.message; slot.hidden = false; } else toast(e.message);
+  }
+}
 function openDriftUpdates() { $('#driftUpdatesModal').hidden = false; renderDriftUpdates(); loadDriftJobs(); }
 function closeDriftUpdates() { $('#driftUpdatesModal').hidden = true; }
 $('#driftUpdatesBtn').onclick = openDriftUpdates;
@@ -4219,6 +4238,7 @@ $('#driftUpdatesModal').onclick = (e) => {
   const row = b.closest('.drift-actions'); const decision = b.dataset.drift;
   const note = row.querySelector('.drift-note-input')?.value.trim() || '';
   if (decision === 'dismiss' && !confirm('Dismiss this re-record request? It won\'t be raised again for the same drift.')) return;
+  if (decision === 'undo') { if (confirm('Undo this update? The previous video revision, Pylon article body and script come back.')) undoDriftJob(row.dataset.id, row); return; }
   decideDriftJob(row.dataset.id, decision, note, row);
 };
 $('#driftUpdatesModal').onkeydown = (e) => { if (e.key === 'Escape') { e.preventDefault(); closeDriftUpdates(); } };

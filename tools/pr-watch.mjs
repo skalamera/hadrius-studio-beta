@@ -172,6 +172,7 @@ export async function runPrWatch({ user, statePath, mirrorDir, loadScripts, load
   const doc = await loadFlags();
   const presence = new Map(); // value -> still in the codebase?
   let flagged = 0;
+  const flaggedScripts = []; // [{name, pr}] — the bridge can queue these for an early drift recheck
   for (const pr of prs) {
     const diff = await prDiffLines(token, pr.number);
     for (const hit of matchPr(diff, scripts)) {
@@ -187,6 +188,7 @@ export async function runPrWatch({ user, statePath, mirrorDir, loadScripts, load
         mergedAt: pr.merged_at, detectedAt: new Date().toISOString(), items: hit.items,
       });
       flagged++;
+      flaggedScripts.push({ name: hit.name, pr: { number: pr.number, title: pr.title, url: pr.html_url } });
       log(`[pr-watch] #${pr.number} "${pr.title}" may affect "${hit.title}": ${hit.items.map((it) => `step ${it.step} ${it.kind} "${it.value}"`).join(', ')}`);
     }
     state.lastMergedAt = pr.merged_at;
@@ -194,5 +196,5 @@ export async function runPrWatch({ user, statePath, mirrorDir, loadScripts, load
   if (flagged) await saveFlags(doc);
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
-  return { prs: prs.length, flagged };
+  return { prs: prs.length, flagged, flaggedScripts };
 }
