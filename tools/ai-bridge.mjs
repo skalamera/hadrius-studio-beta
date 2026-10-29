@@ -17,6 +17,8 @@ import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
 import { googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording, googleDriveUploadDeck, googleDriveListDeckFiles, googleDriveFetchFile, googleDriveDeleteDeck, SLIDE_DECKS_FOLDER_ID } from './gdrive.mjs';
 import { getAcademyLessons, recordAcademyVideoLink } from './academy-lessons.mjs';
 import { createDeckStudio } from './deck-studio.mjs';
+import { createJobsClient, serviceUrlFrom } from './drift/jobs.mjs';
+import { createSlackClient, submitDriftJob as submitDriftJobCore } from './drift/slack.mjs';
 import { normalizeLanguage, translationStatus, translationProblems, translationRequest, buildTranslationPrompt, parseTranslationReply, applyTranslation, buildLocalizedScript, localizedName, driveTitleFor, renderModeFor, allowsPylon, carryOverTranslations } from './translation.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
@@ -58,6 +60,8 @@ const COVERAGE_URL = LIBRARY_URL.includes('studio-beta-scripts')
   ? LIBRARY_URL.replace('studio-beta-scripts', 'studio-beta-coverage')
   : LIBRARY_URL.replace(/\/api\/studio-scripts.*/, '/api/studio-beta-coverage');
 const HEALTH_CHECK_URL = LIBRARY_URL.replace(/\/api\/studio.*/, '/api/studio-health-check');
+// Drift jobs (weekly drift findings awaiting approval): shared service on the library's host.
+const driftJobs = createJobsClient({ baseUrl: serviceUrlFrom(LIBRARY_URL), getSecret: () => LIBRARY_SECRET });
 let coverageScan = { running: false, startedAt: null, finishedAt: null, log: [], result: null, error: null };
 let liteScan = { running: false, startedAt: null, finishedAt: null, log: [], error: null };
 const WORKFLOWS_FILE = path.join(REPO_ROOT, 'data', 'workflows.json');
@@ -999,6 +1003,41 @@ function readJsonBody(req) {
   });
 }
 function sendJson(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); }
+
+// ---- Drift jobs: Slack approval for weekly drift updates (tools/drift/jobs.mjs, slack.mjs) ----
+/** Create the job on the service (idempotent per fingerprint), post it to Slack once, record the ts.
+ * Not wired to any scheduler yet: the weekly runner calls it once it produces job details. */
+async function submitDriftJob(jobDetails, evidencePaths = null) {
+  const slack = repoEnv('SLACK_STUDIO_BOT_TOKEN') ? createSlackClient({ getToken: () => repoEnv('SLACK_STUDIO_BOT_TOKEN') }) : null;
+  return submitDriftJobCore({
+    payload: { ...jobDetails, created_by: jobDetails.created_by || WHOAMI }, evidencePaths, jobs: driftJobs, slack,
+    studioUrl: (job) => `${serviceUrlFrom(LIBRARY_URL).replace(/\/api\/studio-drift$/, '')}/api/studio-open?job=${job.id}`, log: (m) => console.log(m),
+  });
+}
+const driftErrorStatus = (e) => (e?.code === 'not_configured' || e?.code === 'service_missing' ? 503 : e?.status === 409 ? 409 : e?.status >= 400 && e?.status < 500 ? e.status : 502);
+/** Local evidence the extension may show: PNGs under the drift scratch dir or this repo's out/. */
+function driftEvidenceFile(p) {
+  if (typeof p !== 'string' || !p.endsWith('.png')) return null;
+  const home = process.env.HOME || '';
+  const roots = [process.env.HADRIUS_DRIFT_SCRATCH, home && path.join(home, '.hermes', 'cache', 'scratch'), path.join(REPO_ROOT, 'out')].filter(Boolean);
+  try {
+    const real = fs.realpathSync(p);
+    return roots.some((r) => { try { const rr = fs.realpathSync(r); return real.startsWith(rr + path.sep); } catch { return false; } }) && fs.statSync(real).isFile() ? real : null;
+  } catch { return null; }
+}
+let driftPollTimer = null;
+/** Stub: lists approved jobs and logs them. Execution comes after the publish milestone. Off unless DRIFT_JOBS_POLL=1. */
+function startDriftJobPoller() {
+  if ((process.env.DRIFT_JOBS_POLL || repoEnv('DRIFT_JOBS_POLL')) !== '1' || driftPollTimer) return;
+  const tick = async () => {
+    try {
+      const { jobs = [] } = await driftJobs.list({ status: 'approved', kind: 'auto_update', limit: 50 });
+      console.log(`[drift-jobs] ${jobs.length} approved job(s) waiting${jobs.length ? ': ' + jobs.map((j) => `${j.video_name} (${j.id}, approved by ${j.decided_by})`).join('; ') : ''} — execution not enabled yet`);
+    } catch (e) { console.log(`[drift-jobs] poll failed: ${e?.message || e}`); }
+  };
+  console.log('[drift-jobs] poller enabled (DRIFT_JOBS_POLL=1): logging approved jobs every 10 min, executing nothing');
+  setTimeout(tick, 20000); driftPollTimer = setInterval(tick, 10 * 60 * 1000);
+}
 
 function runClaudeCli(prompt) {
   return new Promise((resolve, reject) => {
@@ -2421,6 +2460,76 @@ const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   loadDotEnv();
   if (u.pathname === '/decks' || u.pathname.startsWith('/decks/')) return deckStudio.handle(req, res, u);
+
+  // ---- Drift jobs (Updates modal in the panel). GET /drift/jobs?status=&kind= proxies the shared
+  // service; POST /drift/jobs/:id/decision {decision, note, expectedVersion} decides as WHOAMI (CAS).
+  if (req.method === 'POST' && u.pathname === '/drift/jobs/test') {
+    // Synthetic "routing check — do not act" job: proves the Slack message, thread images, buttons and
+    // write-back end to end without touching any real video. Uses the How-to-Find-a-Project-ID pilot's
+    // recorded vs. recaptured screenshot as sample evidence when those files exist on this machine.
+    try {
+      const { before = null, after = null, kind = 'auto_update', tag = new Date().toISOString() } = await readJsonBody(req);
+      const name = 'routing-check-do-not-process';
+      const isAuto = kind !== 'manual_rerecord';
+      const change = {
+        step: 1, index: 0, verdict: isAuto ? 'slide_update' : 'full_rerecord', action: 'navigate', changeTypes: isAuto ? ['screenshot', 'narration'] : ['screenshot'],
+        reasonCodes: ['routing_check'], why: ['ROUTING CHECK — synthetic job to test Slack approval. Do not act on it.'],
+        narrationFlagged: false, oldNarration: 'This is the old narration line (test only).', newNarration: isAuto ? 'This is the proposed new narration line (test only).' : null,
+        metrics: null, before: before ? { path: before } : null, after: after ? { path: after } : null, diff: null,
+      };
+      const details = {
+        schema: 1,
+        video: { name, title: 'ROUTING CHECK — do not act', module: null, stepCount: 3 },
+        links: { drive: null, pylon: null, studio: null },
+        detection: { source: 'routing_check', prs: [], runAt: new Date().toISOString(), verdict: change.verdict, complete: true, summary: `Synthetic test job (${tag}). Approve or deny it to test the buttons; nothing will be updated.`, contactSheet: null },
+        reasons: change.why, changes: [change],
+        untouched: { steps: [2, 3], narrationUnchangedSteps: [2, 3], unverified: [], framesPreservedPct: 66.7, oldDurationSec: 27, newDurationSec: 27.4 },
+        elevenLabsChars: isAuto ? change.newNarration.length : 0,
+        rerecordReason: isAuto ? [] : ['ROUTING CHECK — synthetic re-record job. Do not act on it.'],
+      };
+      const fingerprint = 'routing-check-' + crypto.createHash('sha256').update(`${kind}|${tag}`).digest('hex').slice(0, 16);
+      const out = await submitDriftJob({ video_name: name, video_title: details.video.title, kind: isAuto ? 'auto_update' : 'manual_rerecord', fingerprint, details, created_by: WHOAMI });
+      return sendJson(res, 200, { ok: true, id: out.job?.id, status: out.job?.status, slack: out.slack });
+    } catch (e) {
+      return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e) });
+    }
+  }
+
+  if (req.method === 'GET' && u.pathname === '/drift/jobs') {
+    try {
+      const out = await driftJobs.list({ status: u.searchParams.get('status') || undefined, kind: u.searchParams.get('kind') || undefined, limit: u.searchParams.get('limit') || 50 });
+      const jobs = out.jobs || [];
+      return sendJson(res, 200, { ok: true, jobs, pending: jobs.filter((j) => j.status === 'pending_approval' || j.status === 'needs_rerecord').length, me: WHOAMI });
+    } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e), code: e?.code || null }); }
+  }
+  const driftDecisionMatch = req.method === 'POST' && u.pathname.match(/^\/drift\/jobs\/([0-9a-f-]{36})\/decision$/i);
+  if (driftDecisionMatch) {
+    try {
+      const body = await readJsonBody(req);
+      const out = await driftJobs.decide({ id: driftDecisionMatch[1], decision: String(body.decision || ''), by: WHOAMI, via: 'extension', note: body.note ? String(body.note).slice(0, 1000) : null, expectedVersion: body.expectedVersion ?? null });
+      console.log(`[drift-jobs] ${WHOAMI}: ${body.decision} ${driftDecisionMatch[1]}`);
+      return sendJson(res, 200, { ok: true, job: out.job, slack: out.slack || null });
+    } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e), code: e?.code || null, job: e?.body?.job || null, decided_by: e?.body?.decided_by || null }); }
+  }
+  const driftEvidenceMatch = req.method === 'GET' && u.pathname.match(/^\/drift\/jobs\/([0-9a-f-]{36})\/evidence\/(\d{1,4})\/(before|after)$/i);
+  if (driftEvidenceMatch) {
+    try {
+      const { job } = await driftJobs.get(driftEvidenceMatch[1]);
+      const change = (job?.details?.changes || []).find((c) => String(c.step) === driftEvidenceMatch[2]);
+      const file = driftEvidenceFile(change?.[driftEvidenceMatch[3]]?.path);
+      if (!file) return sendJson(res, 404, { ok: false, error: 'evidence not on this machine' });
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=3600' });
+      return fs.createReadStream(file).pipe(res);
+    } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e) }); }
+  }
+  if (req.method === 'GET' && u.pathname === '/drift/review') {
+    const id = String(u.searchParams.get('id') || '').replace(/[^0-9a-f-]/gi, '').slice(0, 36);
+    let title = 'this video';
+    try { const { job } = await driftJobs.get(id); title = job?.video_title || job?.video_name || title; } catch { /* page still explains where to go */ }
+    const h = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(`<!doctype html><meta charset="utf-8"><title>Review update · Hadrius Studio</title><body style="font:15px system-ui;max-width:520px;margin:60px auto;color:#13251f"><h2>Review the update to “${h(title)}”</h2><p>Open the <b>Hadrius Studio</b> side panel in Chrome and click <b>Updates</b> in the tab bar. The proposed change is listed there with before/after screenshots, and you can approve or deny it (same as the Slack buttons).</p><p style="color:#697872">Job ${h(id)}</p></body>`);
+  }
 
   // ---- record-time capture ("Staged Studio" Phase 0): one slide per step, written as the person
   // clicks through, keyed by the step's captureId (stable across later edits/reordering) rather
@@ -4496,6 +4605,7 @@ server.listen(PORT, '127.0.0.1', () => {
   if (googleDriveConfigured()) setTimeout(backfillRecordingUploads, 5000);
   // Team-added voices: load the shared list now so a render that names one is accepted straight away.
   refreshCustomVoices({ force: true }).catch(() => {});
+  startDriftJobPoller();
   if (PR_WATCH_USER) {
     console.log(`[pr-watch] watching ${FRONTEND_REPO} for merged PRs as ${PR_WATCH_USER}, every ${PR_WATCH_INTERVAL_MS / 60000} min`);
     setTimeout(prWatchTick, 15000);

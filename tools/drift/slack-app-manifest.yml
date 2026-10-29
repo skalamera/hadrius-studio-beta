@@ -1,0 +1,21 @@
+display_information:
+  name: Hadrius Studio
+  description: Weekly walkthrough-video drift checks with approve/deny for updates.
+  background_color: "#4c3dab"
+features:
+  bot_user:
+    display_name: Hadrius Studio
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - files:write
+      - users:read
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://pylon-webhook-service.vercel.app/api/studio-drift-slack
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

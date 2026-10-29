@@ -40,6 +40,15 @@
         "content.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://pylon-webhook-service.vercel.app/api/studio-open*"
+      ],
+      "js": [
+        "studio-open.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "icons": {

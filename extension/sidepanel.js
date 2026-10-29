@@ -4054,3 +4054,173 @@ $('#appVersionLine').addEventListener('click', () => {
 });
 
 (async()=>{try{const health=await api('/health');if(health.product==='hadrius-studio-beta'){$('#bridgeDot').src='icons/status/bridge-connected.svg';$('#bridgeTooltip').textContent='Bridge: connected (port 8787).';}else throw new Error('The bridge on port 8787 is not Hadrius Studio Lite.');}catch(e){$('#syncStatus').textContent=`${e.message} Stop it and run npm start from hadrius-studio-beta.`;$('#bridgeDot').src='icons/status/bridge-disconnected.svg';$('#bridgeTooltip').textContent=`${e.message} Run npm start from hadrius-studio-beta, or bash update.sh if it's not running as a service.`;}await initManualLinks();await loadState();await refreshAll();checkRender();refreshToolStatus(true);refreshVersionStatus(true);setInterval(()=>refreshToolStatus(false),45000);setInterval(()=>refreshVersionStatus(false),5*60000);})();
+
+// ---- Updates: weekly drift jobs awaiting a human decision (same jobs as the Slack approval posts).
+// The bridge proxies the shared drift-job service (GET /drift/jobs) and decides as this machine's
+// STUDIO_USER (POST /drift/jobs/:id/decision, compare-and-set: the first decision wins).
+const driftUpdates = { jobs: [], error: null, busy: new Set(), loaded: false };
+const DRIFT_OPEN = ['pending_approval', 'needs_rerecord', 'in_progress'];
+const driftWhen = (iso) => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+const driftMmss = (s) => (s == null ? '?' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
+const driftHref = (u) => (/^https?:\/\//.test(String(u || '')) ? String(u) : null);
+function driftStatusText(j) {
+  const by = (name, via) => `${esc(name || 'someone')}${via === 'slack' ? ' in Slack' : via === 'extension' ? ' in Studio' : ''}`;
+  const at = (iso) => (iso ? ` · ${esc(driftWhen(iso))}` : '');
+  const note = j.decision_note ? `<span class="drift-note">“${esc(j.decision_note)}”</span>` : '';
+  switch (j.status) {
+    case 'pending_approval': return '';
+    case 'needs_rerecord': return '';
+    case 'approved': return `✅ Approved by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)} — queued for update${note}`;
+    case 'denied': return `🚫 Denied by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)}${note}`;
+    case 'in_progress': return j.kind === 'manual_rerecord' ? `🎬 ${esc(j.claimed_by || 'Someone')} is re-recording this${at(j.claimed_at)}` : '⚙️ Update in progress';
+    case 'published': return '🚀 Updated video published';
+    case 'failed': return '⚠️ Update failed';
+    case 'rerecorded': return `✅ Re-recorded — marked by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)}${note}`;
+    case 'dismissed': return `🗑️ Dismissed by ${by(j.decided_by, j.decided_via)}${at(j.decided_at)}${note}`;
+    default: return esc(j.status);
+  }
+}
+function driftShot(j, c, which) {
+  const label = which === 'before' ? 'Before (current video)' : 'After (live UI today)';
+  if (!c[which]?.path) return `<div class="drift-shot">${label}<div class="drift-noimg">No screenshot</div></div>`;
+  const src = `${BRIDGE}/drift/jobs/${encodeURIComponent(j.id)}/evidence/${encodeURIComponent(c.step)}/${which}`;
+  const fallback = j.slack_ts ? 'Not on this machine — see the Slack thread' : 'Not on this machine';
+  return `<div class="drift-shot">${label}<img loading="lazy" alt="${esc(label)} step ${esc(c.step)}" src="${esc(src)}" data-fallback="${esc(fallback)}"></div>`;
+}
+function driftStepHtml(j, c) {
+  const chips = (c.changeTypes || []).map((t) => `<span class="drift-chip ${esc(t)}">${esc(t)}</span>`).join('');
+  const why = (c.why || []).length ? `<ul>${c.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '';
+  let narr = '';
+  if ((c.changeTypes || []).includes('narration')) narr = `<div class="drift-narr old">${esc(c.oldNarration || '(none)')}</div><div class="drift-narr new">${esc(c.newNarration || '(none)')}</div>`;
+  else if (c.narrationFlagged) narr = `<div class="drift-narr old" style="text-decoration:none">⚠️ Narration flagged, no replacement proposed: ${esc(c.oldNarration || '(none)')}</div>`;
+  else if (c.oldNarration) narr = `<div class="drift-narr same">Narration unchanged: “${esc(c.oldNarration)}”</div>`;
+  return `<div class="drift-step"><div class="drift-step-head">Step ${esc(c.step)} ${chips}</div><div class="drift-why">${why}</div>
+    <div class="drift-shots">${driftShot(j, c, 'before')}${driftShot(j, c, 'after')}</div>${narr}</div>`;
+}
+function driftJobHtml(j) {
+  const d = j.details || {}; const v = d.video || {}; const u = d.untouched || {}; const det = d.detection || {};
+  const manual = j.kind === 'manual_rerecord';
+  const open = DRIFT_OPEN.includes(j.status);
+  const links = [driftHref(d.links?.drive) && `<a href="${esc(d.links.drive)}" target="_blank" rel="noopener">Drive video</a>`, driftHref(d.links?.pylon) && `<a href="${esc(d.links.pylon)}" target="_blank" rel="noopener">Pylon article</a>`].filter(Boolean).join('');
+  const prs = (det.prs || []).filter((p) => p && (p.url || p.number)).map((p) => driftHref(p.url) ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">#${esc(p.number ?? '?')}${p.title ? ` ${esc(p.title)}` : ''}</a>` : `#${esc(p.number)}`);
+  const why = [
+    prs.length ? `<li>Triggered by merged PR ${prs.join(', ')}</li>` : '',
+    `<li>The weekly check replayed this walkthrough on the live Academy UI${det.runAt ? ` (${esc(driftWhen(det.runAt))})` : ''} and compared each screenshot with the recording.</li>`,
+    ...(d.reasons || []).slice(0, 8).map((r) => `<li>${esc(r)}</li>`),
+  ].join('');
+  const rerecord = manual && (d.rerecordReason || []).length ? `<div class="drift-why"><div class="drift-section-title">Why it can't be updated automatically</div><ul>${d.rerecordReason.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>` : '';
+  const keep = manual ? '' : `<div class="drift-keep"><div class="drift-section-title">What stays untouched</div><ul>
+      <li>Unchanged steps: ${esc((u.steps || []).join(', ') || 'none')}</li>
+      ${u.framesPreservedPct != null ? `<li>≈${esc(u.framesPreservedPct)}% of the video's frames preserved</li>` : ''}
+      ${u.oldDurationSec != null ? `<li>Duration ${esc(driftMmss(u.oldDurationSec))} → ${esc(driftMmss(u.newDurationSec))}</li>` : ''}
+      ${(u.unverified || []).length ? `<li>Not verified, left as-is: step ${u.unverified.map((x) => esc(x.step)).join(', ')}</li>` : ''}
+      <li>ElevenLabs: ≈${esc((d.elevenLabsChars || 0).toLocaleString())} characters to re-voice</li></ul></div>`;
+  const busy = driftUpdates.busy.has(j.id);
+  let actions = '';
+  if (open) {
+    const btns = manual
+      ? (j.status === 'needs_rerecord' ? `<button class="primary" data-drift="claim">🙋 I'll re-record it</button>` : '') + `<button class="secondary" data-drift="rerecorded">✅ Mark re-recorded</button><button class="secondary" data-drift="dismiss">Dismiss</button>`
+      : (j.status === 'pending_approval' ? `<button class="primary" data-drift="approve">✅ Approve</button><button class="danger" data-drift="deny">🚫 Deny</button>` : '');
+    if (btns) actions = `<div class="drift-actions" data-id="${esc(j.id)}">${manual && j.status === 'needs_rerecord' ? '' : `<input type="text" class="drift-note-input" maxlength="1000" placeholder="Note (optional)${manual ? '' : ', e.g. why you denied it'}">`}${btns.replace(/<button /g, `<button ${busy ? 'disabled ' : ''}`)}<span class="drift-action-error" hidden></span></div>`;
+  }
+  const status = driftStatusText(j);
+  return `<div class="drift-job${open ? ' pending' : ''}" data-id="${esc(j.id)}">
+    <div class="drift-job-top"><div class="drift-job-title">${esc(v.title || j.video_title || j.video_name)}</div><span class="drift-kind ${manual ? 'manual' : 'auto'}">${manual ? 'Needs re-record' : 'Update proposed'}</span></div>
+    <div class="drift-meta">${v.module ? `<span>${esc(v.module)}</span>` : ''}<span>${esc((d.changes || []).length)} step(s)</span><span>found ${esc(driftWhen(j.created_at))}</span>${links}</div>
+    ${status ? `<div class="drift-status ${esc(j.status)}">${status}</div>` : ''}
+    <details${open ? ' open' : ''}><summary>Details</summary><div class="drift-body">
+      <div class="drift-why"><div class="drift-section-title">Why it needs updating</div><ul>${why}</ul></div>${rerecord}
+      <div class="drift-section-title">${manual ? 'Steps with evidence' : 'Exactly what will change'}</div>
+      ${(d.changes || []).map((c) => driftStepHtml(j, c)).join('')}
+      ${keep}
+    </div></details>
+    ${actions}
+  </div>`;
+}
+function renderDriftUpdates() {
+  const jobs = driftUpdates.jobs;
+  const pending = jobs.filter((j) => j.status === 'pending_approval' || j.status === 'needs_rerecord').length;
+  const btn = $('#driftUpdatesBtn'); const cnt = $('#driftUpdatesCount');
+  if (btn) { btn.hidden = !jobs.length; btn.classList.toggle('has-pending', pending > 0); btn.title = pending ? `${pending} video update(s) waiting for a decision` : 'Video updates from the weekly drift check'; }
+  if (cnt) { cnt.hidden = !pending; cnt.textContent = pending; }
+  const mc = $('#driftUpdatesModalCount'); if (mc) { mc.hidden = !pending; mc.textContent = `${pending} pending`; }
+  const err = $('#driftUpdatesError'); if (err) { err.hidden = !driftUpdates.error; err.textContent = driftUpdates.error || ''; }
+  const list = $('#driftUpdatesList'); if (!list || $('#driftUpdatesModal').hidden) return;
+  const openJobs = jobs.filter((j) => DRIFT_OPEN.includes(j.status)); const done = jobs.filter((j) => !DRIFT_OPEN.includes(j.status));
+  list.innerHTML = (openJobs.length ? openJobs.map(driftJobHtml).join('') : `<div class="drift-empty">${driftUpdates.loaded ? 'Nothing waiting for review. 🎉' : 'Loading…'}</div>`)
+    + (done.length ? `<div class="drift-subhead">Recently decided</div>${done.slice(0, 15).map(driftJobHtml).join('')}` : '');
+  list.querySelectorAll('img[data-fallback]').forEach((img) => { img.onerror = () => { const d = document.createElement('div'); d.className = 'drift-noimg'; d.textContent = img.dataset.fallback; img.replaceWith(d); }; img.onclick = () => window.open(img.src, '_blank'); });
+  // Arrived from Slack's "Open in Studio": expand and scroll to that job once it's in the list.
+  if (driftUpdates.focus) {
+    const card = list.querySelector(`.drift-job[data-id="${CSS.escape(driftUpdates.focus)}"]`);
+    if (card) {
+      driftUpdates.focus = null;
+      const det = card.querySelector('details'); if (det) det.open = true;
+      card.classList.add('focused'); card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      setTimeout(() => card.classList.remove('focused'), 2500);
+    } else if (driftUpdates.loaded && !driftUpdates.focusMissShown) {
+      driftUpdates.focusMissShown = true;
+      toast('That update isn\'t in the list any more (it may have been decided long ago).');
+    }
+  }
+}
+/** Open the Updates modal on one job (from the Slack landing page via background.js + storage.session). */
+function focusDriftJob(id) {
+  driftUpdates.focus = id; driftUpdates.focusMissShown = false;
+  openDriftUpdates();
+}
+chrome.storage.session.get(['pendingDriftJob'], (r) => {
+  const p = r?.pendingDriftJob;
+  if (p?.id && Date.now() - (p.at || 0) < 60_000) { chrome.storage.session.remove('pendingDriftJob'); focusDriftJob(p.id); }
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  const p = area === 'session' && changes.pendingDriftJob?.newValue;
+  if (p?.id) { chrome.storage.session.remove('pendingDriftJob'); focusDriftJob(p.id); }
+});
+async function loadDriftJobs() {
+  try {
+    const r = await api('/drift/jobs?limit=50');
+    driftUpdates.jobs = r.jobs || []; driftUpdates.error = null;
+  } catch (e) { driftUpdates.error = e.message || String(e); }
+  driftUpdates.loaded = true;
+  renderDriftUpdates();
+}
+async function decideDriftJob(id, decision, note, row) {
+  const job = driftUpdates.jobs.find((j) => j.id === id);
+  const errEl = row?.querySelector('.drift-action-error');
+  driftUpdates.busy.add(id); row?.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  try {
+    const r = await fetch(`${BRIDGE}/drift/jobs/${encodeURIComponent(id)}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision, note: note || null, expectedVersion: job?.version ?? null }) });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) {
+      if (body.job) driftUpdates.jobs = driftUpdates.jobs.map((j) => (j.id === id ? body.job : j));
+      throw new Error((body.error || `Bridge returned HTTP ${r.status}`).replace(/<@(\w+)>/g, 'a teammate in Slack'));
+    }
+    driftUpdates.jobs = driftUpdates.jobs.map((j) => (j.id === id ? body.job : j));
+    toast({ approve: '✓ Approved — queued for update', deny: 'Update denied', claim: '✓ Claimed — it\'s yours to re-record', rerecorded: '✓ Marked re-recorded', dismiss: 'Dismissed' }[decision] || '✓ Saved');
+    driftUpdates.busy.delete(id); renderDriftUpdates();
+  } catch (e) {
+    driftUpdates.busy.delete(id); renderDriftUpdates();
+    // The card was re-rendered (and may have moved to "Recently decided"): show the reason on the fresh card.
+    const card = $(`#driftUpdatesList .drift-job[data-id="${CSS.escape(id)}"]`);
+    const slot = card?.querySelector('.drift-action-error');
+    if (slot) { slot.textContent = e.message; slot.hidden = false; }
+    else if (card) (card.querySelector('.drift-status') || card.querySelector('.drift-meta')).insertAdjacentHTML('afterend', `<div class="drift-action-error">${esc(e.message)}</div>`);
+    else if (errEl) { errEl.textContent = e.message; errEl.hidden = false; }
+  }
+}
+function openDriftUpdates() { $('#driftUpdatesModal').hidden = false; renderDriftUpdates(); loadDriftJobs(); }
+function closeDriftUpdates() { $('#driftUpdatesModal').hidden = true; }
+$('#driftUpdatesBtn').onclick = openDriftUpdates;
+$('#closeDriftUpdatesBtn').onclick = closeDriftUpdates;
+$('#driftUpdatesModal').onclick = (e) => {
+  if (e.target.id === 'driftUpdatesModal') return closeDriftUpdates();
+  const b = e.target.closest('button[data-drift]'); if (!b) return;
+  const row = b.closest('.drift-actions'); const decision = b.dataset.drift;
+  const note = row.querySelector('.drift-note-input')?.value.trim() || '';
+  if (decision === 'dismiss' && !confirm('Dismiss this re-record request? It won\'t be raised again for the same drift.')) return;
+  decideDriftJob(row.dataset.id, decision, note, row);
+};
+$('#driftUpdatesModal').onkeydown = (e) => { if (e.key === 'Escape') { e.preventDefault(); closeDriftUpdates(); } };
+setTimeout(loadDriftJobs, 2500);
+setInterval(() => { if (!document.hidden) loadDriftJobs(); }, 5 * 60000);

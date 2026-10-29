@@ -553,3 +553,54 @@ body.has-floating-bar #recordingView,body.has-floating-bar #workflowsView,body.h
 .es-step-status{font-size:11px;color:var(--muted)}
 .lang-pick{flex-basis:100%;display:flex;align-items:center;gap:8px}
 .module-pick .lang-pick select{flex:0 1 160px}
+
+/* ---- Drift "Updates" (weekly drift jobs awaiting approval) ---- */
+.nav-updates{margin-left:auto;border:0;background:none;padding:12px 4px 12px 10px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:2px}
+.nav-updates:hover{color:var(--purple)}
+.nav-updates.has-pending{color:var(--purple)}
+.badge.drift-count{background:#fde68a;color:#92400e}
+.drift-card{max-width:480px}
+.drift-intro{margin:0;padding:10px 16px 0;line-height:1.45;flex-shrink:0}
+.drift-error{margin:10px 16px 0;flex-shrink:0}
+.drift-subhead{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin:6px 2px 0}
+.drift-empty{padding:20px 8px;text-align:center;color:var(--muted);font-size:12px}
+.drift-job{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.drift-job.pending{border-color:#c4b5fd;box-shadow:0 0 0 1px #ede9fe}
+.drift-job.focused{border-color:var(--purple);box-shadow:0 0 0 3px #ddd6fe;transition:box-shadow .3s}
+.drift-job-top{display:flex;align-items:flex-start;gap:8px}
+.drift-job-title{font-weight:700;font-size:13px;line-height:1.35;flex:1;min-width:0}
+.drift-kind{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+.drift-kind.auto{background:#efecff;color:var(--purple)}
+.drift-kind.manual{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.drift-meta{font-size:11px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
+.drift-meta a{color:var(--blue);text-decoration:none;font-weight:600}
+.drift-status{font-size:11.5px;font-weight:600;border-radius:8px;padding:6px 9px;background:var(--soft);border:1px solid var(--line)}
+.drift-status.approved,.drift-status.rerecorded,.drift-status.published{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+.drift-status.denied,.drift-status.dismissed,.drift-status.failed{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.drift-status.in_progress{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+.drift-status .drift-note{display:block;font-weight:500;font-style:italic;margin-top:2px}
+.drift-section-title{font-size:10.5px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.05em;margin:2px 0 3px}
+.drift-why ul,.drift-keep ul{margin:0;padding-left:16px;font-size:11.5px;line-height:1.45}
+.drift-why li,.drift-keep li{margin:2px 0}
+.drift-step{border:1px solid var(--line);border-radius:8px;padding:8px;background:#fafafc;display:flex;flex-direction:column;gap:6px}
+.drift-step-head{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700}
+.drift-chip{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:1px 6px;border-radius:4px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+.drift-chip.screenshot{background:#eff6ff;color:#2563eb;border-color:#bfdbfe}
+.drift-chip.highlight{background:#f5f3ff;color:var(--purple);border-color:#ddd6fe}
+.drift-chip.narration{background:#fffbeb;color:#d97706;border-color:#fde68a}
+.drift-shots{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.drift-shot{display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--muted);font-weight:600;min-width:0}
+.drift-shot img{width:100%;aspect-ratio:16/9;object-fit:cover;object-position:top left;border-radius:5px;border:1px solid var(--line);background:#eef2f0;cursor:zoom-in}
+.drift-shot .drift-noimg{aspect-ratio:16/9;border-radius:5px;border:1px dashed #cbd7d2;display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;font-weight:500}
+.drift-narr{font-size:11.5px;line-height:1.45;border-radius:6px;padding:5px 7px}
+.drift-narr.old{background:#fef2f2;color:#7f1d1d;text-decoration:line-through;text-decoration-color:#fca5a5}
+.drift-narr.new{background:#ecfdf5;color:#065f46}
+.drift-narr.same{background:#fff;border:1px solid var(--line);color:var(--muted)}
+.drift-job details>summary{cursor:pointer;font-size:11px;font-weight:600;color:var(--purple);list-style:none}
+.drift-job details>summary::-webkit-details-marker{display:none}
+.drift-job details[open]>summary{margin-bottom:6px}
+.drift-body{display:flex;flex-direction:column;gap:8px}
+.drift-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.drift-actions input{flex:1 1 100%;font-size:12px;padding:7px 9px}
+.drift-actions button{padding:6px 10px;font-size:11.5px}
+.drift-action-error{color:var(--red);font-size:11px;font-weight:600;flex:1 1 100%}

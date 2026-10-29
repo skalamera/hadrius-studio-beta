@@ -28,7 +28,7 @@
       <span class="tool-status" id="bridgeToolStatus"><img class="status-icon" id="bridgeDot" src="icons/status/bridge-disconnected.svg" alt=""><span class="tool-status-label" id="bridgeLabel">Bridge</span><span class="tool-status-tooltip" id="bridgeTooltip">Checking…</span></span>
     </div>
   </header>
-  <nav><button class="tab active" data-view="record">Record <span id="stepCount" hidden></span></button><button class="tab" data-view="toRecord">To Record <span id="toRecordCount" class="badge" hidden></span></button><button class="tab" data-view="recorded">Recorded <span id="pylonArticleCount" class="badge" hidden></span></button><button class="tab tab-create" data-view="create">Create <span class="tab-sparkle" aria-hidden="true">✨</span><span id="createBusyDot" class="create-busy-dot" hidden></span></button></nav>
+  <nav><button class="tab active" data-view="record">Record <span id="stepCount" hidden></span></button><button class="tab" data-view="toRecord">To Record <span id="toRecordCount" class="badge" hidden></span></button><button class="tab" data-view="recorded">Recorded <span id="pylonArticleCount" class="badge" hidden></span></button><button class="tab tab-create" data-view="create">Create <span class="tab-sparkle" aria-hidden="true">✨</span><span id="createBusyDot" class="create-busy-dot" hidden></span></button><button id="driftUpdatesBtn" class="nav-updates" type="button" title="Proposed video updates from the weekly drift check" hidden>Updates <span id="driftUpdatesCount" class="badge drift-count" hidden></span></button></nav>
 
   <div id="statusBarContainer" class="top-status-container">
     <div id="recordingBanner" class="top-banner recording-banner" hidden>
@@ -405,6 +405,18 @@
           <button type="submit" id="submitAddVoiceBtn" class="primary">Add voice</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="driftUpdatesModal" class="modal-backdrop" hidden>
+    <div class="modal-card drift-card" role="dialog" aria-labelledby="driftUpdatesTitle">
+      <div class="modal-header">
+        <div class="modal-title-group"><h3 id="driftUpdatesTitle" class="plan-card-title">Video updates <span id="driftUpdatesModalCount" class="badge" hidden></span></h3></div>
+        <button id="closeDriftUpdatesBtn" class="icon-btn close-btn" type="button" title="Close">✕</button>
+      </div>
+      <p class="drift-intro muted">The weekly check found these videos out of date. Anyone on the team can decide; the first decision (here or in Slack) wins.</p>
+      <p id="driftUpdatesError" class="add-voice-error drift-error" hidden></p>
+      <div id="driftUpdatesList" class="saved-scripts-list drift-list"></div>
     </div>
   </div>
 

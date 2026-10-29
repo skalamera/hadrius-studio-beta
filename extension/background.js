@@ -30,6 +30,20 @@ const restored = restore();
 
 chrome.runtime.onInstalled.addListener(() => chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }));
 
+// "Open in Studio" from a Slack drift notification: the webhook service's /api/studio-open page has a
+// button that extension/studio-open.js forwards here. Chrome only lets sidePanel.open() run during the
+// user's click, so it's called synchronously — before any await — and the job to show is handed to the
+// panel through storage.session (the panel opens its Updates tab on that job).
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (msg?.type !== 'OPEN_DRIFT_JOB') return false;
+  const jobId = String(msg.jobId || '');
+  if (!/^[0-9a-f-]{36}$/i.test(jobId) || !sender.tab) { reply({ ok: false, error: 'bad job id' }); return false; }
+  chrome.sidePanel.open({ tabId: sender.tab.id })
+    .then(() => chrome.storage.session.set({ pendingDriftJob: { id: jobId, at: Date.now() } }))
+    .then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e?.message || e) }));
+  return true;
+});
+
 // Record-time capture ("Staged Studio" Phase 0 experiment 3): the human's own click-through is the
 // only moment a workflow is guaranteed to be in the right state, so its screenshots become the
 // video's raw material directly — renderer/from-recording.mjs assembles from these with no replay,
@@ -460,6 +474,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'PANEL_REPORT': { try { return reply(await bridge('GET', `/report?name=${encodeURIComponent(msg.name)}`)); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
       case 'PANEL_RECIPE_LOOKUP': { try { return reply(await bridge('GET', `/recipe?name=${encodeURIComponent(msg.name)}`)); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
       case 'PANEL_BRIDGE_HEALTH': { try { return reply(await bridge('GET', '/health')); } catch (e) { return reply({ ok: false, error: String(e?.message || e) }); } }
+      case 'OPEN_DRIFT_JOB': return; // handled synchronously by the listener above (user-gesture rule)
       default: return reply({ ok: false, error: 'unknown message' });
     }
   })();
