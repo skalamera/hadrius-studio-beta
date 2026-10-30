@@ -200,6 +200,13 @@ class Narrator:
         # Providers that failed in a way that won't fix itself mid-render (quota, bad key) — skipped
         # for every later line instead of each one paying for its own failed round-trip.
         self.dead = set()
+        # Why a provider left the chain before it was tried, so a final failure names the real cause
+        # (e.g. "no ElevenLabs key") instead of only the last fallback's error.
+        self.skipped = {}
+        if not ELEVEN_KEY: self.skipped['el'] = 'ElevenLabs skipped: no ELEVENLABS_API_KEY in .env on this machine'
+        elif not self.el_active: self.skipped['el'] = 'ElevenLabs skipped: the plan has 0 characters left'
+        if PICKED_PROVIDER == 'vs' and not self.vs_active:
+            self.skipped['vs'] = f'VoiceStudio skipped: not running at {VOICESTUDIO_URL}'
 
     def plan(self, texts):
         """Decide up front whether ElevenLabs can voice every line of this render. Lines it has
@@ -214,6 +221,7 @@ class Narrator:
             if not (hit.exists() and hit.stat().st_size > 0): need += len(t)
         if need > self.el_credits:
             self.el_active = False
+            self.skipped['el'] = f'ElevenLabs skipped: {self.el_credits} characters left, this render needs {need}'
             print(f'  ⚠ ElevenLabs has {self.el_credits} characters left, this render needs {need}; using the next provider', file=sys.stderr)
 
     def providers(self):
@@ -247,7 +255,7 @@ class Narrator:
             os.utime(hit)
             self.cache_hits += 1
             return hit, tag
-        last_err = None
+        errors = []
         for i, (tag, extra, synth) in enumerate(chain):
             dest = CACHE / f'{tag}-{_key(tag, text, extra)}.mp3'
             if i > 0 and dest.exists() and dest.stat().st_size > 0:
@@ -268,11 +276,15 @@ class Narrator:
                 detail = getattr(e, 'read', lambda: b'')()
                 detail = (': ' + detail[:160].decode(errors='replace')) if detail else ''
                 permanent = getattr(e, 'code', None) in (401, 402, 403, 429)
-                if permanent: self.dead.add(tag)
+                if permanent:
+                    self.dead.add(tag)
+                    self.skipped[tag] = f'{tag} failed earlier in this render: {e}{detail}'
                 print(f"  ⚠ {tag} TTS failed ({e}{detail}){' — skipping it for the rest of this render' if permanent else ''}, trying next provider", file=sys.stderr)
-                last_err = e
+                errors.append(f'{tag}: {e}{detail}')
                 part.unlink(missing_ok=True)
-        raise RuntimeError(f'every TTS provider failed: {last_err}')
+        tried = {t for t, _, _ in chain}
+        reasons = [r for t, r in self.skipped.items() if t not in tried] + errors
+        raise RuntimeError('every TTS provider failed: ' + ' | '.join(reasons))
 
     def describe(self):
         provider = {'el': f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})', 'vs': f'VoiceStudio ({self.vs_voice})',
