@@ -119,6 +119,7 @@ export function buildJobDetails({ weeklyJob, script = null, links = {}, prs = []
     changes.push({
       step: s.index + 1, index: s.index, verdict: s.verdict, action: s.action || null, changeTypes: types.length ? types : ['screenshot'], reasonCodes: codes,
       why: (s.reasons || []).map(plainReason),
+      ...(s.uiReleaseEvidence ? { uiReleaseEvidence: s.uiReleaseEvidence } : {}),
       narrationFlagged: s.verdict === 'narration_review',
       oldNarration: narr(s.index) || null,
       newNarration: types.includes('narration') ? String(newText) : null,
@@ -164,6 +165,9 @@ export function buildJobDetails({ weeklyJob, script = null, links = {}, prs = []
       prs: (prs || []).map((p) => ({ number: p.number ?? null, title: p.title ?? null, url: p.url ?? null })),
       runAt: wj.finishedAt || wj.startedAt || null, verdict: wj.verdict || null, complete: wj.complete ?? null, summary: wj.summary || null,
       contactSheet: wj.evidence?.contactSheet || null,
+      releaseEvidence: wj.releaseEvidence || null,
+      // Non-Academy tenants (tenants.mjs) are named in the message; Academy payloads are unchanged.
+      ...(wj.tenant?.key && wj.tenant.key !== 'academy' ? { tenant: wj.tenant.key, tenantName: wj.tenant.name || null } : {}),
     },
     reasons: [...new Set(changes.flatMap((c) => c.why))].slice(0, 20),
     changes,

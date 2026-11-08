@@ -1,4 +1,85 @@
-# Local visual candidate foundation
+# Weekly interface maintenance
+
+## Automatic weekly repair process (local execution)
+
+The desired normal path is now **automation, not a person reviewing every finding**. The normal
+`weekly.mjs --once` production dependencies invoke `automation.mjs` after whole-batch UI selection.
+`--no-auto-repair` or `--no-judge` disables this local repair stage. Imports remain side-effect-free.
+Production scheduling, Slack posting and publication are not activated by this integration.
+
+Initial detection now defaults to Codex (`gpt-6.1-sol`, medium), including both release/redesign
+and current-image narration checks. Set `KBS_DRIFT_REVIEW_PROVIDER`, `KBS_DRIFT_REVIEW_MODEL`, and
+`KBS_DRIFT_REVIEW_EFFORT` before launch; Claude remains an explicit provider opt-in. Provider failures
+remain pending and trip a shared detection circuit, never become unchanged or bypass release checks.
+
+The pipeline owns the formerly separate operator steps:
+
+1. Freeze the full batch and release-confirmed misleading-interface selection. Archive scripts, raw
+   findings and all selected-video image/capture evidence into durable hash-checked, read-only inputs.
+   Data differences, additions-only and unused application-frame changes stay excluded.
+2. Collect exact-input-bound semantic author **and independent current-image verifier** checks.
+   Automatically collect supported source/route-alias evidence; missing proof is not a passed check.
+   Resume reuses still-valid complete reviews without rebinding model answers or spending more slots.
+3. Re-finalize the same selected claims, including independently proven same-change linked slides.
+   Discover or enroll a matching baseline automatically. Enrollment is a disclosed one-time lossy
+   video re-encode with original audio reuse, never a claim of legacy-MP4 byte identity. Persist every
+   cell plus render-critical originals; validate real hashes/loader, not registry ready flags. The exact
+   original MP4 is pinned beside the frozen `_build`, separate from the lossy rebaseline final.
+4. Choose the baseline's caption engine from saved pixels, run both preflights, and require the full
+   original-image control to reproduce the baseline MP4 SHA before rendering the actual repair.
+5. Certify routine visual output automatically: exact bound replacement images and scope, unchanged
+   script intent/captions/takes/timing, complete decoded-frame/cell checks, protected frames and full
+   audio packet/PCM identity. A person looking at a contact sheet is not the routine success gate.
+6. Retain hash-checked results outside scratch; resume reuses a valid result rather than re-rendering.
+   Cache reuse binds the exact repair plan as well as input/baseline hashes. QA upgrades require fresh
+   certification; intact same-plan visual output may be recertified without another encode. Failed
+   recertification falls back to the full renderer, never an old ready flag.
+
+Routing is explicit: `no_change`, `automatic_repair`/`automatically_repaired`, `evidence_pending`,
+`setup_required`, or `human_required`. Only independently demonstrated unsupported workflow/instruction
+changes enter `human-queue.json` and the future approval-notification path. Missing records, captures,
+fixtures, provider allowance or baseline assets are **holds**, never evidence a re-record is necessary.
+
+Durable state: `.drift-cache/automation/`; baselines: `out/drift-baselines/`. The weekly run gets
+`automation-report.json`. Both posting and uploads remain zero. Do not confuse a prepared local
+candidate with the published version or promote it as a baseline without publication readback.
+
+Run the same automation stage on a completed saved batch without modifying that input directory:
+
+```sh
+node tools/drift/automation.mjs --run /absolute/finished-weekly-run \
+  --out "$HOME/.hermes/cache/scratch/NEW-repair-run" --max-model-calls 8
+```
+
+The explicit test cap above is optional, not a user-selected production budget. The normal weekly
+shared `--max-model-calls` budget also bounds uncached semantic model calls. The standalone semantic
+review CLI still defaults to zero calls. Exact independently approved same-intent narration uses the
+saved ElevenLabs voice, a separate retiming/take/caption/protected-frame QA gate, and candidate-bound
+offline ASR (`renderer.drift_qa`); visual-only repairs never invoke that path. Missing voice/take/ASR
+prerequisites remain holds. Local acceptance on 2026-11-02 completed three real visual repairs
+(Roles, rule-run results, and Admin/Employee switching) through independent review, exact controls,
+rendering, preservation QA and durable retention. An ordinary uncapped repeat reused all three
+results and 17 independent reviews with zero new model calls and zero renders. A separate zero-call
+budget run also passed. The approved scope stayed at 11 videos / 19 slides; eight entries remain
+evidence/setup holds, with no human re-record jobs. All 1,008 archived input files and their original
+source hashes were reverified. Candidate-bound offline ASR also passed on a real historical
+changed-narration MP4 without new TTS; this is not a fresh full narration-repair certificate.
+Evidence and copied MP4s: `out/drift-runs/automation-process-verification-20261102/acceptance.json`.
+These checks used archived real captures, not a new production capture sweep. Publication,
+repaired-baseline promotion and unattended production activation remain separately gated.
+
+A subsequent native narration integration test also passed the real durable input archiver,
+normal preparation/control/rendering, offline ASR, all 32 narration-certifier checks, 13-file
+output retention and ordinary cached resume. It used genuine hash-matching cached speech with
+zero paid characters, but explicitly synthetic UI/review assertions and an existing supplied
+baseline. It is integration coverage, not another repaired production video or real independent
+model approval. Its evidence is under the same directory's `narration-native/`; 75 copied source
+files matched the active code, and the active certifier independently reloaded the actual output.
+An intentionally malformed candidate with screenshot bindings removed was rejected; the normal
+bound same-picture candidate correctly supports narration/caption changes without replacing its source
+screenshot bytes. Do not weaken screenshot binding in response to that negative test.
+
+## Local visual candidate foundation
 
 This directory does **not** start the bridge, read `.env`, call providers, browse Academy, render, save shared scripts, or publish. Imports have no side effects.
 
@@ -258,7 +339,7 @@ Cognito sign-in calls and third-party identity/analytics POSTs pass (logged); ap
 windows, stride 4), changed-region boxes (16 px cells, 8-connected), target rect delta. Dynamic regions are text
 nodes in TODAY's DOM matching date/time/relative-time patterns; changes inside them are reported
 (`dynamicChangedPixels`, yellow in the diff) but excluded from `diffFractionNonDynamic`/`ssimMasked`.
-Classification precedence: `target_missing` (missing/ambiguous/not_navigation) > `target_geometry_changed`
+Classification precedence (see also "False re-records" below for disambiguated targets and data areas): `target_missing` (missing/ambiguous/not_navigation) > `target_geometry_changed`
 (any edge > 4 px) > `screenshot_changed` (non-dynamic fraction > 0.002 or masked SSIM < 0.98) > `unchanged`.
 Outputs `compare.json`, `diff-NN.png` and `contact-sheet.png` (recorded | today | diff; bar colour = class).
 Limits: dynamic detection uses today's DOM only (recorded-frame text positions are unknown); loading/skeleton
@@ -338,10 +419,134 @@ Exit codes: `already_signed_in` 0, `signed_in` 10, `not_signed_in` 20 (check mod
 `unexpected` 36, usage 64, crash 1. On 30/31/32/33 stop and get a human: do not re-run `--ensure` in a loop
 (lockout risk).
 
-**`.browser-profile-drift/` is not yet in `.gitignore`.** Add `.browser-profile-drift/` there before the first
-real `--ensure`, otherwise the Hadrius session tokens in that profile could be committed.
+`.browser-profile-drift/` and `.browser-profile-drift-sandbox/` are in `.gitignore` (they hold Hadrius session tokens).
 
 Tests (synthetic local pages, injected fake password): `TMPDIR=$HOME/.hermes/cache/scratch node --test tests/drift/academy-login.test.mjs`
+
+## Tenants: Hadrius Academy (1150) and Hadrius Sandbox (1048) (`tenants.mjs`)
+
+```sh
+node tools/drift/academy-login.mjs --tenant sandbox --ensure | --check     # Sandbox automation account
+node tools/drift/tenants.mjs --survey                                     # tenant counts over scripts/
+node tools/drift/tenants.mjs --allowlist --write                          # regenerate allowlist.json
+```
+
+Registry (`TENANTS`): `academy` = company 1150 "Hadrius Academy", `stephen+hstudio@hadrius.com`, Keychain service
+`hadrius-studio-academy`, profile `.browser-profile-drift/`; `sandbox` = company 1048 "Hadrius Sandbox",
+`stephen+hsandbox@hadrius.com`, service `hadrius-studio-sandbox`, profile `.browser-profile-drift-sandbox/`. Same
+permissions as Academy: '[Studio QA]' fixtures may be created and must be cleaned up (same journal/sweep/network rules).
+
+- **Sign-in** `ensureTenantSession({tenant})` (academy-login.mjs; `ensureAcademySession` = tenant academy, unchanged).
+  Each tenant reads only its own Keychain item, uses only its own profile, and passes the tenant check only when the
+  account's company list is exactly `[companyId]`. A start URL naming another company is refused before launch.
+  Non-Academy results carry `tenantKey` and `tenant.tenantNameVisible`; all registry accounts are masked in logs.
+- **Tenant of a video** (`detectScriptTenant`): the `company_id` in `environment.startUrl` and in every step
+  `url`/navigate `value`/`route`. One registered company => that tenant; none => `unknown`; several => `conflict`;
+  unregistered company => `unregistered`. Only registered tenants are replayed; nothing is guessed.
+- **Capture** (`captureRun({tenant})`): tenant = explicit, else the dedicated profile's tenant, else the script's. A
+  profile of another tenant, a script naming another company, or a fixture session of another tenant =>
+  `tenant_mismatch` before any launch. Step-0 check per tenant: URL company = tenant company (or no company and session
+  exactly `[companyId]`) AND the tenant's display name visible (Academy keeps the legacy `academy` probe field).
+  `capture.mjs` CLI: `--tenant`, else the script decides (unknown scripts need an explicit `--tenant`).
+- **Fixtures**: `validateSpec(spec,{tenant})` requires `spec.companyId` = tenant company (`company_not_<id>`) and the
+  script's tenant to match; `createFixtureSession({tenant})` (default academy) only reconciles/sweeps specs of the same
+  company. `--run` takes the tenant from the script and refuses a spec of another tenant; `--reconcile --tenant sandbox`
+  uses the Sandbox profile and only Sandbox specs. (No Sandbox fixture spec exists yet.)
+- **Weekly**: per video the tenant comes from the script; Sandbox videos use the Sandbox profile/session. Unknown /
+  conflict / unregistered videos get `job.status` `tenant_unknown` / `tenant_conflict` / `tenant_unregistered`, are
+  NOT captured, and are listed in `summary.tenantSkipped` (submit skips them as `no_verdict:*`).
+- **Allowlist** `allowlist.json` (schema 2): `{counts, academy:[...], sandbox:[...], unknown:[...], conflict:[...],
+  unregistered:[...]}`; `parseNames`/`readAllowlist` return academy + sandbox only (old JSON arrays still parse).
+  Slack/job details name the tenant for non-Academy videos ("live Sandbox UI").
+
+Tests: `tests/drift/tenants.test.mjs` (registry, detection incl. conflict, allowlist, capture per tenant with a fake
+browser, fixture refusal) and the Sandbox cases in `tests/drift/academy-login.test.mjs`.
+
+Live (2026-10-29): `--tenant sandbox --ensure` signed in once (no MFA), companies exactly `[1048]` "Hadrius Sandbox"
+(INTERNAL), `roles` empty in the payload, `is_hadrius_employee:true` (same as the Academy account), no customer-firm staff
+access; `--check` after relaunch `already_signed_in`; Academy `--check` unchanged (`[1150]`). Bridge dry run
+`weekly-20261029-165507-manual` (export-marketing-review-data, restore-an-archived-marketing-project,
+configure-comment-templates-for-document-review): all tenant-verified on the Sandbox profile, every app non-GET was the
+blocked `track-event` beacon (plus blocked Sentry, allowed PostHog `/flags`), guard stopped at Add/Restore/checkbox.
+All three `full_rerecord`, but two are data/recording artefacts, not UI drift: "Restore project" is ambiguous because
+Sandbox now has 2 archived projects (recorded: 1), and "Add template" was already present twice (header + empty state)
+when recorded. The export page's filters really were redesigned ("Fields to include" / "Document category" targets gone).
+
+## Temporary exclusions (`exclusions.json`, `exclusions.mjs`, `modules.mjs`)
+
+`tools/drift/exclusions.json` (schema 2) = `{rules:[{module:'Employee Training', topicModule:'Marketing', reason:
+'Marketing-Review Employee Training videos handled by someone else (temporary)'}], addedAt, addedBy, note}`.
+**Temporary**: remove the rule (or delete the file) to include those videos again; a missing file = nothing excluded,
+an unreadable one fails closed. Marketing Review videos themselves (module `Marketing`) are included.
+
+- A video matches a rule when its module equals `module` (case-insensitive; a script without a module uses the
+  bridge's own resolution order, `modules.mjs resolveModuleSync`: explicit module / render-bar pick -> coverage module
+  -> route inference `inferModuleFromScript` -> raw label) AND, when `topicModule` is set, the walkthrough is about that
+  area: any start/step/navigate URL whose route maps to it (`/marketing/...` -> Marketing, same route table) or the
+  route-inferred module (`topicModulesOf`). Legacy `modules:[...]` entries are module-only rules. Rule ids in reports:
+  `module:<m>[+topic:<t>]`.
+- The bridge's `resolveScriptModule` imports `EXTRA_RENDER_MODULES`, `explicitModule` and `resolveModuleSync` from
+  `modules.mjs` (one copy of the logic); only the coverage lookup (library service) stays in the bridge, so drift runs
+  (scrubbed env) resolve without it.
+- **weekly.mjs**: allowlist AND explicit names matching a rule get `job.status:'excluded'`, `reason:'excluded'`, the
+  matched rule in `job.exclusion`; never read further or captured. `summary.excluded = {count, byRule,
+  byRuleAndSource, names}`, `summary.exclusions.rules`.
+- **weekly-runner.mjs**: the timeout counts only videos that will run; a run whose names are all excluded is not started
+  (`all_excluded`); `run.excluded` in `/drift/weekly/status`. PR early checks: `enqueue({exclude})` records excluded
+  videos as `skipped[].reason:'excluded'`, `take({exclude})` drops ones queued before the exclusion (`makeExcluder`).
+- **weekly-submit.mjs**: `prepareSubmissions({exclude})` -> `decision:'excluded'` (also for older runs of a
+  now-excluded video, and for `job.status:'excluded'` without the config); never builds a payload, never posts.
+- **executor.mjs**: an `approved` job for an excluded video is never claimed or executed; it stays approved and gets ONE
+  thread note (marker `drift-exec/<job>/excluded-note.json`). Unreadable exclusions => skipped too.
+
+Current match (2026-10-30): only `Reviewing-AI-Flags-on-a-Project-Submission` (Employee Training, /marketing routes; also
+`tenant_unknown`, so not in the Academy/Sandbox allowlist): the allowlisted 41 Academy + 109 Sandbox all run.
+Tests: `tests/drift/exclusions.test.mjs`.
+
+## False re-records: target disambiguation + shared-tenant data drift (`disambiguate.mjs`)
+
+Two live Sandbox false positives (`weekly-20261029-165507-manual`): "Restore project" matched 2 buttons because Sandbox
+now has 2 archived projects (recorded: 1), and "Add template" matched 2 buttons that were BOTH already on screen when
+the video was recorded (header + empty state). Both were `full_rerecord` (`target_ambiguous`).
+
+- **Disambiguation** (`disambiguateTarget`, used by capture.mjs before acting and by classify.mjs offline for older
+  runs; NAME matches only, never CSS-only ones): record rows (candidate inside a row/record holder) are identified by
+  their TEXT, not their position: each candidate row's text blobs (record name, id, owner, date; sidebar and the control
+  itself excluded) are searched in the recorded frame (symmetric ink template match, `findTemplate`) at the recorded
+  target's row; >= 30% of the row's ink found there and <= 10% for every other candidate => that record. Other controls:
+  padded-area luma MAD vs the recorded area (clear margin), else nearest rect (<= 24 px, runner-up >= 32 px further).
+  Record rows are never chosen by position without the recorded frame (`record_identity_unverifiable`), and a recorded
+  record no longer on screen stays ambiguous (`record_identity_unclear`, still `full_rerecord`: the specific record is
+  missing). The choice, method, margins and every alternative (distance, visual score, label, presentInRecording) are
+  stored in `run.steps[].target.disambiguation` / classify `steps[].target.disambiguation`. Capture clicks the chosen
+  element only when it is not data-changing (click + network guards unchanged).
+- **Was the ambiguity already recorded?** For every other candidate: same-spot area (controls) or its row text anywhere
+  in the recorded frame (records). All present => `ambiguity_preexisting` (info). New ones inside record rows =>
+  `extra_record_matches` (data drift).
+- **Data areas** (capture.mjs `DATA_FN` -> `run.steps[].dataRects`): table body rows, record cards (`data-id` & co,
+  draggable cards, tall record links), list/table bodies extended by up to 3 average rows (removed rows), count /
+  pagination text and number badges. compare.mjs reports `dataChangedPixels`, `diffFractionUi`, `ssimUi` (data areas
+  excluded), `regions[].data`, `dataOnly`; the diff PNG outlines data areas in green.
+- **New verdict `unchanged_with_data_drift`** (between unchanged and slide_update): only data changed
+  (`data_only_change`), the acted-on record moved because other records were added/removed (`target_moved_with_data`),
+  or new records carry the recorded control (`extra_record_matches`). No narration judge, no candidate, never posted
+  (`weekly-submit` skip `data_drift_only`). Redesign thresholds use the UI-only metrics when data areas exist. Strict
+  cases are unchanged: route/flow change, missing target, unresolved ambiguity, contradicted narration, redesign outside
+  data areas, chrome change, mixed old/new UI (data-drift slides count as kept slides there).
+- Limits: data areas come from TODAY's DOM only; UI changes INSIDE rows (renamed status chips, new row icons) count as
+  data; a new column changes the header row, which stays UI. Runs captured before this change have no `dataRects`
+  (only the ambiguity part re-classifies offline).
+
+Offline re-classification (no browser/network; reuses the saved judge verdicts, never-judged steps = narration_unchecked):
+`node tools/drift/reclassify.mjs --run <weekly run dir> [--live-judge]` -> `<run>/reclassify-<stamp>.{json,md}`.
+Saved Sandbox run: restore-an-archived-marketing-project `full_rerecord -> slide_update` (record found one row lower;
+the remaining change is the redesigned Sandbox sidebar), configure-comment-templates `full_rerecord -> slide_update`
+(preexisting duplicate), export-marketing-review-data stays `full_rerecord` (filters redesigned). The Academy runs
+(`weekly-20261029-063944`, `-114643-manual`) are unchanged (their re-records come from page redesigns / mixed UI).
+Tests: `tests/drift/false-rerecord.test.mjs`.
+
+`weekly.mjs --once ... --resume <run dir>` continues an interrupted run: finished videos (final `job.json` status) are
+kept, an unfinished video's folder is moved to `<name>.interrupted-N` and re-run.
 
 ## Moved highlight (screen re-plan) + first/last slides (card crossfades), real pilot verified
 
@@ -453,25 +658,201 @@ be kept (unchanged/unverified) the video is `full_rerecord` (`mixed_old_new_ui`)
 `full_rerecord` (slide 2 target ambiguous; slide 3 SSIM 0.765 / 95.5% coverage + narration_contradicted: no project ID
 on the page; sidebar changed on all 3 slides).
 
+**UI-redesign-only release gate.** The only question is whether the old video would now mislead a viewer about
+the interface (not the data). A slide counts as `page_redesigned` / `persistent_chrome_changed` only when
+(1) its UI-area pixels cross the redesign threshold, or the persistent chrome changed, on a verified, loaded,
+non-empty page; (2) `release-provider.mjs` finds production deploys bracketing the recording (deploy live at
+`recording.recordedAt`) and the capture (deploy live at `job.startedAt`), the page file for the slide's URL, the
+source files whose label strings are on today's screen (≤ 3 files per label), and release commits that changed those
+files; and (3) `redesign-judge.mjs` (Claude, both screenshots + the release commits, label-changing commits first)
+reports a change that passes deterministic checks: commit in the list, new label on today's screen and in today's
+code, removed/renamed label gone from today's screen and present in the old code, the cited commit's own diff adds the
+new label or removes the old one, and an "added" label was not already a label in the old code (an item that existed
+but was hidden from the recording is an account/permission difference). A change whose labels are rendered only by the
+app shell (files imported through `pages/_app.tsx` and not by the slide's page) counts only when the slide uses it: its
+narration, caption or click target names the label (`shell_change_not_used_on_slide` otherwise). This misses sidebar
+parts the import graph can't reach at older commits, so `flagged-review.mjs` also applies a cross-page rule (below).
+Chrome changes also need that
+commit to touch an app-shell file. Smaller screenshot changes (below the redesign threshold, e.g. one renamed tab) get
+the same review; a verified one adds `ui_changed` (slide_update). File-level evidence alone never counts: the frontend
+ships ~33 production deploys a day and the design-system migration touches most pages.
+
+Unverified codes: `empty_state` (any empty/zero-result page, e.g. "0 of 0 results", "No … found"),
+`no_frontend_release`, `no_release_touched_screen`, `redesign_unreviewed`, `redesign_not_confirmed`,
+`redesign_release_unconfirmed` / `chrome_release_unconfirmed` (no or unusable evidence). Setup:
+`node tools/drift/frontend-git.mjs --init` once (bare mirror in gitignored `.drift-cache/`, never the developer
+checkout). Offline replay: `node tools/drift/reclassify.mjs --run RUN_DIR --release --redesign-judge [--concurrency N]
+[--reuse REPORT.json]`; then `node tools/drift/flagged-review.mjs --reports MAIN.json[,RETRY.json] --out DIR` writes
+the short list for a person (`summary.md`, `review.json`, and `index.html` with the video slide next to today's
+capture, each verified change and its PR). The list applies two more rules across the whole run: a change verified
+with the same kind and label on 3+ different pages is the app frame (sidebar/header) and counts only when the slide
+uses it; a control that was only added doesn't make the old video wrong. Both groups are listed as "not flagged".
+`ui-selection.mjs` now owns those rules for offline review, weekly candidates and notification payloads. Selection is
+whole-batch, before a caller's names filter. A kept slide carries only its kept claims and supporting commits; ignored
+claims cannot remain in its human-readable reasons. Raw classification evidence is preserved separately. Missing
+route/text context fails closed rather than supplying synthetic cross-page votes. Slack posting remains off until
+the user explicitly approves switching it on; accepting the review list is not permission to post.
+
 **Weekly runner (`weekly.mjs`).** Concurrency 1, per-video timeout (default 15 min), one failure never stops the run.
 Per video under `<out>/<name>/`: `capture/` (run.json, requests.json, step PNGs, compare.json, diffs, contact sheet,
-classify.json) and `job.json` (status, verdict, complete, summary, reasons, per-step classification with judge output,
-mutation plan/stop, `needsFixture` evidence, all non-GET requests, evidence paths, candidate path, timings, errors);
-`<out>/summary.json` for the run. For `slide_update`/`moved_highlight`/`narration_review` it writes a stable-ID local
-copy (`identified-base.script.json`, sha256-derived v5-style IDs, so reruns reuse IDs), `candidate-manifest.json`
-(geometry-only target change for moved highlights) and runs `createCandidate` into `<out>/<name>/candidate/`.
-Scripts are read from `scripts/<name>.script.json` only (the library endpoint is not queried: `/library?name=` caches
+`classify.json`) and `job.json` (status, verdict, complete, summary, reasons, per-step classification with judge output
+and release evidence, mutation plan/stop, `needsFixture` evidence, all non-GET requests, evidence paths, candidate path, timings, errors);
+`<out>/summary.json` for the run. `runVideo()` collects diagnostics only; after collection,
+`finalizeWeeklySelection()` selects across all jobs and writes `ui-selection.json`. The summary's finalized marker
+binds policy version, batch names, current scripts and raw job inputs. Submission recomputes and checks that marker;
+unfinished, legacy or changed runs cannot notify. Timeouts prevent late classifier completion from replacing the
+timed-out job. Resume re-finalizes the whole batch, archives obsolete active manifests and clears stale candidate
+references before deciding whether a prior candidate is still reusable.
+
+Eligible jobs get a stable-ID local base (`identified-base-<hash>.script.json`, deterministic v5-style IDs), a scoped
+`candidate-manifest.json` (geometry-only target changes for moved highlights), and a candidate directory keyed by
+the plan hash. Explicit `details.execution` paths connect submission to the existing executor. Full-re-record jobs
+remain manual and candidate-free; selection never silently turns one into an automatic repair. A prepared PNG/JSON
+candidate is not a rendered or preservation-verified video.
+
+**Offline weekly selection acceptance (no browser/model/network calls):**
+
+```sh
+node tools/drift/selection-replay.mjs --reports MAIN.json,RETRY.json --review REVIEW.json \
+  --allowlist tools/drift/allowlist.json --out out/drift-runs/NEW-selection-parity
+```
+
+Use a new directory. The existing bare mirror must contain every pinned commit; the tool never fetches. It uses the
+successful-deployment observations and judge answers in the supplied reports, rebuilds provenance from local Git,
+and asserts that provenance still matches. It adapts report fields explicitly; it does not pretend the old
+`job.json` files contain the newer reviews. It compares exact video/index sets for offline review, weekly selection
+and would-post payloads; checks local candidate manifests/executor input paths; reconciles the explicit allowlist;
+and hashes original JSON plus referenced capture/recording assets before/after. Output includes
+`selection-parity.{json,md}`, reconstructed replay jobs, local candidates and a separately labelled replay summary.
+Original run summaries and evidence are not modified. This proves selection integration, not a fresh recapture,
+new model judgment, completed video repair or permission to submit the output to a service. Do not use the bridge's
+submit endpoint as an offline check: even its dry-run path can query service state.
+**Model review cost controls (`review-cache.mjs`).** Both reviewers run behind a durable answer cache
+(`.drift-cache/reviews/`, gitignored) and one per-run call budget. `weekly.mjs --max-model-calls N` caps calls; cache
+hits are free. Overflow makes no call and never means unchanged: redesign slides become `review_pending`
+(unverified), narration becomes `narration_unchecked` (blocks automatic repair). A redesign answer is reused for the
+same recorded slide only while today's screen still matches the screen it was given for: same interface-label
+sequence (labels in today's code; names/counts excluded), no pixel change outside data/dynamic areas, and the release
+commits it was given still listed. Narration answers are reused only on byte-identical inputs. Changing a reviewer's
+prompt/parser source or the model invalidates its answers. The weekly path asks the narration judge only on slides
+with a release-confirmed interface change. `summary.reviewUsage` reports calls, reuse, deferrals and cost.
+Measurement without model/network calls: `node tools/drift/review-cost-estimate.mjs --reports MAIN.json,RETRY.json
+--allowlist tools/drift/allowlist.json [--earlier OLDER_RUN_DIRS] --out NEW_DIR`.
+
+**Repairability (`repairability.mjs`, `repairability-v3`).** A flagged video is either eligible for a scoped
+local candidate or held for specific missing evidence/unsupported changes. The legacy routing value `manual`
+is not, by itself, proof that a full human re-record is necessary. Every replaced slide still needs:
+- a verified click target;
+- no large redesign, OR independently verified semantic evidence that the same workflow remains supported;
+- a positive narration check;
+- no narration or click naming an old label;
+- the same viewport;
+- every linked slide either proven unaffected or included in the verified repair scope.
+
+`semantic-repair.mjs` defines a strict, pure per-slide review/binding contract. Positive model prose alone is a
+proposal. Execution eligibility additionally requires a separate current-image verifier tied to the exact review,
+script, selected changes, raw input context and both image SHA256s. Unknown/loading/missing-prerequisite states,
+record-dependent empty views and rewrites that change the instructional intent remain blocked.
+`semantic-repair-proof.mjs` checks the current selection and source-step digest; `semantic-repair-assets.mjs`
+rechecks real image/capture bytes before candidate generation. Changing a source file retires the extra proof;
+it does not erase original findings. Large pixels and unchecked narration can be cleared only by a verified
+same-task review, never by relabeling a diagnostic. Changed clicks and required narration edits remain held until
+their corresponding supported changes are prepared.
+
+`codex-review.mjs` is an opt-in image-review adapter, not a default provider switch. It disables shell/hooks/plugins/
+apps/browser tools, ignores user config, passes the prompt on closed stdin and attaches images explicitly. It checks
+the CLI's actual model header and checkpoints by exact prompt/image/schema/model/effort. This cache is not model-cost
+accounting for the weekly budget; invoking the adapter separately can incur model usage.
+
+Collect semantic evidence explicitly (default is zero model calls, author/checker requests both consume the cap):
+
+```sh
+node tools/drift/review-repairs.mjs --source REPLAY_DIR --review APPROVED_REVIEW.json --out NEW_REVIEW_DIR \
+  --codex-bin ABSOLUTE_CODEX_PATH --model gpt-6.1-sol --effort medium --max-model-calls N [--names NAME,...]
+```
+
+The model-only names filter applies after the full approved task inventory; other rows remain pending/not requested.
+Unknown states, errors and cap exhaustion remain pending, not unchanged. A source-pinned flow proof may be attached
+before review, but it only resolves its exact control/alias/postcondition. For the existing role-switch eligibility
+sentence, `role-switch-source.mjs` supplies two full immutable frontend files; both reviewers and candidate asset
+gates verify their hashes. It is UI-switch availability evidence, never a grant of module permissions.
+
+Prepare candidates offline only after collecting the independent review report (multiple reports may be comma-separated):
+
+```sh
+node tools/drift/prepare-repairs.mjs --source REPLAY_DIR --semantic-reviews SEMANTIC_REPORT.json \
+  --out NEW_SCRATCH_DIR [--verified-job-dirs FRESH_CHECKED_JOB_DIR,...] [--flow-proofs VERIFIED_PROOF.json,...]
+```
+
+The complete batch is reselected before any candidate; approved detection pairs must match exactly. Related-slide
+extensions are explicit. The command makes no browser/model/network/post calls, preserves raw input files, emits
+`repair-preparation.json` and scoped local candidates, and never renders or publishes. Supplemental jobs must be
+freshly checked against the same scripts/capture evidence; they are not an escape hatch for editing verdicts.
+Render readiness is a separate prerequisite: the script must match the actual rendered baseline, with original build
+segments and audio available (or an explicitly verified alias). Follow the combined updater's rebaseline/golden/
+preservation checks below; missing source assets must not be silently recreated or replaced with another video.
+
+Execute a finalized visual-only repair locally, without jobs/Slack/Drive/Pylon/TTS:
+
+```sh
+node tools/drift/render-repairs.mjs --preparation PREPARED_BATCH_DIR --name EXACT_NAME \
+  --baseline VERIFIED_REBASELINE_DIR --out NEW_SCRATCH_DIR [--prepare-only]
+```
+
+This reselects the full batch under current policies, checks source-step/PNG/flow bindings and exact candidate scope,
+detects BASIC vs RAQM caption layout from exact available saved caption pixels (`renderer.caption_layout`),
+requires a successful unchanged-source rebaseline, runs BOTH preflights, renders an original-image control and requires
+its MP4 SHA256 to equal the verified rebaseline, then renders the repair through `renderer.drift_update` with
+`--take-mode manifest`. It refuses narration edits. Python dry runs emit `plan.json`, not `verification.json`; a plan
+cannot pass the completed-render gate. Successful `local-repair.json` certifies local preservation, not publication or
+visual/audio inspection. Inspect the actual contact sheet and decoded/transcribed audio before reporting completion.
+Caption-layout detection is a proposal, not a golden substitute: missing cached caption PNGs are disclosed, and the
+full unchanged-image control must reproduce every changed slide. Neither a different font nor a relaxed PSNR gate is
+accepted to make an old baseline pass. An explicit `--font-layout basic|raqm` is available, still gated by that control.
+Never count two script variants sharing one article/Drive identity as independently publishable; missing own renders
+or mismatched narration/metadata require a verified alias or source recovery.
+
+A kept slide that shows the same verified change under its new name is replaced along with the selected slide
+(`extended`, `kept_slide_shows_verified_change`), under the same checks. That applies only to automatic repairs, and
+only when today's capture of the kept slide is healthy. Weekly narration checks also cover slides on a confirmed
+change's page so that extended slides can pass. `selection-replay.mjs` asserts payload = accepted slides +
+extensions.
+
+**Rehearsal (`capture.mjs --rehearse`; weekly default, `weekly.mjs --no-rehearse` to disable).** The click guard
+stops at the first step whose name sounds like a change, but most of those only open or fill a form. With rehearsal
+the replay also:
+- types into fields, picks options/checkboxes and clicks add/new/create/edit openers (links, or buttons outside any
+  form or dialog), and still stops at the save;
+- resumes read-only steps after a stop once a navigate step has freshly loaded a page. Those steps are marked
+  `prerequisiteUnverified`/`resumedAfterStop`; later stops go to `run.laterStops`.
+
+Safety rests on the network layer, not the name check:
+- Read-sounding POSTs are no longer trusted. Only `KNOWN_READ_POSTS`, each verified in hadrius_backend, pass. Before
+  this change POST .../search/email/messages/exports/ and .../saved/ would have been allowed.
+- WebSockets are refused.
+- Once a rehearsal has run, an aborted write stops the replay gracefully at that step (`rehearsal_write_blocked`,
+  needs_fixture). It doesn't fail the video, and weekly records it as `rehearsalBlockedWrites`.
+- "Leave page?" (beforeunload) is accepted, which discards the unsaved form.
+- Tenant names ("Hadrius Sandbox LLC") no longer trip the word "sandbox".
+
+Measured on 8 videos (`out/drift-runs/rehearse-20261101/`): 30 → 50 usable slides of 133, 0 writes attempted.
+Draft test-record list: `out/drift-runs/test-records-draft-20261101.md`.
+
+**Live weekly command:** Scripts are read from `scripts/<name>.script.json` only (the library endpoint is not queried: `/library?name=` caches
 into `scripts/`); `_studio*` names are refused; output must be new and outside the repo (default
 `~/.hermes/cache/scratch/weekly-<stamp>`). `--dry-run` opens no browser and prints the static guard plan.
 
-**Environment gaps are `unverified`, not drift.** A page still showing only a loading indicator after a 15 s extra
-wait (`page_not_loaded`), an error page ("Couldn't load this document", "... not found": `page_error`), or a missing
-target on an empty-state page that the judge also reports as `data_missing` (`record_not_visible`) leave the step
-unverified. Live run 2026-10-29 (`~/.hermes/cache/scratch/weekly-20261029-063944`): the automation account sees 0
+**Environment/data gaps are `unverified`, not drift.** A page still showing only a loading indicator after a 15 s extra
+wait (`page_not_loaded`), an error page ("Couldn't load this document", "... not found": `page_error`), any judge
+`data_missing` result, or an unresolved/missing/ambiguous target without independent confirmation leaves the step
+unverified—even when the screenshot diff is large. A missing locator alone is not proof that a UI control was removed;
+route/flow and narration verdicts remain diagnostic signals only and cannot create a weekly redesign submission without
+the production UI-code gate above. Live run 2026-10-29 (`~/.hermes/cache/scratch/weekly-20261029-063944`): the automation account sees 0
 marketing projects (boards say "You are up to date"/"All projects are archived"; project 40513/40514 pages never load or
-say "Marketing project not found"), so record-dependent steps are unverified; all three Academy marketing videos are
-still `full_rerecord` because the redesigned sidebar changed on every slide (`mixed_old_new_ui`). The automation
-account needs visibility of the recorded records (or job-owned fixtures) before these videos can be verified.
+say "Marketing project not found"), so record-dependent steps are unverified. The old job files labeled all three
+Academy marketing videos `full_rerecord` because the sidebar pixels changed on every slide; those historical labels
+were generated before the production UI-code gate and are not certified. The automation account needs record visibility
+(or job-owned fixtures), and a route-matched production source diff is also required before any redesign is posted.
 `How-to-archive-a-policy` was recorded in company 1048 and fails closed at the tenant check (`tenant_mismatch`), so its
 Archive steps were only stopped by the static plan, not reached live.
 
@@ -581,6 +962,71 @@ rejected: caption-only edits, adding/removing narration, structural changes (add
 non-FX renders, report flags beyond `caption_pos`/`no_captions`, non-ElevenLabs script voices. Needs the baseline's real
 `_build` and a pinned font layout. Not wired into the bridge/extension/publisher; `assemble.py`/`tts.py` unchanged.
 
+## Approval guarantees (read this first)
+
+Nothing publishes by itself. The only path to Drive/Pylon/the shared library is: weekly check -> Slack (or panel)
+**Approve** -> executor. On top of that, every approval is **preview-bound**:
+
+1. **Only certified previews are offered.** `prepareSubmissions` (posting path, `requireCertifiedPreview` default true)
+   posts an `auto_update` only with `details.execution.automaticResult` (rendered + automatically certified before
+   posting) and copies it to `details.preview {path, sha256}`. No preview -> `skip: no_certified_preview`. Internal
+   callers deciding what to *render* (`render-repairs`, `prepare-repairs`, `selection-replay`) pass
+   `requireCertifiedPreview:false`; for them `post` only means "eligible for an automatic repair".
+2. **The preview is built on the live video.** Before posting, the bridge runs `live-check.mjs previewBaseIsLive`: the
+   Drive file's md5 must equal the baseline original the preview was rendered from (frozen copy or `out/<name>/<name>.mp4`
+   with the manifest's sha256). Otherwise `skip: preview_not_built_on_live_video:<reason>` (e.g. after an earlier drift
+   update or a manual re-render). Dry runs report it too.
+3. **The approver can watch it.** `slack.mjs` uploads the MP4 as the FIRST thread reply ("this exact file is what
+   Approve publishes", sha256 prefix) and the message says so; a failed upload posts a "don't approve until you've
+   watched it" warning. The panel's Updates card plays it via `GET /drift/jobs/:id/preview` (streamed only while the
+   bytes still hash to the previewed sha256; Range supported).
+4. **Approve publishes exactly that file.** `executor.requirePreviewBinding` refuses an approved job without
+   `details.preview` or whose preview sha differs from `automaticResult.sha256` (`not_previewed` / `preview_mismatch`),
+   `checkAutomaticVerification` re-hashes the file, and the sha is re-checked right before publish. Render-after-approval
+   is unreachable in production (`deps.unsafeSkipPreviewBindingForTests` exists only for the legacy unit tests).
+5. **Changes automation can't make go to a person.** An automation row `human_required` is posted as `manual_rerecord`
+   (claim / mark re-recorded), never as an approvable `auto_update`.
+6. Publish preflight (Drive md5 = baseline, Pylon has no pending draft/review, shared script unchanged since detection)
+   and rollback stay as described under "Executing approved jobs".
+
+## Capture identity: owner session vs automation accounts (`owner-session.mjs`)
+
+Replays must show the same records as the original recording. The tenant automation accounts (stephen+hstudio /
+stephen+hsandbox, roles=[]) see almost nothing (empty Marketing board, record pages stuck on "Loading..."), which made
+most record-dependent slides unverifiable. `--session owner` (weekly/capture CLI; bridge `body.session`, default
+`DRIFT_CAPTURE_SESSION` in `.env`, currently `owner`) replays as the operator's own Hadrius sign-in borrowed from their
+running Chrome:
+
+- Chrome needs remote debugging on (chrome://inspect/#remote-debugging). The bridge (launchd) can't read Chrome's
+  profile folder (macOS returns EPERM for `DevToolsActivePort`), so it connects to `ws://127.0.0.1:9222/devtools/browser`
+  (`DRIFT_CHROME_DEBUG_PORT` to change), which Chrome accepts without the browser id.
+- One guarded background tab (new window, `/home`, no company_id so the operator's selected company is untouched) is
+  opened, ONLY the short-lived access/id tokens (+LastAuthUser, clockDrift, signInDetails) are read, the tab is closed and
+  the connection dropped. The refresh token and device keys are never copied (Cognito refresh-token rotation would sign
+  the operator's Chrome out). Aborted requests in the borrow tab never leave the browser and are only counted.
+- The replay runs in a separate, non-persistent headless Chromium (tokens only in memory; `session.initScriptArg` is
+  non-enumerable so `run.json` never contains them). `lastCompanyId` is pinned to the tenant on every document load and
+  re-checked on EVERY step (`tenant_mismatch` otherwise).
+- Tokens need >= 17 min validity (one capture is bounded at 15 min). weekly.mjs warms the session between videos,
+  outside the per-video timeout, and waits (up to 20 min) for the app to refresh expiring tokens in the operator's own
+  Chrome. Borrows are cached in memory, so Chrome is touched about once an hour.
+- Fixtures are never run as the operator (`fixtures_require_automation_account`); fixture runs keep the automation
+  accounts. Chrome closed / debugging off -> every video `session_failed: owner_chrome_unreachable` (held, never posted).
+- All capture contexts (both sessions) treat "What's new" announcement pop-ups as dismissed
+  (`suppressAnnouncementsInit`, same localStorage key the app writes).
+
+## Tenant evidence for scripts whose URLs name no company (`tenant-evidence.mjs`)
+
+`node tools/drift/tenant-evidence.mjs --write` (macOS; offline Vision OCR via `ocr-text.swift --roi`) reads the company
+switcher on the first 3 recorded frames. A tenant is recorded in `tenant-evidence.json` only if every URL is on
+app.hadrius.com (staging recordings excluded), >= 2 frames show the same "Hadrius Sandbox 1048"/"Hadrius Academy 1150"
+(name AND id), and no frame shows the other tenant or a STAGING badge. Entries bind the recording id + frame files/sha256;
+`detectScriptTenant` uses them only when no URL names a company (a URL company always wins) and a re-recording
+invalidates them. Rerun it after new recordings, then `node tools/drift/tenants.mjs --allowlist --write`.
+
+API host: the app moved its API from `hadriusapi.com` to `api.hadrius.com` (early Nov 2026). The request guard treats
+both as app hosts; `academy-login.mjs` accepts the user payload from both; fixture specs use `api.hadrius.com`.
+
 ## Slack approval for drift updates (`jobs.mjs`, `slack.mjs`)
 
 Version 1 never updates a video without a human. Each weekly finding becomes a **drift job** in the shared service
@@ -632,7 +1078,7 @@ curl -X POST localhost:8787/drift/weekly/submit -d '{"runDir":"'$HOME'/.hermes/c
 ```
 
 - **Run** (`createWeeklyRunner`): lock file `~/.hermes/cache/scratch/drift-weekly.lock` (pid; stale locks taken over),
-  overall timeout `videos x 16 min + 5 min` (max 12 h; SIGTERM then SIGKILL), child output appended to
+  overall timeout `videos-to-run x 16 min + 5 min` (excluded videos not counted; max 24 h; SIGTERM then SIGKILL), child output appended to
   `~/Library/Logs/kbstudio-drift-weekly.log`. The lock also stores the run + child pid, so a bridge restarted
   mid-run adopts the orphaned child at startup (`recover()`) and submits when it exits. Extra body fields: `captureDryRun` (weekly `--dry-run`, no browser, no
   submit), `noJudge`, `source` (`schedule`/`pr`/`manual`, used in the run dir name `weekly-<stamp>-<source>`).
@@ -656,9 +1102,9 @@ curl -X POST localhost:8787/drift/weekly/submit -d '{"runDir":"'$HOME'/.hermes/c
   `pr-watch.mjs` flags (`runPrWatch` now returns `flaggedScripts`) in `out/_drift-early-queue.json`; every 5 min a batch is
   released once 30 min passed without new flags, max 6 videos/day, each video at most once/day, never while a run is
   active (requeued if the start fails). Early runs submit as dry runs; `DRIFT_PR_TRIGGER=post` makes them live.
-  Non-allowlisted (Sandbox/unknown tenant) names are recorded as `not_in_allowlist`.
-- **Allowlist** `tools/drift/allowlist.json`: the 41 scripts whose `environment.startUrl` has `company_id=1150` (of 216
-  local scripts: 109 are company 1048, 66 have no company). Regenerate after the library changes.
+  Non-allowlisted (unknown-tenant) names are recorded as `not_in_allowlist`.
+- **Allowlist** `tools/drift/allowlist.json` (per tenant, see "Tenants"): 41 Academy (1150) + 109 Sandbox (1048) are run;
+  66 with no company in any URL are listed as `unknown` and skipped. Regenerate with `node tools/drift/tenants.mjs --allowlist --write`.
 - **Schedule**: `tools/drift/schedule/com.kbstudio.drift-weekly.plist.template` rendered by `render-plist.mjs`
   (Monday 06:00 local, `curl` to `/drift/weekly/run` with the allowlist, `dryRun:true` unless `--live`; log
   `~/Library/Logs/kbstudio-drift-weekly.log`). `install.sh` writes `~/Library/LaunchAgents/com.kbstudio.drift-weekly.plist`

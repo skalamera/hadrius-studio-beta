@@ -6,11 +6,12 @@ import assert from 'node:assert/strict';
 import {deflateSync} from 'node:zlib';
 import {
   classifyRequest, resolveTarget, rectDelta, preflight, companyIdOf, signedInFromProbe, normalizeName, isProjectDetailHref, dynamicTextKind,
-  classifyStepMutation, mutatingWord, mutationPlan, DEFAULT_PROFILE, isDriftProfile, captureRun, createRequestGuard, fixtureEvidence, recordRefsFromUrl,
+  classifyStepMutation, mutatingWord, mutatingWords, rehearsalFor, KNOWN_READ_POSTS, mutationPlan, DEFAULT_PROFILE, isDriftProfile, captureRun, createRequestGuard, fixtureEvidence, recordRefsFromUrl,
 } from '../../tools/drift/capture.mjs';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {join,basename} from 'node:path';
 import {tmpdir} from 'node:os';
+import {EXCEPTION_STATUS_LABELS} from '../../tools/drift/status-counter.mjs';
 import {
   decodePng, encodePng, diffImages, ssim, changedRegions, classifyStep, DEFAULT_THRESHOLDS, compareImages,
 } from '../../tools/drift/compare.mjs';
@@ -74,9 +75,11 @@ test('request guard: PostHog feature-flag reads pass (logged); analytics capture
   assert.equal(classifyRequest({method:'POST',url:'https://us.i.posthog.com/decide/?v=3'}).decision,'allow_logged');
   assert.equal(classifyRequest({method:'POST',url:'https://us.i.posthog.com/e/?ip=1'}).decision,'block');
 });
-test('request guard: read-named REST POST is allowed+logged; unknown app POST aborts; third-party POST blocked', () => {
-  assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects/search'}).decision,'allow_logged');
-  assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects/list'}).decision,'allow_logged');
+test('request guard: read-named REST POST is aborted unless verified; unknown app POST aborts; third-party POST blocked', () => {
+  // A read-sounding name is not proof of a read (hadrius_backend has POST .../search/.../exports/), so only the
+  // verified KNOWN_READ_POSTS pass.
+  assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects/search'}).reason,'unverified_read_named_post');
+  assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects/list'}).decision,'abort');
   assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects'}).decision,'abort');
   assert.equal(classifyRequest({method:'POST',url:'https://o123.ingest.sentry.io/api/1/envelope/'}).decision,'block');
   // Blocked third-party POSTs never abort even when a word matches: they are not Hadrius data.
@@ -141,7 +144,12 @@ test('mutation guard: read-only navigation clicks are allowed', () => {
 test('mutation guard: "Actions for <entity>" menu openers check only the action head', () => {
   assert.equal(mutatingWord('Actions for Hadrius Sandbox Advisors - Updated'),null);
   assert.equal(mutatingWord('More actions for Delete-me project'),null);
-  assert.equal(mutatingWord('Hadrius Sandbox Advisors'),'sandbox');
+  // The test tenants' names are data: an entity row named after the tenant is not an action ...
+  assert.equal(mutatingWord('Hadrius Sandbox Advisors'),null);
+  assert.equal(mutatingWord('Hadrius Sandbox LLC RIA 1 out of 3 test runs (33%) Overdue 1 Due soon 1'),null);
+  // ... but the word still guards real controls.
+  assert.equal(mutatingWord('Activate sandbox'),'activate');assert.equal(mutatingWord('Open sandbox'),'sandbox');
+  assert.equal(mutatingWord('Delete Hadrius Sandbox LLC'),'delete');
   assert.equal(classifyStepMutation(click({role:'button',tag:'button',name:'Actions for Hadrius Sandbox Advisors - Updated'})).mutating,false);
 });
 test('mutation guard: word boundaries (Approved/Updated/Marketing do not match)', () => {
@@ -180,10 +188,14 @@ function fakeChromium(pages){
       if(e.includes('aria-busy'))return false;
       if(e.includes('hasPassword'))return {url,hasPassword:false,hasAppNav:true,academy:true,title:'T'};
       if(e.includes('__driftCandidates'))return (pages[url]?.candidates??[]).map((c,i)=>({i,visible:true,cssMatch:false,href:null,bbox:{x:1,y:1,w:10,h:10},...c}));
+      if(e.includes('closed_rows_and_queue_context'))return pages[url]?.closedWitness??{verified:false,reason:'fixture_open_rows'};
+      if(e.includes('review_status_closed'))return pages[url]?.detailWitness??{verified:false,status:'Open'};
       return [];},
-    evaluateHandle:async(_fn,i)=>{const c=(pages[url]?.candidates??[])[i];return {evaluate:async()=>c?{name:c.name,href:c.href??null}:null,
-      click:async()=>{actions.push(['click',c.name]);if(c.to)url=c.to;if(c.fires&&handler)await handler({request:()=>({method:()=>c.fires.method,url:()=>c.fires.url,postData:()=>null,headers:()=>({})}),
-        continue:async()=>actions.push(['net_continue',c.fires.url]),abort:async()=>actions.push(['net_abort',c.fires.url])});},hover:async()=>actions.push(['hover',c.name]),focus:async()=>{}};},
+    evaluateHandle:async(_fn,i)=>{const c=(pages[url]?.candidates??[])[i];
+      const fire=async()=>{if(c.fires&&handler)await handler({request:()=>({method:()=>c.fires.method,url:()=>c.fires.url,postData:()=>null,headers:()=>({})}),
+        continue:async()=>actions.push(['net_continue',c.fires.url]),abort:async()=>actions.push(['net_abort',c.fires.url])});};
+      return {evaluate:async(expr)=>String(expr).includes('exceptions-status-counter-v1')?c?.statusCounter??null:c?{name:c.againName??c.name,href:c.href??null}:null,
+      click:async()=>{actions.push(['click',c.name]);if(c.clickError)throw new Error(c.clickError);if(c.to)url=c.to;await fire();},fill:async(v)=>{actions.push(['fill',c.name,v]);await fire();},hover:async()=>actions.push(['hover',c.name]),focus:async()=>{}};},
   };return page;};
   let handler=null;
   return {actions,launchPersistentContext:async()=>{const p=mkPage();return {route:async(_pat,h)=>{handler=h;},pages:()=>[p],newPage:async()=>p,close:async()=>{}};}};
@@ -380,4 +392,188 @@ test('captureRun: a write that slips past the click guard is aborted at the netw
     assert.equal(run.steps.length,2,'replay stops after the failing step');
     const req=JSON.parse(readFileSync(join(dir,'run','requests.json'),'utf8')).nonGet;assert.equal(req[0].method,'PATCH');assert.equal(req[0].path,'/api/policies/5/');
   }finally{globalThis.fetch=origFetch;}
+});
+
+// ---------- strict read allowlist + rehearsal ----------
+test('network guard: read-sounding POST paths are aborted unless verified in hadrius_backend', () => {
+  const post=(path,mode)=>classifyRequest({method:'POST',url:`https://hadriusapi.com${path}`},{mode});
+  assert.equal(post('/api/company/1048/comms-review/search/email/messages/').reason,'known_read_only_post');
+  assert.equal(post('/api/company/1048/comms-review/search/email/conversations/').reason,'known_read_only_post');
+  // Real write endpoints whose paths contain "search": export and saved search.
+  assert.equal(post('/api/company/1048/comms-review/search/email/messages/exports/').decision,'abort');
+  assert.equal(post('/api/company/1048/comms-review/search/email/messages/saved/').reason,'unverified_read_named_post');
+  assert.equal(post('/api/company/1/watch-list/').reason,'unverified_read_named_post');
+  assert.equal(post('/api/company/1150/library/audience/compute/').reason,'known_read_only_post');
+  assert.equal(post('/api/users/sign-in-lookup/','auto_login').reason,'sign_in_lookup');
+  assert.equal(post('/api/users/sign-in-lookup/','recapture').decision,'abort','never during a replay');
+  assert.ok(KNOWN_READ_POSTS.length>=2);
+});
+test('guard tolerant mode: an abort is still aborted and logged but counted instead of failing the video', () => {
+  const g=createRequestGuard();g.setTolerant(true);
+  assert.equal(g.decide({method:'PATCH',url:'https://hadriusapi.com/api/policies/5/'}).decision,'abort');
+  assert.equal(g.failure(),null);assert.equal(g.tolerated(),1);assert.equal(g.requests[0].tolerated,true);
+  g.setTolerant(false);g.decide({method:'PATCH',url:'https://hadriusapi.com/api/policies/6/'});assert.match(g.failure(),/policies\/6/);
+});
+test('rehearsalFor: opens and fills forms, never the save', () => {
+  const step=(action,target,extra={})=>({index:1,action,url:`${APP}/x`,target,...extra});
+  const el=(o)=>({role:'button',tag:'button',name:'x',inForm:false,inDialog:false,submits:false,...o});
+  assert.deepEqual(rehearsalFor(step('click',{name:'Create provider'}),el({role:'link',name:'Create provider',href:`${APP}/im/providers/new`})),{kind:'open',reason:'name_matches:create'});
+  assert.equal(rehearsalFor(step('click',{name:'+ New document'}),el({name:'+ New document'})).kind,'open');
+  assert.equal(rehearsalFor(step('click',{name:'Edit'}),el({name:'Edit'})).kind,'open');
+  // The same words inside a form or dialog are the save.
+  assert.equal(rehearsalFor(step('click',{name:'Create Provider'}),el({name:'Create Provider',inForm:true})),null);
+  assert.equal(rehearsalFor(step('click',{name:'Create permissions profile'}),el({name:'Create permissions profile',inDialog:true})),null);
+  assert.equal(rehearsalFor(step('click',{name:'Add'}),el({name:'Add',submits:true})),null);
+  // Any other guarded word, or a mixed name, stays a stop.
+  for(const n of ['Save','Submit','Publish','Deactivate employee','Export search','Create and publish','Add and send','Delete'])
+    assert.equal(rehearsalFor(step('click',{name:n}),el({name:n})),null,n);
+  // Typing into a search/text field; not into a field whose name is itself an action.
+  assert.equal(rehearsalFor(step('type',{name:'Search employees...',role:'textbox'},{value:'Stephen Test'}),el({role:'textbox',tag:'input',name:'Search employees...'})).kind,'type');
+  assert.equal(rehearsalFor(step('type',{name:'Search'},{value:null}),el({role:'textbox',tag:'input',name:'Search'})),null,'no recorded value');
+  assert.equal(rehearsalFor(step('type',{name:'Delete reason'},{value:'x'}),el({role:'textbox',tag:'input',name:'Delete reason'})),null);
+  assert.equal(rehearsalFor(step('upload',{name:'Upload file'}),el({name:'Upload file',fileInput:true})),null);
+  // Picking an option / ticking a box; never a switch.
+  assert.equal(rehearsalFor(step('click',{name:'Stephen Skalamera 111774',role:'option'}),el({role:'option',name:'Stephen Skalamera 111774'})).kind,'select');
+  assert.equal(rehearsalFor(step('click',{name:'',role:'checkbox'}),el({role:'checkbox',name:'Select row'})).kind,'select');
+  assert.equal(rehearsalFor(step('click',{name:'Email alerts',role:'switch'}),el({role:'switch',name:'Email alerts'})),null);
+  assert.equal(rehearsalFor(step('press',null,{key:'Enter'}),el({})),null);
+  assert.equal(rehearsalFor(step('click',{name:'Create rule'}),null),null,'needs today\u2019s element resolved by name');
+  assert.deepEqual(mutatingWords('Create and publish'),['create','publish']);
+});
+test('captureRun --rehearse: walks through the form, stops at the save, an attempted autosave stops gracefully', async () => {
+  const dir=mkdtempSync(join(tmpdir(),'drift-cap-'));const prof=join(dir,'.browser-profile-drift');mkdirSync(prof);
+  const L=`${APP}/im/providers?company_id=1150`,N=`${APP}/im/providers/new`;
+  const r=(i,o)=>({index:i,url:o.url??N,route:new URL(o.url??N).pathname+new URL(o.url??N).search,media:{pre:`${i}.png`},...o});
+  const script={name:'f',environment:{startUrl:L},recording:{id:'r'},steps:[
+    r(0,{action:'navigate',url:L,value:L}),
+    r(1,{action:'click',url:L,target:{role:'link',tag:'a',name:'Create provider'}}),
+    r(2,{action:'type',target:{role:'textbox',tag:'input',name:'Provider name'},value:'Acme'}),
+    r(3,{action:'click',target:{role:'option',tag:'div',name:'Stephen Skalamera 111774'}}),
+    r(4,{action:'click',target:{role:'button',tag:'button',name:'Create Provider'}}),
+    r(5,{action:'click',target:{role:'button',tag:'button',name:'Back'}})]};
+  const sp=join(dir,'s.json');writeFileSync(sp,JSON.stringify(script));
+  const pages={[L]:{candidates:[{role:'link',tag:'a',name:'Create provider',href:N,to:N}]},
+    [N]:{candidates:[{role:'textbox',tag:'input',name:'Provider name',inForm:true},{role:'option',tag:'div',name:'Stephen Skalamera 111774'},{role:'button',tag:'button',name:'Create Provider',inForm:true,submits:true},{role:'button',tag:'button',name:'Back'}]}};
+  const origFetch=globalThis.fetch;globalThis.fetch=async()=>({json:async()=>({running:false})});
+  const lim={stepMs:5000,totalMs:30000,settleMs:0,idleMs:0,manualLoginMs:0};
+  try{
+    const fc=fakeChromium(pages);
+    const run=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run'),log:()=>{},chromium:fc,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),limits:lim,rehearse:true});
+    assert.deepEqual(run.rehearsal.performed,[1,2,3]);
+    assert.deepEqual(fc.actions.filter(a=>['click','fill'].includes(a[0])).map(a=>a.slice(0,2).join(':')),['click:Create provider','fill:Provider name','click:Stephen Skalamera 111774']);
+    assert.equal(run.mutationStop.index,4,'the submit button is never pressed');
+    assert.ok([0,1,2,3,4].every(i=>run.steps[i].screenshot),'slides through the save are captured');
+    assert.equal(run.steps[5].mutationGuard.status,'needs_fixture');
+    // Without --rehearse the old stop applies at the first guarded step.
+    const fc2=fakeChromium(pages);
+    const old=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run-old'),log:()=>{},chromium:fc2,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),limits:lim});
+    assert.equal(old.mutationStop.index,1);assert.equal(old.rehearsal,undefined);
+    // A field that autosaves: the write is aborted, the video is NOT failed, the replay stops there.
+    const auto={...pages,[N]:{candidates:[{...pages[N].candidates[0],fires:{method:'PATCH',url:'https://hadriusapi.com/api/im/providers/draft/1/'}},...pages[N].candidates.slice(1)]}};
+    const fc3=fakeChromium(auto);
+    const w=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run-auto'),log:()=>{},chromium:fc3,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),limits:lim,rehearse:true});
+    assert.ok(fc3.actions.some(a=>a[0]==='net_abort'));assert.ok(!fc3.actions.some(a=>a[0]==='net_continue'&&/providers/.test(a[1])));
+    assert.equal(w.aborted,null);assert.notEqual(w.status,'aborted');
+    assert.equal(w.mutationStop.reason,'rehearsal_write_blocked');assert.equal(w.mutationStop.index,2);
+    assert.equal(w.steps[2].mutationGuard.status,'needs_fixture','the step where the save was attempted is not evidence');
+    assert.ok(!fc3.actions.some(a=>a[0]==='click'&&a[1]==='Stephen Skalamera 111774'),'nothing after the attempted save is performed');
+  }finally{globalThis.fetch=origFetch;}
+});
+
+test('captureRun --rehearse: after a stop, a fresh page load resumes read-only steps (marked prerequisiteUnverified)', async () => {
+  const dir=mkdtempSync(join(tmpdir(),'drift-cap-'));const prof=join(dir,'.browser-profile-drift');mkdirSync(prof);
+  const E=`${APP}/employees/1`,D=`${APP}/people?company_id=1150`,I=`${APP}/people?company_id=1150&status=inactive`;
+  const r=(i,url,o)=>({index:i,url,route:new URL(url).pathname+new URL(url).search,media:{pre:`${i}.png`},...o});
+  const script={name:'f',environment:{startUrl:E},recording:{id:'r'},steps:[
+    r(0,E,{action:'navigate',value:E}),
+    r(1,E,{action:'click',target:{role:'button',tag:'button',name:'Deactivate employee'}}),
+    r(2,E,{action:'click',target:{role:'button',tag:'button',name:'Confirm'}}),
+    r(3,D,{action:'navigate',value:D}),
+    r(4,D,{action:'click',target:{role:'button',tag:'button',name:'Inactive'}}),
+    r(5,I,{action:'click',target:{role:'button',tag:'button',name:'Archive'}}),
+    r(6,I,{action:'click',target:{role:'button',tag:'button',name:'All'}})]};
+  const sp=join(dir,'s.json');writeFileSync(sp,JSON.stringify(script));
+  const pages={[E]:{candidates:[{role:'button',tag:'button',name:'Deactivate employee'},{role:'button',tag:'button',name:'Confirm'}]},
+    [D]:{candidates:[{role:'button',tag:'button',name:'Inactive',to:I}]},[I]:{candidates:[{role:'button',tag:'button',name:'Archive'},{role:'button',tag:'button',name:'All'}]}};
+  const origFetch=globalThis.fetch;globalThis.fetch=async()=>({json:async()=>({running:false})});
+  const lim={stepMs:5000,totalMs:30000,settleMs:0,idleMs:0,manualLoginMs:0};
+  try{
+    const fc=fakeChromium(pages);
+    const run=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run'),log:()=>{},chromium:fc,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),limits:lim,rehearse:true});
+    assert.deepEqual(fc.actions.filter(a=>a[0]==='click').map(a=>a[1]),['Inactive'],'Deactivate/Confirm/Archive never clicked');
+    assert.equal(run.mutationStop.index,1);assert.deepEqual(run.laterStops.map(s=>[s.index,s.reason]),[[5,'name_matches:archive']]);
+    assert.equal(run.steps[2].mutationGuard.status,'needs_fixture');
+    assert.deepEqual(run.rehearsal.resumedAt,[3]);
+    assert.ok(run.steps[4].screenshot&&run.steps[4].prerequisiteUnverified&&run.steps[4].resumedAfterStop===1,'resumed read-only click');
+    assert.equal(run.steps[6].mutationGuard.status,'needs_fixture','a second stop is respected');
+    // Without rehearsal the old behaviour holds: nothing after the stop except navigates.
+    const fc2=fakeChromium(pages);
+    const old=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run-old'),log:()=>{},chromium:fc2,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),limits:lim});
+    assert.equal(fc2.actions.filter(a=>a[0]==='click').length,0);assert.equal(old.steps[4].mutationGuard.status,'needs_fixture');
+  }finally{globalThis.fetch=origFetch;}
+});
+test('resolveTarget: same exact name with different markup resolves only when unique, and is reported', () => {
+  const t={role:'button',tag:'a',name:'Use as employee'};
+  const r=resolveTarget(t,[{role:'link',tag:'a',name:'Use as employee',href:`${APP}/employee`,visible:true}]);
+  assert.equal(r.status,'resolved');assert.equal(r.method,'name_any_role');assert.match(r.notes[0],/role_changed: recorded=button\/a today=link\/a/);
+  assert.equal(resolveTarget(t,[{role:'link',tag:'a',name:'Use as employee',visible:true},{role:'button',tag:'button',name:'Use as employee',visible:true}]).status,'missing','two candidates: not guessed');
+  assert.equal(resolveTarget(t,[{role:'link',tag:'a',name:'Use as employees',visible:true}]).status,'missing','exact name only');
+});
+async function closedReadFixture({candidates=[],witness={verified:false},detailWitness={verified:false,status:'Open'}}={}){
+  const dir=mkdtempSync(join(tmpdir(),'closed-read-fixture-')),prof=join(dir,'.browser-profile-drift');mkdirSync(prof);
+  const L=`${APP}/account-surveillance?company_id=1150`,D=`${APP}/account-surveillance/rules/violations/999999?company_id=1150&source=overview&filters=CLOSED`;
+  const script={name:'closed-read-offline-fixture',environment:{startUrl:L},recording:{id:'fixture'},steps:[
+    {index:0,action:'navigate',url:L,value:L},
+    {index:1,action:'click',url:L,target:{role:'button',tag:'button',name:'Closed 5',label:'Exceptions'}},
+    {index:2,action:'click',url:L,target:{role:'link',tag:'a',name:'FLAG-TESTONLY',css:'tbody a'}},
+    {index:3,action:'navigate',url:D,value:D},
+    {index:4,action:'click',url:D,target:{role:'button',tag:'button',name:'Reopen exception'}}]};
+  const sp=join(dir,'script.json');writeFileSync(sp,JSON.stringify(script));
+  const fc=fakeChromium({[L]:{candidates,closedWitness:witness},[D]:{candidates:[{role:'button',tag:'button',name:'Reopen exception'}],detailWitness}});
+  const original=globalThis.fetch;globalThis.fetch=async()=>({json:async()=>({running:false})});
+  try{return {fc,run:await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run'),chromium:fc,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),log:()=>{},
+    limits:{stepMs:5000,totalMs:30000,settleMs:0,idleMs:0,manualLoginMs:0,loadingWaitMs:0}})};}finally{globalThis.fetch=original;}
+}
+const closedChip=(count='4')=>({role:'button',tag:'button',name:`Closed ${count}`,statusCounter:{kind:'exceptions-status-counter-v1',label:'Closed',count,labels:[...EXCEPTION_STATUS_LABELS]}});
+test('captureRun: failed Closed prerequisite blocks dependent clicks and remains unverified after explicit detail navigation',async()=>{
+  const {run,fc}=await closedReadFixture({candidates:[{role:'link',tag:'a',name:'FLAG-TESTONLY',cssMatch:true}]});
+  assert.equal(run.prerequisiteStop.index,1);assert.deepEqual(fc.actions.filter(a=>a[0]==='click'),[]);
+  assert.equal(run.steps[2].readGuard.status,'blocked_by_prerequisite');assert.equal(run.steps[2].screenshot,undefined);
+  assert.ok(run.steps[3].screenshot);assert.equal(run.steps[3].prerequisiteUnverified,true);assert.equal(run.steps[4].readGuard.status,'blocked_by_prerequisite');
+});
+test('captureRun: resolving the counter is not proof that Closed rows actually loaded',async()=>{
+  const {run,fc}=await closedReadFixture({candidates:[closedChip(),{role:'link',tag:'a',name:'FLAG-TESTONLY'}]});
+  assert.deepEqual(fc.actions.filter(a=>a[0]==='click').map(a=>a[1]),['Closed 4']);assert.equal(run.steps[1].statusFilter.verified,false);assert.equal(run.prerequisiteStop.index,1);
+});
+test('captureRun: duplicate Closed counters cannot be geometry-disambiguated into a click',async()=>{
+  const {run,fc}=await closedReadFixture({candidates:[closedChip('5'),closedChip('4')]});
+  assert.equal(run.steps[1].target.status,'ambiguous');assert.equal(run.steps[1].target.method,'status_counter');assert.equal(run.steps[1].target.disambiguation,undefined);
+  assert.deepEqual(fc.actions.filter(a=>a[0]==='click'),[]);
+});
+test('captureRun: a verified Closed queue does not bind a different row via CSS or clear a missing donor on navigation',async()=>{
+  const {run,fc}=await closedReadFixture({candidates:[closedChip(),{role:'link',tag:'a',name:'FLAG-OTHERTEST',cssMatch:true}],witness:{verified:true,rows:1,statuses:['Resolved']}});
+  assert.deepEqual(fc.actions.filter(a=>a[0]==='click').map(a=>a[1]),['Closed 4']);assert.equal(run.steps[1].statusFilter.verified,true);
+  assert.equal(run.prerequisiteStop.index,2);assert.equal(run.steps[3].prerequisiteUnverified,true);assert.equal(run.steps[4].readGuard.status,'blocked_by_prerequisite');
+});
+test('captureRun: same record path with OPEN queue context cannot satisfy the CLOSED task',async()=>{
+  const wrong=`${APP}/account-surveillance/rules/violations/999999?company_id=1150&source=overview&filters=OPEN`;
+  const {run}=await closedReadFixture({candidates:[closedChip(),{role:'link',tag:'a',name:'FLAG-TESTONLY',href:wrong,to:wrong}],witness:{verified:true,rows:1,statuses:['Resolved']}});
+  assert.equal(run.prerequisiteStop?.index,2);assert.equal(run.steps[3].prerequisiteUnverified,true);assert.equal(run.steps[4].readGuard.status,'blocked_by_prerequisite');
+});
+test('captureRun: a changed or failed donor link cannot lose its prerequisite hold through direct navigation',async()=>{
+  for(const failure of [{againName:'FLAG-RENAMEDTEST'},{clickError:'offline fixture click timeout'}]){
+    const {run}=await closedReadFixture({candidates:[closedChip(),{role:'link',tag:'a',name:'FLAG-TESTONLY',...failure}],witness:{verified:true,rows:1,statuses:['Resolved']}});
+    assert.equal(run.prerequisiteStop?.index,2);assert.equal(run.steps[3].prerequisiteUnverified,true);assert.equal(run.steps[4].readGuard.status,'blocked_by_prerequisite');
+  }
+});
+test('captureRun: CLOSED queue URL and a Resolved list row cannot replace actual closed-detail state proof',async()=>{
+  const detail=`${APP}/account-surveillance/rules/violations/999999?company_id=1150&source=overview&filters=CLOSED`;
+  const {run}=await closedReadFixture({candidates:[closedChip(),{role:'link',tag:'a',name:'FLAG-TESTONLY',href:detail,to:detail}],witness:{verified:true,rows:1,statuses:['Resolved']}});
+  assert.equal(run.prerequisiteStop?.index,2);assert.equal(run.steps[3].prerequisiteUnverified,true);assert.equal(run.steps[4].readGuard.status,'blocked_by_prerequisite');
+});
+test('captureRun: healthy verified CLOSED record proceeds read-only and still stops before Reopen',async()=>{
+  const detail=`${APP}/account-surveillance/rules/violations/999999?company_id=1150&source=overview&filters=CLOSED`;
+  const {run,fc}=await closedReadFixture({candidates:[closedChip(),{role:'link',tag:'a',name:'FLAG-TESTONLY',href:detail,to:detail}],witness:{verified:true,rows:1,statuses:['Resolved']},detailWitness:{verified:true,status:'Closed'}});
+  assert.equal(run.prerequisiteStop,undefined);assert.equal(run.steps[3].prerequisiteUnverified,undefined);assert.equal(run.steps[3].closedRecord.verified,true);
+  assert.deepEqual(fc.actions.filter(a=>a[0]==='click').map(a=>a[1]),['Closed 4','FLAG-TESTONLY']);assert.equal(run.mutationStop.index,4);
 });

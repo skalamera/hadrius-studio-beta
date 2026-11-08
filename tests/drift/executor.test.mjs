@@ -82,6 +82,9 @@ function world({ verificationOk = true, pylon = {}, drive = {} } = {}) {
     slackThreadReply: async (j, text) => { svc.notes.push(`[direct] ${text}`); },
     undoUrl: (j) => `https://pylon-webhook-service.vercel.app/api/studio-open?job=${j.id}`,
     log: (m) => logs.push(m),
+    // These scenarios exercise the legacy render/publish/rollback machinery; production requires a preview binding
+    // (see the 'preview-bound approval' tests below).
+    unsafeSkipPreviewBindingForTests: true,
   };
   return { root, repo, name, job, svc, deps, drive: d, pylon: p, lib, renders, base, weekly, rebaselineDir };
 }
@@ -229,4 +232,78 @@ test('poll executes approved jobs one at a time and stops when busy', async () =
   w.deps.isBusy = () => false;
   assert.equal((await pollOnce(w.deps))[0].status, 'published');
   assert.ok(md5);
+});
+
+test('pre-certified automaticResult publishes directly without re-rendering or requiring out/<name>/_build', async () => {
+  const w = world();
+  fs.rmSync(path.join(w.repo, 'out', w.name, '_build'), { recursive: true });
+  const resultDir = path.join(w.root, 'auto-result');
+  fs.mkdirSync(path.join(resultDir, 'repair'), { recursive: true });
+  const candBytes = Buffer.from('precertified-candidate-mp4');
+  const candPath = path.join(resultDir, 'candidate.mp4');
+  fs.writeFileSync(candPath, candBytes);
+  const { cand: cs } = scripts();
+  const candScriptPath = path.join(resultDir, 'repair', 'candidate-final.script.json');
+  fs.writeFileSync(candScriptPath, JSON.stringify(cs));
+  const verPath = path.join(resultDir, 'repair', 'verification.json');
+  fs.writeFileSync(verPath, JSON.stringify({
+    ok: true, source_unchanged: true, candidate: '/cleaned-scratch/candidate.mp4', candidate_sha256: sha(candBytes),
+    candidate_script: '/cleaned-scratch/candidate-final.script.json', elevenlabs_characters: 0,
+    plan: { frames: { base: 810, new: 810 }, cell_map: [{ action: 'reuse', new: [0, 650] }, { action: 'render', new: [650, 810] }] },
+  }));
+  const qaPath = path.join(resultDir, 'automatic-qa.json');
+  fs.writeFileSync(qaPath, JSON.stringify({ ok: true }));
+  const bmHash = sha(fs.readFileSync(path.join(w.rebaselineDir, 'baseline-manifest.json')));
+  fs.writeFileSync(path.join(resultDir, 'result.json'), JSON.stringify({ schema: 1, baselineManifestHash: bmHash, qa: { ok: true } }));
+  const candRecDir = path.join(w.root, 'cand-rec', 'drift-rec-2');
+  fs.mkdirSync(candRecDir, { recursive: true });
+  fs.writeFileSync(path.join(candRecDir, 'step_2.png'), PNG);
+
+  w.job.details.execution.candidateRecordingsDir = candRecDir;
+  w.job.details.execution.automaticResult = {
+    candidate: candPath, sha256: sha(candBytes), verification: verPath, automaticQa: qaPath, baselineDir: w.rebaselineDir,
+  };
+  w.deps.render = async () => { throw new Error('must not re-render pre-certified automaticResult'); };
+  w.job.details.preview = { path: candPath, sha256: sha(candBytes) };
+  delete w.deps.unsafeSkipPreviewBindingForTests; // the real, preview-bound path
+
+  const r = await executeJob(w.job, w.deps);
+  assert.equal(r.status, 'published', JSON.stringify(r));
+  assert.equal(w.renders.length, 0);
+  assert.equal(w.drive.head().content.toString(), 'precertified-candidate-mp4');
+  assert.ok(w.svc.notes.some((n) => /Pre-certified candidate verified/.test(n)));
+});
+
+test('preview-bound approval: an approved job without a certified preview is refused before anything renders or publishes', async () => {
+  const w = world();
+  delete w.deps.unsafeSkipPreviewBindingForTests;
+  w.deps.render = async () => { throw new Error('must not render an unpreviewed job'); };
+  const r = await executeJob(w.job, w.deps);
+  assert.equal(r.status, 'failed'); assert.equal(r.reason, 'not_previewed');
+  assert.equal(w.renders.length, 0); assert.equal(w.drive.head().content.toString(), 'baseline-video');
+  assert.ok(w.svc.notes.some((n) => /not_previewed/.test(n) && /Nothing was changed/.test(n)));
+});
+
+test('preview-bound approval: previewed sha differing from the certified result is refused', async () => {
+  const w = world();
+  delete w.deps.unsafeSkipPreviewBindingForTests;
+  w.job.details.execution.automaticResult = { candidate: '/x/candidate.mp4', sha256: 'a'.repeat(64), verification: '/x/v.json' };
+  w.job.details.preview = { path: '/x/candidate.mp4', sha256: 'b'.repeat(64) };
+  const r = await executeJob(w.job, w.deps);
+  assert.equal(r.status, 'failed'); assert.equal(r.reason, 'preview_mismatch');
+  assert.equal(w.drive.head().content.toString(), 'baseline-video');
+});
+
+test('preview-bound approval: a certified file whose bytes changed after posting is refused (hash re-checked)', async () => {
+  const w = world();
+  delete w.deps.unsafeSkipPreviewBindingForTests;
+  const dir = path.join(w.root, 'auto'); fs.mkdirSync(dir);
+  const cand = path.join(dir, 'candidate.mp4'); fs.writeFileSync(cand, 'tampered-bytes');
+  const ver = path.join(dir, 'verification.json');
+  fs.writeFileSync(ver, JSON.stringify({ ok: true, source_unchanged: true, candidate: cand, candidate_sha256: 'c'.repeat(64), candidate_script: cand }));
+  w.job.details.execution.automaticResult = { candidate: cand, sha256: 'c'.repeat(64), verification: ver };
+  w.job.details.preview = { path: cand, sha256: 'c'.repeat(64) };
+  const r = await executeJob(w.job, w.deps);
+  assert.equal(r.status, 'failed'); assert.equal(r.reason, 'candidate_hash_mismatch');
+  assert.equal(w.drive.head().content.toString(), 'baseline-video');
 });

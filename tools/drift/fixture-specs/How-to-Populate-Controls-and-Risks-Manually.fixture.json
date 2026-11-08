@@ -3,7 +3,7 @@
   "video": "How-to-Populate-Controls-and-Risks-Manually",
   "labelKey": "populate-risks-controls",
   "companyId": 1150,
-  "apiHost": "hadriusapi.com",
+  "apiHost": "api.hadrius.com",
   "reviewed": {
     "by": "fixtures subagent (Hermes), live-verified",
     "at": "2026-10-29",

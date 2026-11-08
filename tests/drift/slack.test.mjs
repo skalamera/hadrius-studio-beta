@@ -164,3 +164,33 @@ test('submitDriftJob: posts once; a re-submitted (duplicate) job is not re-poste
   const none = await submitDriftJob({ payload: { ...payload, fingerprint: 'fp1-other' }, jobs, slack: null });
   assert.equal(none.slack.skipped, 'not_configured'); assert.equal(none.created, true);
 });
+
+test('preview-bound approval: message says Approve publishes exactly the previewed file; the MP4 is the first thread upload', async () => {
+  const sha = 'd'.repeat(64);
+  const job = { ...autoJob(), details: { ...autoJob().details, preview: { path: '/results/Vid/candidate.mp4', sha256: sha } } };
+  const msg = buildDriftMessage(job);
+  const text = JSON.stringify(msg.blocks);
+  assert.match(text, /Approve publishes exactly that file/); assert.match(text, /dddddddddddd/);
+  assert.equal(msg.video.path, '/results/Vid/candidate.mp4'); assert.equal(msg.video.sha256, sha);
+  const { calls, client } = fakeSlack();
+  const files = { '/results/Vid/candidate.mp4': 'MP4BYTES', '/rec/step_b.png': 'B', '/run/today_1.png': 'T1', '/rec/step_c.png': 'C', '/run/today_2.png': 'T2' };
+  const r = await postDriftJob({ job, slack: client, jobs: { attachSlack: async () => ({}) }, readFile: async (p) => Buffer.from(files[p]) });
+  const completes = calls.filter((c) => c.method === 'files.completeUploadExternal').map((c) => new URLSearchParams(c.body));
+  assert.match(completes[0].get('initial_comment'), /this exact file is what Approve publishes/);
+  assert.equal(completes[0].get('thread_ts'), r.ts);
+  assert.equal(r.preview.bytes, 'MP4BYTES'.length); assert.deepEqual(r.errors, []);
+});
+
+test('preview-bound approval: a preview that cannot be attached produces a do-not-approve warning in the thread', async () => {
+  const job = { ...autoJob(), details: { ...autoJob().details, changes: [], preview: { path: '/gone/candidate.mp4', sha256: 'e'.repeat(64) } } };
+  const { calls, client } = fakeSlack();
+  const r = await postDriftJob({ job, slack: client, jobs: { attachSlack: async () => ({}) }, readFile: async () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); } });
+  assert.deepEqual(r.errors.map((e) => e.stage), ['preview']);
+  const warn = calls.filter((c) => c.method === 'chat.postMessage').find((c) => c.body.thread_ts === r.ts);
+  assert.match(warn.body.text, /Don't approve until you've watched it/);
+});
+
+test('manual re-record and legacy jobs carry no preview block', () => {
+  assert.doesNotMatch(JSON.stringify(buildDriftMessage(autoJob()).blocks), /Watch before approving/);
+  assert.equal(buildDriftMessage(autoJob()).video, null);
+});

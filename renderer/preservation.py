@@ -7,8 +7,11 @@ import subprocess
 from pathlib import Path
 
 
-def run(*args):
-    return subprocess.check_output([str(x) for x in args], stderr=subprocess.PIPE, timeout=60)
+def run(*args, timeout=600):
+    # Full native-frame/PCM checks share this runner with metadata probes. They
+    # can exceed 60s under concurrent rendering; keep a bounded media budget
+    # without sampling frames or swallowing TimeoutExpired.
+    return subprocess.check_output([str(x) for x in args], stderr=subprocess.PIPE, timeout=timeout)
 
 
 def file_hash(path):

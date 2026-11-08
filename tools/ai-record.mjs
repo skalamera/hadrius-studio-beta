@@ -889,7 +889,8 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     // Always record with the app sidebar expanded. Its collapsed state persists in localStorage
     // ("sidebar_minimized", packages/ui expanded_state_provider.tsx), and an icon-only sidebar hides
     // every subtab label (Risks, Controls, ...), so the agent concluded those pages didn't exist.
-    await ctx.addInitScript(() => { try { localStorage.setItem('sidebar_minimized', 'false'); } catch (_) {} });
+    // Marketing's redesigned project page is opt-in per browser ("new-mr_project-experience"); record the new UI.
+    await ctx.addInitScript(() => { try { localStorage.setItem('sidebar_minimized', 'false'); localStorage.setItem('new-mr_project-experience', 'true'); } catch (_) {} });
     // Closing the context makes every in-flight Playwright call reject immediately, so a cancel
     // lands mid-action instead of waiting for the next loop turn.
     signal?.addEventListener('abort', onAbort, { once: true });

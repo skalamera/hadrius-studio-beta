@@ -1,0 +1,1792 @@
+{
+  "schema": 1,
+  "method": "recorded-company-switcher-ocr-v1",
+  "generatedAt": "2026-11-08T19:51:37.877Z",
+  "roi": "0,0,0.2,0.16",
+  "entries": {
+    "Adding-Tests-to-the-Compliance-Calendar": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "edfc6619-8ed0-4735-93b9-facc3d05fb09",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_mureq70jwnxh.png",
+          "sha256": "d9687818741cf6e7ada249fc0354000afdc038c937c648a7297050e534df9097",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "gg Overview"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mureq75mxivh.png",
+          "sha256": "31794a038c643d25bd5ca414890f21bb689163e9d61ee664b1c53940f0a66994",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "gg Overview"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mureq9cnzly6.png",
+          "sha256": "8f5b85334655e34a94d6518bbe9bc662b6a897c4f49e3631296cd97dcf77d3c0",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "gg Overview"
+          ]
+        }
+      ]
+    },
+    "Assigning-Disclosures": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "8391bf30-75c9-481b-8619-ffd0cabb022e",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_71c76a72-54f9-4f9a-8d21-3a0aa177e6ff.png",
+          "sha256": "f89f16e4879e0798d969c208901510fd0207601aac84d879b1d5549ab0e36a66",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mucw9mvf038o.png",
+          "sha256": "9b1717c141e6adaa2408d090e31e2f43645a14c67840a2b013fe491ab6b687ce",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mucw9nwnbybq.png",
+          "sha256": "47331381fc336fcf07ef86c578d990f7bc684a6a74651ab7111292bb282791fa",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        }
+      ]
+    },
+    "Auto-Approving-Denying-Trade-Pre-Clearance-Disclosures": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "79d7b21a-4f8a-4dc3-88aa-8cb19a2a52c0",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_61ad8716-13d7-4ca2-a1b6-85145f1be100.png",
+          "sha256": "2ed352d0fad560340de3e8ac0f7523d21ddaf24a31c1c82f786255d9c5e9a0a7",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "& Ack Hadriuc"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mv0f4tejor3g.png",
+          "sha256": "2ed352d0fad560340de3e8ac0f7523d21ddaf24a31c1c82f786255d9c5e9a0a7",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "& Ack Hadriuc"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mv0f4yk69wc3.png",
+          "sha256": "4e20f774de68e3d49f148075838d8a02e85f58c5dd35917d3773d284a02f92f4",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "& Ack Hadriuc"
+          ]
+        }
+      ]
+    },
+    "Auto-Approving-Gift-Entertainment-Disclosures": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "59f7daaa-a1dc-4de3-85fe-874ac1465472",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_2e9d64de-b557-49f3-9a0b-bd5a55485cfb.png",
+          "sha256": "32282cb6a6d5f61be18e1490403131cda6e2c131418c4b18d8dba61f3794a959",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "& Ack Hadriuc"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mv0g1tuv8p15.png",
+          "sha256": "32282cb6a6d5f61be18e1490403131cda6e2c131418c4b18d8dba61f3794a959",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "& Ack Hadriuc"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mv0g1xnba7tx.png",
+          "sha256": "5d61c65da79df40ca8d2e6893afe2174d2a3973c10e49c1e492f21ecb8228864",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "& Ack Hadriuc"
+          ]
+        }
+      ]
+    },
+    "Building-a-Certification-Template": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "ecee3ccf-47b7-41f8-a107-2662de774b7a",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_mugkgwf0soo2.png",
+          "sha256": "d940f983cf5588593274637ef5dab34448bb82b590532ce340231c6c530b9221",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gö Overview",
+            "1150",
+            "CeI",
+            "Cam",
+            "Q:"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mugkgya351id.png",
+          "sha256": "8824d5d6f96f89c4a01b670350621c625dc6a1b58a9e048ed4e32cd29f3de90d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gö Overview",
+            "1150",
+            "CeI",
+            "Cam",
+            "Q:"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mugkgygocla5.png",
+          "sha256": "942e3ac8f3ad4468398ee9b52b0aac54389d8da07c02ef2adca2b21fc981456f",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gö Overview",
+            "1150",
+            "Ten",
+            "Reus"
+          ]
+        }
+      ]
+    },
+    "Configuring-Reviewers-and-Review-Forms": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "51f4cdd6-20e4-409e-8321-5e0b42afaa73",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_feb00f53-30d9-406f-a3b6-156e26122210.png",
+          "sha256": "a0b8d56b99decd2a84ff42391c258628306002b104b0ac0a305abf35c160079c",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150 ¢",
+            "Bå Overview",
+            "g People directory",
+            "Settings",
+            "E Product",
+            "E Produc"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muwuwcmpbrew.png",
+          "sha256": "a0b8d56b99decd2a84ff42391c258628306002b104b0ac0a305abf35c160079c",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150 ¢",
+            "Bå Overview",
+            "g People directory",
+            "Settings",
+            "E Product",
+            "E Produc"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muwuwenf2hbi.png",
+          "sha256": "1e92827ffc866ceab5b8d47ee6c1366e22c841190b2f4284a33dde79a6ab07d5",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150 ¢",
+            "Bå Overview",
+            "g People directory",
+            "Settings",
+            "E Product",
+            "E Produc"
+          ]
+        }
+      ]
+    },
+    "Create-Branch-Profiles": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "13ced6b1-7ce8-45ce-b787-7407f4f556f9",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_c37fcad4-1579-4e4d-837a-11bea5ba15c7.png",
+          "sha256": "f6fc810cd75db5cfa5f103f51d3d0587befbe2af6d82f16b692850c0cf699a69",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Bra"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mufyqhwou1ir.png",
+          "sha256": "0f1fe2b934a2522bfab82e1cbfc3a61f70bbd962a43694445bc44d3848e7051d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Bra"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mufyqqqojn5p.png",
+          "sha256": "8ab4f0327c0b770900a0abd2e9794b2c2e0e51337a4ca87befed451ae7852aa5",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Bra"
+          ]
+        }
+      ]
+    },
+    "Create-a-Custom-Disclosure-Template": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "9fe2f6fd-a794-4e28-8a8d-426c713cecfe",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_9721cf5f-1ab1-49e7-ba27-c1ccd3404d58.png",
+          "sha256": "daaf31070980b4d02a8777fc60adf6599610b4c4fc9e9293f0983ab9908359ba",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "People directory",
+            "1150",
+            "Settings",
+            "= Product",
+            "= Prodı"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muwydarqqln5.png",
+          "sha256": "5756a22cdae00c118234b3adce5aab0fc1e709f9ed5aff6431a631463a2eaee4",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "(g People directory",
+            "1150",
+            "Template",
+            "Reusable buil",
+            "Q Search by"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muwydbu3jnsh.png",
+          "sha256": "896cc1fb2edbd9f47e7a0d6c1eddf2b41c4939330403e346095478d4766fdf0a",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "People directory",
+            "1150",
+            "Settings",
+            "= Product",
+            "= Prodı"
+          ]
+        }
+      ]
+    },
+    "Creating-Branch-Profiles": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "13ced6b1-7ce8-45ce-b787-7407f4f556f9",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_c37fcad4-1579-4e4d-837a-11bea5ba15c7.png",
+          "sha256": "f6fc810cd75db5cfa5f103f51d3d0587befbe2af6d82f16b692850c0cf699a69",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Bra"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mufyqhwou1ir.png",
+          "sha256": "0f1fe2b934a2522bfab82e1cbfc3a61f70bbd962a43694445bc44d3848e7051d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Bra"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mufyqqqojn5p.png",
+          "sha256": "8ab4f0327c0b770900a0abd2e9794b2c2e0e51337a4ca87befed451ae7852aa5",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Bra"
+          ]
+        }
+      ]
+    },
+    "Creating-Entities-in-Firm-Oversight": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "c1623775-1160-4f30-ae72-a95e99f35847",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_muh61uv5ygst.png",
+          "sha256": "2310d623aa277617df11ce62b9fbe9f33e952d41d463f752247eb6355598ae32",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Ent",
+            "The e"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muh61wbe702g.png",
+          "sha256": "f0ddb2f8cf2a2bc0a437d5de567328f81d070693a60ba21c0cf043a2edd33982",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Ent",
+            "The e"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muh621a10nlo.png",
+          "sha256": "5c0defc7362a28d8e2d198b6f495d25ca7978648fefb5460c8a53f2d31a14eae",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "dö Overview",
+            "1150",
+            "Ent",
+            "The €"
+          ]
+        }
+      ]
+    },
+    "Creating-Flagged-Questions-on-Certifications": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "2d639c47-5471-4bda-bd86-ad6a6a1f2355",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_5dcbc84d-db3d-4962-b1c7-ca91c4995496.png",
+          "sha256": "30c73eb63b31bb718435fff28d8b8445f16e89a8f892f7ad7dcd1f65cdf64bae",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "8å Overview",
+            "& People directory",
+            "1150|",
+            "Set"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muww865m0weg.png",
+          "sha256": "d19ebe79b5bc2840bfeac99eb139c59e525401e166bf60bc50c2c34c3da7e43a",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "8å Overview",
+            "& People directory",
+            "1150|",
+            "Set"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muww88tpgnzg.png",
+          "sha256": "d19ebe79b5bc2840bfeac99eb139c59e525401e166bf60bc50c2c34c3da7e43a",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "8å Overview",
+            "& People directory",
+            "1150|",
+            "Set"
+          ]
+        }
+      ]
+    },
+    "Creating-Groups-and-Custom-Permissions": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "c9d6eaca-5119-48b6-a598-6e4b68b75f11",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_8edfb1db-068f-434d-a96f-ea63bb58ebec.png",
+          "sha256": "548e679931ab6c4b14adcaf66a5e6547119ea120dcf8bbec1c414205b951aa16",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "o Overview",
+            "1150",
+            "Pec"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mucvpr5lx1yh.png",
+          "sha256": "40f12a37298c04336b5e7ebb843628a7a366d8161c89fb3d6ecc6186435f7571",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "o Overview",
+            "1150",
+            "Pec"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mucvpv38oz3q.png",
+          "sha256": "2e3904ed96c77f34183464a0342c1fea12c921218f49515a4d9a51b24c89157c",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "di Overview",
+            "1150",
+            "Peopl",
+            "Ma",
+            "Grou"
+          ]
+        }
+      ]
+    },
+    "Creating-Marketing-Submission-Questionnaire": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "91fd0281-7527-4686-bca6-d2ab29fbab5b",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_mugg2ijitwyv.png",
+          "sha256": "374890f93900ee2ecc0685fe09e0e5a0eeadd249d85f80514ef7d2dd8d1def8d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "Se"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mugg2jk5c78g.png",
+          "sha256": "321d93e5651a31d27e1f3fa7d3dc7d05c95947d044d7b4fff1e2f195333a114d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "1150",
+            "Se"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mugg2o0c042j.png",
+          "sha256": "5f51632b922a52859c6aaebb6f42ae21dbc256f420fa97c059fea9d8f3dab35b",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "1150",
+            "Se"
+          ]
+        }
+      ]
+    },
+    "Creating-Visibility-Barriers": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "dee993b0-bfe5-4289-a02a-e51684915260",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_63972d39-d7c4-4db8-b1a0-ba74c8434aec.png",
+          "sha256": "68ea195c22aa59b4eade9fad8e406d052d5eba4898a8d3501bff0dc43bb5d64a",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Pеc"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muhf1ai0zez6.png",
+          "sha256": "dfff822af4ad391fea4c012f3d98cddf595280c4e31fdeb1df26a9b4eab74e2d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Pеc"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muhf1amoph18.png",
+          "sha256": "c415f6f1112b17f77debc4b270df7c639c235f3e9183d03c7c69c916c02a68f5",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "1150",
+            "Peopl",
+            "Ma",
+            "Groı"
+          ]
+        }
+      ]
+    },
+    "Creating-a-Checklist-and-Assigning-It-to-a-Group": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "cd6d286f-76e1-46ce-b0d1-fc1b8682c3a7",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_bee35715-49bb-4468-9ffa-48ff501b95f7.png",
+          "sha256": "da4b55768b1cd9374632f3ec3b33689dacb7c4d240f619b3bdee516e3db3eef7",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "o Overview",
+            "1150",
+            "Pec"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mucxlhjd6ek6.png",
+          "sha256": "63cb200876e07af1b26854f980b0d1ac911d11c73af3d35971ee5c4714a33a85",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "o Overview",
+            "1150",
+            "Pec"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mucxljdjz1ms.png",
+          "sha256": "83dd9e0a250ca3387120c81a0e3fba5928e8598a85afaf05940da30811fee271",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "o Overview",
+            "1150",
+            "Pec",
+            "a"
+          ]
+        }
+      ]
+    },
+    "Creating-a-Marketing-Review-Workflow": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "f4b3ed25-0905-4860-8625-bf00c0b9c500",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 1,
+          "file": "step_mugcvuiolpbn.png",
+          "sha256": "c275a1ba27ee6c305465165088712bd03ba5b14a9566e05810af4d48dc24d134",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "go Overview",
+            "1150",
+            "W",
+            "Wc"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mugcvunfgx9p.png",
+          "sha256": "9aa195d843ff3b1512e2327f144fcae9e2d4e4c353c723d01793d3ebcfd80d30",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gö Overview",
+            "1150",
+            "W",
+            "Wc"
+          ]
+        },
+        {
+          "step": 3,
+          "file": "step_mugcw2mc7yph.png",
+          "sha256": "6fd7bd14966c2d492f0f690ae9efb9735848ae67e90aa1804a32486358e29cea",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gö Overview",
+            "1150",
+            "W",
+            "Wc"
+          ]
+        }
+      ]
+    },
+    "Editing-Disclosure-Templates": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "92fc2e74-38e1-49fb-8f93-f19969bc038f",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_834bda9b-509b-4f9a-9671-945efb8c3bd3.png",
+          "sha256": "babb67b1e0232f2c113df2882178ab356ba1860d38a25cc6bfeb16571a03db19",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "(g People directory",
+            "1150",
+            "Setting",
+            "= Produ",
+            "Ef Pr"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muwxa8r641zy.png",
+          "sha256": "54afc82fe42efd032441a113537dbe301955519fa41a4e04a5566293a479eb93",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "(g People directory",
+            "1150",
+            "Setting",
+            "= Produ",
+            "Ef Pr"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muwxaa5r5act.png",
+          "sha256": "54afc82fe42efd032441a113537dbe301955519fa41a4e04a5566293a479eb93",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "(g People directory",
+            "1150",
+            "Setting",
+            "= Produ",
+            "Ef Pr"
+          ]
+        }
+      ]
+    },
+    "How-to-Add-FINRA-API-Credentials": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "7fb3b355-b96a-4f8e-b266-968f0d0cedc5",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_2ab2ab31-f17e-4b54-b067-8f0efd8b7bcf.png",
+          "sha256": "e73e16f4ab5ed4f78446b193254da110b4c45e2288baf59923ba0467df26f36c",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gå Overview",
+            "g People directory",
+            "1150",
+            "Se"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muzuiyjassre.png",
+          "sha256": "c745f41a847725811459c26858107360757b65d4ee0abba7bd2e3b6e358b57a8",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gå Overview",
+            "g People directory",
+            "1150",
+            "Se"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muzuiytn3b2t.png",
+          "sha256": "dc8ce3122539a57653745795c05b3ac66db6083971fdb30825f647b4c073ee8a",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gå Overview",
+            "g People directory",
+            "1150",
+            "Se"
+          ]
+        }
+      ]
+    },
+    "How-to-Create-a-Branch-Exam-Questionnaire-Template": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "eb04106e-fb75-4f93-b44e-e7d24e6a11b9",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_muzvo89hdh2s.png",
+          "sha256": "85997db09818a43613492c4e260a5e84040ca082591a6dd790d18382b460ddde",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "88 Overview",
+            "g People directory",
+            "1150",
+            "Setting",
+            "= Prodı",
+            "E Pr"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muzvo9z5l6om.png",
+          "sha256": "b6474e8862be6e7f6effa3665340d56fe0939d62a143db2ed57ad189cef33eb7",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "88 Overview",
+            "g People directory",
+            "1150",
+            "Setting",
+            "= Prodı",
+            "E Pr"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muzvoasu2yr8.png",
+          "sha256": "81c9918e7890144693eb74e143e57db527662c94c2d475186d99c44c839a12ae",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gå Overview",
+            "g People directory",
+            "1150",
+            "Templ",
+            "Reusable",
+            "Q Searc"
+          ]
+        }
+      ]
+    },
+    "How-to-Create-a-Workflow": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "8fe3d16b-41ba-429a-aaba-4c897a9bfc1d",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_3994d6726ae1.png",
+          "sha256": "070ed192516dadc8988aabf3a1703c34a764d6931981492b4452e4d8e0145551",
+          "class": "academy",
+          "text": [
+            "Hadrius",
+            "Hadrius Academy 1150 C",
+            "* Ask Hadrius",
+            "Wo"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_f87fcc9c3017.png",
+          "sha256": "9170034e065da89b846d227bf4d72a97b5a1e89a70f2da0a3167347d8d2a7216",
+          "class": "academy",
+          "text": [
+            "→ Hadrius",
+            "Hadrius Academy 1150 C",
+            "* Ask Hadrius",
+            "Mark",
+            "Cr"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_d0c986ce2358.png",
+          "sha256": "84c0b11d0cb37bf47eb3c62956cc0e793b17a1824a1176ce3dccc0c6b494b968",
+          "class": "academy",
+          "text": [
+            "→ Hadrius",
+            "Hadrius Academy 1150 C",
+            "* Ask Hadrius",
+            "Mark",
+            "Cr"
+          ]
+        }
+      ]
+    },
+    "How-to-Export-a-Disclosure-and-Its-Full-Audit-Trail": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "61516d76-cdf1-432e-b285-19a38ab5d0a2",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_54df0127-09de-4455-9a81-2ede0205e7f1.png",
+          "sha256": "1d5e2976c4560eb57ef01216cf71521e0e51d5abc59216faa31db17476a1297c",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muczl4tr8o3r.png",
+          "sha256": "ac7669a3961bff80361ee4206db456c234a3dd04d85103c45738f0e7be4ce36f",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muczl5zs7a6o.png",
+          "sha256": "23819653099cba686c4c3b424cd49558b86d33e1793ec28c4b65fc80ca5331d8",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        }
+      ]
+    },
+    "How-to-Import-Employees": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "dd39b7b3-d014-41a7-a3cc-63df1b5718fe",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_26462ab7-a717-4bdb-9138-2979752f56cc.png",
+          "sha256": "2e4f010e8efea6b81cc80a370b69ff73112f63160cf6d8558d27ac40495a0c8d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "B& Overview",
+            "g People directory",
+            "1150",
+            "People dir",
+            "Q Search empl",
+            "All",
+            "Active"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_murdjb1cebpm.png",
+          "sha256": "2e4f010e8efea6b81cc80a370b69ff73112f63160cf6d8558d27ac40495a0c8d",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "B& Overview",
+            "g People directory",
+            "1150",
+            "People dir",
+            "Q Search empl",
+            "All",
+            "Active"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_murdjdk7s57d.png",
+          "sha256": "24ce47244d15675a29762362c76a405b6a052e8cd013c567ce16b36873db376f",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "B& Overview",
+            "g People directory",
+            "1150",
+            "People dir",
+            "Q Search empl",
+            "All",
+            "Active"
+          ]
+        }
+      ]
+    },
+    "How-to-Upload-Vendors-to-Hadrius": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "3de8c2be-cf16-4b4f-b3a0-2ffbe2676ea3",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_murcocwyjj0f.png",
+          "sha256": "18e88398fdf7125a5be0c692a3e951c601eb001c56fded505149c5526bca35e4",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "g People directory",
+            "1150",
+            "Vendors",
+            "Manage, review",
+            "Q Search vend"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_890bef43-ed14-413a-8915-052225615017.png",
+          "sha256": "18e88398fdf7125a5be0c692a3e951c601eb001c56fded505149c5526bca35e4",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "g People directory",
+            "1150",
+            "Vendors",
+            "Manage, review",
+            "Q Search vend"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_murcogy0c7sd.png",
+          "sha256": "8bb9eb07ad74ecbd06f7f7d39e5d550bfcb59c66d710a2478c593521b808c409",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bå Overview",
+            "g People directory",
+            "1150",
+            "Vendors",
+            "Manage, review",
+            "Q Search vend"
+          ]
+        }
+      ]
+    },
+    "How-to-add-a-new-employee-manually": {
+      "tenant": "sandbox",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the sandbox company switcher",
+      "recordingId": "926cae01-a8ee-4d65-805f-6226ef4a1dba",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_7bbed21b-c902-465f-9d3a-99d64611a14b.png",
+          "sha256": "241e9b45380643e357d7ac7470821f95640ad90ca1ff5714fc8d720141163f53",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox",
+            "1048",
+            "gå Overview",
+            "People directory",
+            "People d",
+            "Q Search em",
+            "All",
+            "Act"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mu61q0kjpuha.png",
+          "sha256": "2fd58f74841088187f04ffff74f963ade8bb99b4fecb3f3dd3fab11df939c014",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox",
+            "1048",
+            "gå Overview",
+            "People directory",
+            "People d",
+            "Q Search em",
+            "All",
+            "Act"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mu61q3xbn56h.png",
+          "sha256": "5957e0496339c03453d7813014cc03171ee9d9b5b41c824f4840f13a859f1678",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox",
+            "1048",
+            "gå Overview",
+            "People directory",
+            "People d",
+            "Q Search em",
+            "All",
+            "Act"
+          ]
+        }
+      ]
+    },
+    "How-to-create-a-disclosure-template-for-People-oversight": {
+      "tenant": "sandbox",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the sandbox company switcher",
+      "recordingId": "354dbe48-9032-4d70-a3c3-8e522a9bc8da",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_bdb73c17-fba4-473f-980f-c19cecaa2ec7.png",
+          "sha256": "72431f58a50cf25d7546091f993fb608c45f988905e516d9e0ed0d171b0fca82",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox 1048",
+            "88 Overview",
+            "(g] People directory",
+            "Disclosure:",
+            "• Approvals",
+            "Q Search by en"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mu78c58nnmtz.png",
+          "sha256": "a3162f0584e4b9d02408ea5e49712edb71ff36b3e97939b7ca8cb079d868f724",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox 1048",
+            "88 Overview",
+            "(g] People directory",
+            "Disclosure:",
+            "• Approvals",
+            "Q Search by en"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mu78c5kmzm1b.png",
+          "sha256": "3fc412e03181fe0beaca16f41e094e13c94acf299543d65a19bb41f426482720",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox",
+            "1048",
+            "g8 Overview",
+            "g) People directory",
+            "Template li",
+            "Reusable buildir",
+            "Q Search by ter"
+          ]
+        }
+      ]
+    },
+    "Inbox": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "6e8f7673-a9bb-4b83-adc1-0039382f46a3",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_mw0zkjwe8ndq.png",
+          "sha256": "28b703ea0090fe053d0c26f4ae4b398901889fad82987e1b228ac86de4a8a398",
+          "class": "academy",
+          "text": [
+            "N Hadrius",
+            "Hadrius Academy",
+            "f Ask Hadrius",
+            "• Inbox",
+            "1150",
+            "53"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mw0zl856g4bx.png",
+          "sha256": "fd7d764fe6de8fa49c67752d4df97cb06243921d883e9c6dab0568e51293f0be",
+          "class": "academy",
+          "text": [
+            "N Hadrius",
+            "Hadrius Academy",
+            "f Ask Hadrius",
+            "• Inbox",
+            "1150",
+            "53"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mw0zli81j7of.png",
+          "sha256": "5d9da8039f08fb9abb7048321f28fc24aa786ed4850b956c89d9b7bc7198f6a1",
+          "class": "academy",
+          "text": [
+            "N Hadrius",
+            "Hadrius Academy",
+            "f Ask Hadrius",
+            "• Inbox",
+            "1150",
+            "53"
+          ]
+        }
+      ]
+    },
+    "Managing-the-Document-Library": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "dc59f633-4c98-4e4f-bb70-474f09b3919c",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_6fb85308-3774-4521-8a5c-e6e5815cdd85.png",
+          "sha256": "4f70c79912ad4069b29a7fe64e2dd201ebbc488a9f2e55324fd31809f7a46b90",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "* Ask Hadrius",
+            "• 1150",
+            "M"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mv17svvgf8zo.png",
+          "sha256": "d0cfbb8b073f60427f76735f75d73ae039b7d6c60c736647eb6264d872b6bb37",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "* Ask Hadrius",
+            "• 1150",
+            "M"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mv17t3rlkb46.png",
+          "sha256": "4c4089022ebdf05e3972d52a927c734da3b8459a0351b9876b3e685b657fee50",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "* Ask Hadrius",
+            "sar",
+            "• 1150|",
+            "D",
+            "M"
+          ]
+        }
+      ]
+    },
+    "Manually-Adding-and-Inviting-Employees-to-Hadrius": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "d7f653b3-97f6-4c98-8d00-2f8efd9e96e7",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_f4b71a8d-5ff1-4157-bff8-b894ba7a733e.png",
+          "sha256": "f0f16340610224e21741e3b71c4a1cf4ba795c1d32ef17334a40700e13279cf9",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "• 1150",
+            "* Ask Hadrius",
+            "P"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mv18e05bosqp.png",
+          "sha256": "f0f16340610224e21741e3b71c4a1cf4ba795c1d32ef17334a40700e13279cf9",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "• 1150",
+            "* Ask Hadrius",
+            "P"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mv18e3ht87ta.png",
+          "sha256": "4ef632f8313e60189056187fc6a5a8691b121242ce2bbaaf8b165c293397e49e",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "• 1150",
+            "* Ask Hadrius",
+            "P"
+          ]
+        }
+      ]
+    },
+    "Notifying-an-Employee-to-Complete-Their-Certification": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "2ec55a23-849a-4e94-be75-ebba7cb4f9e7",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_a07bf33c-3275-4a03-ae80-c3d2877f6d84.png",
+          "sha256": "133492f7e5c59123fa779060a819c067806aaef3759391d17839cc1fcb4263d6",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gi Overview",
+            "1150",
+            "Cer",
+            "Cam",
+            "Q:"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mud1gm11a08k.png",
+          "sha256": "c7ebccfd58a5e0f9f39784b93d485cd5d956f0b94c841fbe69586042d7645937",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gi Overview",
+            "1150",
+            "Cer",
+            "Cam",
+            "Q:"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mud1gno8muwh.png",
+          "sha256": "d315cf4c2cece0da0614c3e2147d2fa598fca231e53722a389310d62eef68bff",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gi Overview",
+            "1150",
+            "Cer",
+            "Cam",
+            "Q:"
+          ]
+        }
+      ]
+    },
+    "People-Oversight-module-navigation-and-overview": {
+      "tenant": "sandbox",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the sandbox company switcher",
+      "recordingId": "3cabe5b6-f768-429b-a64a-3f155b292658",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_mu7d9x20e9y7.png",
+          "sha256": "791da3ce2bc75e4f067d913d29f7575456b8aa96bbe733a4c36d8c6ff2fa9c14",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox 1048",
+            "8å Overview",
+            "(g) People directory",
+            "People dire",
+            "Q Search emple",
+            "All",
+            "Active"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mu7da6jj9qr7.png",
+          "sha256": "16f044cd63f51c4ef1ea397ab33bcec968d141d96dfb11347b0189442d75d30f",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox 1048",
+            "88 Overview",
+            "(g) People directory",
+            "People dire",
+            "Q Search emple",
+            "All",
+            "Active"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mu7da6qio1vr.png",
+          "sha256": "b76fca64fb1bebffd5b77e1e3061d0f22f79aff57143827caea4c694f36afebd",
+          "class": "sandbox",
+          "text": [
+            "Hadrius Sandbox 1048",
+            "88 Overview",
+            "(g) People directory",
+            "People dire",
+            "Q Search emple",
+            "All",
+            "Active"
+          ]
+        }
+      ]
+    },
+    "Platform-Tour-Home-Sidebar-and-Navigation": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "9cb65f42-df58-4531-b7e7-34e0d5ad3aa4",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_ov42ea32d1f5.png",
+          "sha256": "e4416761a279243ae1909df5e40ddf9bd547b74828e0efb10d1a882f82c3bb72",
+          "class": "academy",
+          "text": [
+            "Hadrius",
+            "Hadrius Academy 1150",
+            "1 Ask Hadrius",
+            "Ov"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_ov42ea32d1f5.png",
+          "sha256": "e4416761a279243ae1909df5e40ddf9bd547b74828e0efb10d1a882f82c3bb72",
+          "class": "academy",
+          "text": [
+            "Hadrius",
+            "Hadrius Academy 1150",
+            "1 Ask Hadrius",
+            "Ov"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_ov42ea32d1f5.png",
+          "sha256": "e4416761a279243ae1909df5e40ddf9bd547b74828e0efb10d1a882f82c3bb72",
+          "class": "academy",
+          "text": [
+            "Hadrius",
+            "Hadrius Academy 1150",
+            "1 Ask Hadrius",
+            "Ov"
+          ]
+        }
+      ]
+    },
+    "Review-Comments-in-Marketing-Review-Project": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "ac592464-10b2-4707-b9e7-5579beb934d5",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_b9c74ddd-2b5e-4d5f-b39a-d6e02cafd7f1.png",
+          "sha256": "4d7735e688c15615612ff5ced4cc0350b0101a4221d302917a00f475ac6d0b7f",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gå Overview",
+            "g People directory",
+            "1150",
+            "Marke",
+            "a"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muptni1can3v.png",
+          "sha256": "97e2677950b84f052ec85a5ea299b6502607bfa849bcbdfdc2b13196f21df601",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gå Overview",
+            "g People directory",
+            "1150",
+            "Marke",
+            "a"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muptnporsgx1.png",
+          "sha256": "4d7735e688c15615612ff5ced4cc0350b0101a4221d302917a00f475ac6d0b7f",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "gå Overview",
+            "g People directory",
+            "1150",
+            "Marke",
+            "a"
+          ]
+        }
+      ]
+    },
+    "Sending-a-Firm-Wide-Email-from-Hadrius": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "d4c4b216-7bf5-4990-b7e9-4a460d1f1a5e",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 9,
+          "file": "step_mvr102c0tmli.png",
+          "sha256": "39c8db1b6fdccc20b48951e126e980458cefef9998654eb045d5aedbb083ac66",
+          "class": "academy",
+          "text": [
+            "p Hadrius",
+            "Hadrius Academy",
+            "* Ask Hadrius",
+            "Ovorviow",
+            "1150",
+            "Settings > Em",
+            "Email noti",
+            "Personal settings"
+          ]
+        },
+        {
+          "step": 11,
+          "file": "step_mvr10bc5b4e6.png",
+          "sha256": "b2e0f61703fbf7d779238bc26c4864a585a1b4fbd01322ed09a11f60dbb9c019",
+          "class": "academy",
+          "text": [
+            "p Hadrius",
+            "Hadrius Academy",
+            "* Ask Hadrius",
+            "Ovorviow",
+            "1150",
+            "Settings > Em",
+            "Email noti",
+            "Personal settings"
+          ]
+        },
+        {
+          "step": 12,
+          "file": "step_mvr10cxydyjc.png",
+          "sha256": "28c1a3a759e6752e0caf8865cc79fa947f273f029d01daaaf03c988cde93f7f9",
+          "class": "academy",
+          "text": [
+            "p Hadrius",
+            "Hadrius Academy",
+            "* Ask Hadrius",
+            "Ovorviow",
+            "1150",
+            "Settings > Em",
+            "Email noti",
+            "Personal settings"
+          ]
+        }
+      ]
+    },
+    "Setting-Gift-Entertainment-Amount-Thresholds": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "b8b106a5-ba5d-4ba4-ba28-4143010e376a",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_15017174-d48b-4a80-b858-f3f5cd7d1da1.png",
+          "sha256": "394619d7c358c06880d7c0c4e76ce7f2dcc6247c1c7b17de1502c58cd77dccdf",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "• 1150"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_mure9gtngar3.png",
+          "sha256": "713cf3e2686e1b105fdbce1f4795fef531499a11bc65439e4cf704e645f5d2c2",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "• 1150"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_mure9kg1k21n.png",
+          "sha256": "0d3c8abfd49fb4636c88c79513a53e44153f6f891ff14e6ec6ac1502208eb6dc",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150"
+          ]
+        }
+      ]
+    },
+    "Uploading-Policies-in-Firm-Oversight": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "e8e65ef2-9366-45a3-83a7-0c23ec11a321",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_f17eee1a-509f-4d37-8a64-bff7c0524916.png",
+          "sha256": "0272c62e686a50b128d1ccee21e2847927a7ab33a4cdd4d41116c07b8b7c5401",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "Bo Overview",
+            "Pol"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muhfm4dsdpwc.png",
+          "sha256": "7c97b31eb8e895ce5fb7a8b2464a38fcdc0c0d186582826315b37ba797720d28",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "Bo Overview",
+            "Pol"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muhfm83ui0bz.png",
+          "sha256": "d3bfa253c17d1977c644076a9669e2b2c97a39e868effa6581565fcba0d9c6d9",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "1150",
+            "Bo Overview",
+            "Pol"
+          ]
+        }
+      ]
+    },
+    "Viewing-a-Disclosure-or-Certification-Audit-Trail": {
+      "tenant": "academy",
+      "method": "recorded-company-switcher-ocr-v1",
+      "reason": "3/3 recorded frames show the academy company switcher",
+      "recordingId": "61516d76-cdf1-432e-b285-19a38ab5d0a2",
+      "decidedAt": "2026-11-08T19:51:32.835Z",
+      "frames": [
+        {
+          "step": 0,
+          "file": "step_54df0127-09de-4455-9a81-2ede0205e7f1.png",
+          "sha256": "1d5e2976c4560eb57ef01216cf71521e0e51d5abc59216faa31db17476a1297c",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        },
+        {
+          "step": 1,
+          "file": "step_muczl4tr8o3r.png",
+          "sha256": "ac7669a3961bff80361ee4206db456c234a3dd04d85103c45738f0e7be4ce36f",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        },
+        {
+          "step": 2,
+          "file": "step_muczl5zs7a6o.png",
+          "sha256": "23819653099cba686c4c3b424cd49558b86d33e1793ec28c4b65fc80ca5331d8",
+          "class": "academy",
+          "text": [
+            "Hadrius Academy",
+            "Bo Overview",
+            "1150",
+            "Dis",
+            "Q:"
+          ]
+        }
+      ]
+    }
+  },
+  "rejected": {
+    "Admin-Onboarding-Portal": "not_all_urls_on_app.hadrius.com",
+    "Ask-Hadrius-AI-Assistant": "not_all_urls_on_app.hadrius.com",
+    "BAdmin-Admin-onboarding-updates": "not_all_urls_on_app.hadrius.com",
+    "Getting-Started-with-Ask-Hadrius": "recorded_frames_missing",
+    "How-to-Add-Branch-Inspectors": "recorded_frames_missing",
+    "How-to-build-a-branch-exam-questionnaire-template-with-multiple-question-types": "recorded_frames_missing",
+    "How-to-build-a-branch-exam-questionnaire-template": "recorded_frames_missing",
+    "Marking-Trades-as-Compliant-vs.-Non-Compliant": "recorded_frames_missing",
+    "Monitoring-the-Email-Delivery-Log-and-Suppressions": "not_all_urls_on_app.hadrius.com",
+    "New-voice-test": "recorded_frames_missing",
+    "Onboarding-Checklist---Customer-View": "not_all_urls_on_app.hadrius.com",
+    "Reviewing-AI-Flags-on-a-Project-Submission": "recorded_frames_missing",
+    "Reviewing-Your-Trades-and-Holdings": "recorded_frames_missing",
+    "Submitting-Disclosures": "recorded_frames_missing",
+    "Updating-or-Removing-an-Archived-Social-Media-Account": "recorded_frames_missing",
+    "Uploading-Marketing-Disclosures": "recorded_frames_missing",
+    "Utilizing-the-Document-Library": "recorded_frames_missing",
+    "Assigning-a-Risk-Score": "no_company_visible",
+    "Creating-Rules-for-Employee-Trade-Monitoring": "no_company_visible",
+    "Creating-a-Restricted-List-Trading-Rule": "no_company_visible",
+    "Creating-a-Updating-a-Private-Placement": "no_company_visible",
+    "Creating-and-Updating-a-Private-Placement": "no_company_visible",
+    "How-to-Connect-Brokerage-Accounts": "no_company_visible",
+    "How-to-create-a-new-test": "no_company_visible",
+    "How-to-submit-a-disclosure": "no_company_visible",
+    "Launching-a-Certification-Campaign": "no_company_visible",
+    "TEST": "no_company_visible"
+  }
+}

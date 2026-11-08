@@ -7,10 +7,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { parseNames, stamp } from './weekly.mjs';
+import { loadExclusions, partitionNames, exclusionFor, repoScriptReader } from './exclusions.mjs';
 
 export const LOCK_NAME = 'drift-weekly.lock';
 export const PER_VIDEO_MIN = 15;
-export const MAX_TOTAL_MS = 12 * 3600_000;
+export const MAX_TOTAL_MS = 24 * 3600_000; // full Academy + Sandbox sweep is ~115 videos
 const SECRET_KEY_RE = /(SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|API_KEY|_KEY$|^KEY$|REFRESH|COOKIE|SESSION)/i;
 const SECRET_PREFIX_RE = /^(STUDIO_|GOOGLE_|PYLON_|SLACK_|ELEVENLABS_|GEMINI_|OPENAI_|ANTHROPIC_|AWS_|DATABASE_|NEON_|PG)/;
 
@@ -26,12 +27,15 @@ const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e)
 /** Names from an allowlist file (same parser weekly.mjs uses). */
 export function readAllowlist(file) { return parseNames({ allowlistText: fs.readFileSync(file, 'utf8') }); }
 
-export function weeklyArgs({ weeklyPath, outDir, names = null, allowlistPath = null, captureDryRun = false, perVideoMin = PER_VIDEO_MIN, noJudge = false }) {
+export function weeklyArgs({ weeklyPath, outDir, names = null, allowlistPath = null, captureDryRun = false, perVideoMin = PER_VIDEO_MIN, noJudge = false, maxModelCalls = null, noRehearse = false, session = null }) {
   const a = [weeklyPath, '--once'];
   if (allowlistPath) a.push('--allowlist', allowlistPath); else a.push('--names', names.join(','));
   a.push('--out', outDir, '--timeout-min', String(perVideoMin));
   if (captureDryRun) a.push('--dry-run');
   if (noJudge) a.push('--no-judge');
+  if (maxModelCalls != null) a.push('--max-model-calls', String(maxModelCalls));
+  if (noRehearse) a.push('--no-rehearse');
+  if (session) { if (!['automation', 'owner'].includes(session)) throw new Error(`invalid_session:${session}`); a.push('--session', session); }
   return a;
 }
 
@@ -42,10 +46,11 @@ export function weeklyArgs({ weeklyPath, outDir, names = null, allowlistPath = n
  * @param {string} o.logPath         child stdout/stderr (appended)
  * @param {(run)=>Promise<any>} [o.onFinished]  called after the child exits (the bridge submits here)
  */
-export function createWeeklyRunner({ repo, scratch, logPath, onFinished = async () => null, spawnImpl = nodeSpawn, nodePath = process.execPath, env = process.env, now = () => new Date(), log = () => {}, perVideoMin = PER_VIDEO_MIN }) {
+export function createWeeklyRunner({ repo, scratch, logPath, onFinished = async () => null, spawnImpl = nodeSpawn, nodePath = process.execPath, env = process.env, now = () => new Date(), log = () => {}, perVideoMin = PER_VIDEO_MIN,
+  exclusionsLoader = () => loadExclusions(), readScript = repoScriptReader(repo) }) {
   let current = null, last = null;
   const lockPath = path.join(scratch, LOCK_NAME);
-  const pub = (r) => r && ({ id: r.id, source: r.source, outDir: r.outDir, names: r.names, allowlistPath: r.allowlistPath, submitDryRun: r.submitDryRun, captureDryRun: r.captureDryRun, prsByName: r.prsByName ?? {},
+  const pub = (r) => r && ({ id: r.id, source: r.source, outDir: r.outDir, names: r.names, excluded: r.excluded ?? [], allowlistPath: r.allowlistPath, submitDryRun: r.submitDryRun, captureDryRun: r.captureDryRun, session: r.session ?? 'automation', prsByName: r.prsByName ?? {},
     startedAt: r.startedAt, finishedAt: r.finishedAt ?? null, pid: r.pid ?? null, exitCode: r.exitCode ?? null, signal: r.signal ?? null, timedOut: !!r.timedOut, timeoutMs: r.timeoutMs, submit: r.submit ?? null, error: r.error ?? null });
 
   function acquireLock(meta) {
@@ -61,25 +66,32 @@ export function createWeeklyRunner({ repo, scratch, logPath, onFinished = async 
     }
   }
 
-  function start({ names = null, allowlistPath = null, source = 'manual', submitDryRun = true, captureDryRun = false, prsByName = {}, noJudge = false } = {}) {
+  function start({ names = null, allowlistPath = null, source = 'manual', submitDryRun = true, captureDryRun = false, prsByName = {}, noJudge = false, session = null } = {}) {
     if (current) return { started: false, error: 'busy', current: pub(current) };
     let list;
     if (allowlistPath) list = readAllowlist(allowlistPath);
     else list = parseNames({ names: Array.isArray(names) ? names.join(',') : names });
     if (!list.length) return { started: false, error: 'no_names' };
     if (!/^[a-z0-9-]{1,20}$/.test(source)) return { started: false, error: 'invalid_source' };
+    if (session != null && !['automation', 'owner'].includes(session)) return { started: false, error: 'invalid_session' };
+    // Temporary module exclusions (exclusions.json): weekly.mjs skips them itself (reason 'excluded'); here they only
+    // shape the timeout and the status. A run with nothing left to check is not started.
+    let part;
+    try { part = partitionNames(list, { readScript, exclusions: exclusionsLoader() }); }
+    catch (e) { return { started: false, error: `exclusions_unreadable: ${String(e?.message || e)}` }; }
+    if (!part.kept.length) return { started: false, error: 'all_excluded', excluded: part.excluded.map((x) => ({ name: x.name, rule: x.rule, reason: 'excluded' })) };
     const id = `${stamp(now())}-${source}`;
     const outDir = path.join(scratch, `weekly-${id}`);
     if (fs.existsSync(outDir)) return { started: false, error: 'output_exists', outDir };
     if (!acquireLock({ pid: process.pid, id, outDir, startedAt: now().toISOString() })) return { started: false, error: 'busy_other_process', lock: lockPath };
-    const timeoutMs = Math.min(MAX_TOTAL_MS, list.length * (perVideoMin + 1) * 60_000 + 5 * 60_000);
-    const run = current = { id, source, outDir, names: list, allowlistPath, submitDryRun: submitDryRun !== false, captureDryRun: !!captureDryRun, prsByName, startedAt: now().toISOString(), timeoutMs };
+    const timeoutMs = Math.min(MAX_TOTAL_MS, part.kept.length * (perVideoMin + 1) * 60_000 + 5 * 60_000);
+    const run = current = { id, source, outDir, names: list, excluded: part.excluded.map((x) => ({ name: x.name, rule: x.rule, reason: 'excluded' })), allowlistPath, submitDryRun: submitDryRun !== false, captureDryRun: !!captureDryRun, prsByName, session: session ?? 'automation', startedAt: now().toISOString(), timeoutMs };
     let fd;
     try {
       fs.mkdirSync(path.dirname(logPath), { recursive: true });
       fd = fs.openSync(logPath, 'a');
-      fs.writeSync(fd, `\n[drift-weekly] ${run.startedAt} start ${id}: ${list.length} video(s), submit ${run.submitDryRun ? 'DRY RUN' : 'LIVE'}${run.captureDryRun ? ', capture dry run' : ''} -> ${outDir}\n`);
-      const child = spawnImpl(nodePath, weeklyArgs({ weeklyPath: path.join(repo, 'tools', 'drift', 'weekly.mjs'), outDir, names: allowlistPath ? null : list, allowlistPath, captureDryRun, perVideoMin, noJudge }),
+      fs.writeSync(fd, `\n[drift-weekly] ${run.startedAt} start ${id}: ${list.length} video(s), submit ${run.submitDryRun ? 'DRY RUN' : 'LIVE'}${run.captureDryRun ? ', capture dry run' : ''}${run.excluded.length ? `, ${run.excluded.length} excluded (exclusions.json)` : ''} -> ${outDir}\n`);
+      const child = spawnImpl(nodePath, weeklyArgs({ weeklyPath: path.join(repo, 'tools', 'drift', 'weekly.mjs'), outDir, names: allowlistPath ? null : list, allowlistPath, captureDryRun, perVideoMin, noJudge, session: run.session }),
         { cwd: repo, env: scrubEnv(env), stdio: ['ignore', fd, fd] });
       run.pid = child.pid;
       // Persist the run in the lock so a restarted bridge can adopt the orphaned child (recover()).
@@ -107,7 +119,7 @@ export function createWeeklyRunner({ repo, scratch, logPath, onFinished = async 
     }
     return { started: true, run: pub(run) };
   }
-  const lockMeta = (r) => ({ id: r.id, source: r.source, outDir: r.outDir, names: r.names, allowlistPath: r.allowlistPath, submitDryRun: r.submitDryRun, captureDryRun: r.captureDryRun, prsByName: r.prsByName, startedAt: r.startedAt, timeoutMs: r.timeoutMs });
+  const lockMeta = (r) => ({ id: r.id, source: r.source, outDir: r.outDir, names: r.names, excluded: r.excluded ?? [], allowlistPath: r.allowlistPath, submitDryRun: r.submitDryRun, captureDryRun: r.captureDryRun, prsByName: r.prsByName, session: r.session ?? 'automation', startedAt: r.startedAt, timeoutMs: r.timeoutMs });
 
   /**
    * After a bridge restart: a lock whose owner is dead belongs to an orphaned run. If its weekly.mjs child is
@@ -156,23 +168,29 @@ export function createEarlyCheckQueue({ statePath, debounceMs = 30 * 60_000, max
     const tmp = `${statePath}.tmp`; fs.writeFileSync(tmp, JSON.stringify(s, null, 2)); fs.renameSync(tmp, statePath);
   };
   return {
-    /** items: [{name, pr:{number,title,url}}]; allowed: Set of names or null (no filter). */
-    enqueue(items, { allowed = null } = {}) {
-      const s = load(); const t = now().toISOString(); const added = [], skipped = [];
+    /** items: [{name, pr:{number,title,url}}]; allowed: Set of names or null (no filter);
+     *  exclude: name -> exclusion|null (exclusions.json; excluded videos are recorded with reason 'excluded'). */
+    enqueue(items, { allowed = null, exclude = null } = {}) {
+      const s = load(); const t = now().toISOString(); const added = [], skipped = [], excluded = [];
       for (const it of items || []) {
         if (!it?.name) continue;
         if (allowed && !allowed.has(it.name)) { skipped.push(it.name); s.skipped.push({ name: it.name, at: t, reason: 'not_in_allowlist', pr: it.pr?.number ?? null }); continue; }
+        const ex = exclude ? exclude(it.name) : null;
+        if (ex) { excluded.push(it.name); s.skipped.push({ name: it.name, at: t, reason: 'excluded', rule: ex.rule ?? null, pr: it.pr?.number ?? null }); continue; }
         const e = (s.pending[it.name] ||= { firstAt: t, lastAt: t, prs: [] });
         e.lastAt = t;
         if (it.pr && !e.prs.some((p) => p.number === it.pr.number)) e.prs.push({ number: it.pr.number ?? null, title: it.pr.title ?? null, url: it.pr.url ?? null });
         added.push(it.name);
       }
-      save(s); return { added: [...new Set(added)], skipped };
+      save(s); return { added: [...new Set(added)], skipped, ...(exclude ? { excluded } : {}) };
     },
     /** Release a batch if the queue is quiet and today's budget allows. → {names, prsByName} | null */
-    take({ busy = false } = {}) {
+    take({ busy = false, exclude = null } = {}) {
       if (busy) return null;
-      const s = load(); const names = Object.keys(s.pending);
+      const s = load();
+      // Videos queued before their module was excluded are dropped here (recorded), never run.
+      if (exclude) { let dropped = false; for (const n of Object.keys(s.pending)) { const ex = exclude(n); if (ex) { s.skipped.push({ name: n, at: now().toISOString(), reason: 'excluded', rule: ex.rule ?? null }); delete s.pending[n]; dropped = true; } } if (dropped) save(s); }
+      const names = Object.keys(s.pending);
       if (!names.length) return null;
       const lastAt = Math.max(...names.map((n) => Date.parse(s.pending[n].lastAt)));
       if (now().getTime() - lastAt < debounceMs) return null;
@@ -196,4 +214,9 @@ export function createEarlyCheckQueue({ statePath, debounceMs = 30 * 60_000, max
     },
     state: load,
   };
+}
+
+/** exclude(name) for the early-check queue: exclusions.json via the repo's local scripts (null = not excluded). */
+export function makeExcluder({ repo, exclusionsLoader = () => loadExclusions(), readScript = repoScriptReader(repo) } = {}) {
+  return (name) => { const ex = exclusionsLoader(); return exclusionFor(readScript(name), ex); };
 }

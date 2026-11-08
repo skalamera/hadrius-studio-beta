@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {createHash} from 'node:crypto';
+import {verifySemanticRepairAssets} from '../../tools/drift/semantic-repair-assets.mjs';
+test('semantic proof rechecks both PNG hashes and captured input before candidate preparation', t => {
+  const root=mkdtempSync(join(tmpdir(),'repair-assets-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const old=join(root,'recorded.png'),current=join(root,'current.png'),run=join(root,'run.json');
+  writeFileSync(old,'old image');writeFileSync(current,'current image');writeFileSync(run,'{"steps":[]}');
+  const sha=p=>createHash('sha256').update(readFileSync(p)).digest('hex');
+  const step={evidence:{recorded:old,today:current},semanticRepair:{binding:{source:{job:{recordedPath:old,currentPath:current},capture:{sha256:sha(run)}},imageSha256s:{recorded:sha(old),current:sha(current)}}}};
+  assert.equal(verifySemanticRepairAssets(step),true);
+  step.semanticRepair.binding.source.job.flowEquivalenceDigest='0'.repeat(64);
+  assert.throws(()=>verifySemanticRepairAssets(step),/semantic_review_flow_conflict/);
+  delete step.semanticRepair.binding.source.job.flowEquivalenceDigest;
+  writeFileSync(current,'mutated image');assert.throws(()=>verifySemanticRepairAssets(step),/image_conflict/);
+  writeFileSync(current,'current image');writeFileSync(run,'{"steps":[0]}');assert.throws(()=>verifySemanticRepairAssets(step),/capture_conflict/);
+});

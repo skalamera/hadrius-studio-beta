@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Unattended Hadrius Academy sign-in for the weekly drift job.
+// Unattended sign-in for the weekly drift job, per tenant (tenants.mjs): Hadrius Academy (default) and
+// Hadrius Sandbox each have their own automation account, Keychain item and browser profile.
 //
 // Import-safe: importing this module launches nothing and reads no secrets. The password is read
 // from the macOS login Keychain only inside ensureAcademySession(), at the moment it is needed,
@@ -8,19 +9,29 @@
 //
 // CLI:  node tools/drift/academy-login.mjs --check    (status only, never types anything)
 //       node tools/drift/academy-login.mjs --ensure   (sign in if needed, one attempt only)
+//       add --tenant sandbox for Hadrius Sandbox (company 1048); default --tenant academy
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TENANTS, getTenant, tenantStartUrl } from './tenants.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 
-export const ACCOUNT = 'stephen+hstudio@hadrius.com';
-export const SERVICE = 'hadrius-studio-academy';
-export const EXPECTED_COMPANY_ID = 1150;
+// Academy constants (unchanged exports); every tenant's values come from the registry.
+export const ACCOUNT = TENANTS.academy.account;
+export const SERVICE = TENANTS.academy.keychainService;
+export const EXPECTED_COMPANY_ID = TENANTS.academy.companyId;
 export const DEFAULT_START_URL = `https://app.hadrius.com/marketing/projects?company_id=${EXPECTED_COMPANY_ID}`;
 export const DEFAULT_PROFILE_DIR = path.join(REPO, '.browser-profile-drift');
+/** Per-tenant defaults: {tenant, account, service, expectedCompanyId, startUrl, profileDir}. */
+export function tenantLoginConfig(key = 'academy', repo = REPO) {
+  const t = getTenant(key);
+  return { tenant: t.key, name: t.name, account: t.account, service: t.keychainService, expectedCompanyId: t.companyId,
+    startUrl: tenantStartUrl(t.key), profileDir: path.join(repo, t.profileDir) };
+}
+const ALL_ACCOUNTS = Object.values(TENANTS).map((t) => t.account);
 export const VIEWPORT = { width: 1600, height: 900 };
 export const STAGE_TIMEOUT_MS = 60_000;
 export const TOTAL_TIMEOUT_MS = 180_000;
@@ -54,7 +65,8 @@ export function maskEmail(email) {
 export function redact(text, secrets = []) {
   let out = String(text ?? '');
   for (const s of secrets) if (s && s.length >= 3) out = out.split(s).join('[REDACTED]');
-  return out.split(ACCOUNT).join(maskEmail(ACCOUNT));
+  for (const a of ALL_ACCOUNTS) out = out.split(a).join(maskEmail(a));
+  return out;
 }
 
 export class KeychainMissingError extends Error {}
@@ -172,9 +184,9 @@ export function companiesFromUserPayload(body) {
   };
 }
 
-// The app at app.hadrius.com talks to its API on a separate registrable domain (observed live:
-// GET https://hadriusapi.com/api/users/?uuid=...). Accept the app's own host family plus that API host.
-const API_HOSTS = ['hadriusapi.com'];
+// The app at app.hadrius.com talks to its API on a separate host. Observed live: GET https://hadriusapi.com/api/users/?uuid=...
+// until early Nov 2026, then GET https://api.hadrius.com/api/users/?uuid=... Accept the app's own host family plus both API hosts.
+export const API_HOSTS = Object.freeze(['api.hadrius.com', 'hadriusapi.com']);
 const hostIn = (h, suffix) => h === suffix || h.endsWith('.' + suffix);
 
 function attachUserObserver(page, appHostSuffix) {
@@ -194,7 +206,7 @@ function attachUserObserver(page, appHostSuffix) {
   return state;
 }
 
-async function verifyTenant(page, observer, { startUrl, expectedCompanyId, deadline, log }) {
+async function verifyTenant(page, observer, { startUrl, expectedCompanyId, tenantName = null, deadline, log }) {
   const end = Math.min(Date.now() + 20_000, deadline);
   while (!observer.payload && Date.now() < end) await page.waitForTimeout(500);
   const finalUrl = new URL(page.url());
@@ -204,6 +216,7 @@ async function verifyTenant(page, observer, { startUrl, expectedCompanyId, deadl
     expectedCompanyId,
     urlCompanyId: urlCompanyId == null ? null : Number(urlCompanyId),
     academyNameVisible: /Hadrius Academy/i.test(text),
+    ...(tenantName ? { tenantName, tenantNameVisible: text.toLowerCase().includes(String(tenantName).toLowerCase()) } : {}),
     finalPath: finalUrl.pathname,
   };
   if (!observer.payload) {
@@ -226,24 +239,39 @@ async function verifyTenant(page, observer, { startUrl, expectedCompanyId, deadl
  * Make sure the dedicated drift profile is signed in to Hadrius Academy.
  * @returns {Promise<{status: string, origin: string|null, companyIds?: number[], tenant?: object, detail?: string, steps: string[]}>}
  */
-export async function ensureAcademySession({
-  profileDir = DEFAULT_PROFILE_DIR,
-  startUrl = DEFAULT_START_URL,
-  timeoutMs = TOTAL_TIMEOUT_MS,
-  stageTimeoutMs = STAGE_TIMEOUT_MS,
-  onLog = () => {},
-  getPassword = keychainPassword,
-  email = ACCOUNT,
-  login = true,
-  expectedCompanyId = EXPECTED_COMPANY_ID,
-  extraAllowedAuthOrigins = [],
-  headless = true,
-  chromium: chromiumOverride,
-} = {}) {
+export async function ensureAcademySession(opts = {}) {
+  return ensureTenantSession({ tenant: 'academy', ...opts });
+}
+
+/**
+ * Same flow for any registered tenant. Defaults (account, Keychain service, company, start URL, profile) come from
+ * tenants.mjs; the tenant check passes only when the account's ONLY company is the tenant's company.
+ */
+export async function ensureTenantSession({ tenant = 'academy', ...opts } = {}) {
+  const cfg = tenantLoginConfig(tenant);
+  const {
+    profileDir = cfg.profileDir,
+    startUrl = cfg.startUrl,
+    timeoutMs = TOTAL_TIMEOUT_MS,
+    stageTimeoutMs = STAGE_TIMEOUT_MS,
+    onLog = () => {},
+    getPassword = () => keychainPassword({ account: cfg.account, service: cfg.service }),
+    email = cfg.account,
+    login = true,
+    expectedCompanyId = cfg.expectedCompanyId,
+    extraAllowedAuthOrigins = [],
+    headless = true,
+    chromium: chromiumOverride,
+  } = opts;
+  // A caller may override the start URL, but never point one tenant's login at another tenant's company.
+  const startCompany = (() => { try { return new URL(startUrl).searchParams.get('company_id'); } catch { return null; } })();
+  if (startCompany != null && String(startCompany) !== String(expectedCompanyId)) {
+    return { status: 'tenant_mismatch', origin: null, tenantKey: cfg.tenant, detail: `start URL company ${startCompany} is not tenant ${cfg.tenant} (${expectedCompanyId})`, steps: [] };
+  }
   const steps = [];
   const log = (msg) => { const m = redact(msg).split(email).join(maskEmail(email)); steps.push(m); try { onLog(m); } catch {} };
   const appOrigin = originOf(startUrl);
-  const result = (status, extra = {}) => ({ status, origin: extra.origin ?? null, ...extra, steps });
+  const result = (status, extra = {}) => ({ status, origin: extra.origin ?? null, ...(cfg.tenant === 'academy' ? {} : { tenantKey: cfg.tenant }), ...extra, steps });
   if (/\bpw:|\bpw:api|\*/.test(process.env.DEBUG || '') || process.env.PWDEBUG) {
     return result('unexpected', { detail: 'refusing to run with Playwright DEBUG/PWDEBUG enabled (would log fill values)' });
   }
@@ -269,7 +297,7 @@ export async function ensureAcademySession({
         await settleAuthRedirect(page, 3000);
         if (!(await stableSignedIn(page, appOrigin, { timeoutMs: Math.min(15_000, stage()) }))) return result('unexpected', { origin: appOrigin, detail: 'signed-in state did not hold after reload' });
       }
-      const v = await verifyTenant(page, observer, { startUrl, expectedCompanyId, deadline, log });
+      const v = await verifyTenant(page, observer, { startUrl, expectedCompanyId, tenantName: cfg.tenant === 'academy' ? null : cfg.name, deadline, log });
       const companyIds = v.tenant.companies?.map((c) => c.id);
       if (!v.ok) return result('tenant_mismatch', { origin: appOrigin, companyIds, tenant: v.tenant, detail: v.reason });
       return result(status, { origin: appOrigin, companyIds, tenant: v.tenant });
@@ -371,15 +399,17 @@ export async function ensureAcademySession({
 
 async function main(argv) {
   const mode = argv.includes('--ensure') ? 'ensure' : argv.includes('--check') ? 'check' : null;
-  if (!mode) { process.stderr.write('usage: academy-login.mjs --check | --ensure [--profile DIR] [--start-url URL]\n'); return 64; }
+  if (!mode) { process.stderr.write('usage: academy-login.mjs --check | --ensure [--tenant academy|sandbox] [--profile DIR] [--start-url URL]\n'); return 64; }
   const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
-  const res = await ensureAcademySession({
-    profileDir: arg('--profile') || DEFAULT_PROFILE_DIR,
-    startUrl: arg('--start-url') || DEFAULT_START_URL,
+  let cfg; try { cfg = tenantLoginConfig(arg('--tenant') || 'academy'); } catch (e) { process.stderr.write(`${e.message}\n`); return 64; }
+  const res = await ensureTenantSession({
+    tenant: cfg.tenant,
+    profileDir: arg('--profile') || cfg.profileDir,
+    startUrl: arg('--start-url') || cfg.startUrl,
     login: mode === 'ensure',
-    onLog: (m) => process.stderr.write(`[academy-login] ${m}\n`),
+    onLog: (m) => process.stderr.write(`[academy-login${cfg.tenant === 'academy' ? '' : `:${cfg.tenant}`}] ${m}\n`),
   });
-  process.stdout.write(JSON.stringify({ mode, account: maskEmail(ACCOUNT), ...res }, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ mode, account: maskEmail(cfg.account), ...res }, null, 2) + '\n'); // non-Academy results carry tenantKey
   return EXIT_CODES[res.status] ?? 1;
 }
 

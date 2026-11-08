@@ -23,7 +23,9 @@ import { executeJob as executeDriftJob, pollOnce as pollDriftJobsOnce, rollbackJ
 import { createDriveClient as createDriftDriveClient, createPylonClient as createDriftPylonClient, createLibraryClient as createDriftLibraryClient } from './drift/publish.mjs';
 import { buildDriftMessage } from './drift/slack.mjs';
 import { prepareSubmissions, dedupeAgainst, humanSummary, blocksToText } from './drift/weekly-submit.mjs';
-import { createWeeklyRunner, createEarlyCheckQueue, readAllowlist } from './drift/weekly-runner.mjs';
+import { previewBaseIsLive } from './drift/live-check.mjs';
+import { createWeeklyRunner, createEarlyCheckQueue, readAllowlist, makeExcluder } from './drift/weekly-runner.mjs';
+import { EXTRA_RENDER_MODULES, explicitModule, resolveModuleSync } from './drift/modules.mjs';
 import { normalizeLanguage, translationStatus, translationProblems, translationRequest, buildTranslationPrompt, parseTranslationReply, applyTranslation, buildLocalizedScript, localizedName, driveTitleFor, renderModeFor, allowsPylon, carryOverTranslations } from './translation.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
@@ -1012,17 +1014,18 @@ async function submitDriftJob(jobDetails, evidencePaths = null) {
   });
 }
 const driftErrorStatus = (e) => (e?.code === 'not_configured' || e?.code === 'service_missing' ? 503 : e?.status === 409 ? 409 : e?.status >= 400 && e?.status < 500 ? e.status : 502);
-/** Local evidence the extension may show: PNGs under the drift scratch dir or this repo's out/. */
+/** Local evidence the extension may show: PNGs under the drift scratch dir, .drift-cache, or this repo's out/. */
 function driftEvidenceFile(p) {
   if (typeof p !== 'string' || !p.endsWith('.png')) return null;
   const home = process.env.HOME || '';
-  const roots = [process.env.HADRIUS_DRIFT_SCRATCH, home && path.join(home, '.hermes', 'cache', 'scratch'), path.join(REPO_ROOT, 'out')].filter(Boolean);
+  const roots = [process.env.HADRIUS_DRIFT_SCRATCH, home && path.join(home, '.hermes', 'cache', 'scratch'), path.join(REPO_ROOT, 'out'), path.join(REPO_ROOT, '.drift-cache')].filter(Boolean);
   try {
     const real = fs.realpathSync(p);
     return roots.some((r) => { try { const rr = fs.realpathSync(r); return real.startsWith(rr + path.sep); } catch { return false; } }) && fs.statSync(real).isFile() ? real : null;
   } catch { return null; }
 }
 let driftPollTimer = null;
+const driftPreviewHashCache = new Map(); // `${path}:${size}:${mtime}` -> verified sha256
 // ---- Executing approved drift jobs (tools/drift/executor.mjs + publish.mjs). Real clients are wired here so
 // credentials stay in the bridge env. Off unless DRIFT_JOBS_EXECUTE=1.
 const driftScriptPath = (n) => path.join(REPO_ROOT, 'scripts', `${safeName(n)}.script.json`);
@@ -1065,18 +1068,22 @@ function driftExecDeps() {
   };
 }
 let driftExecRunning = false;
+async function runDriftJobPollOnce() {
+  if (driftExecRunning) return { running: true, results: [] };
+  driftExecRunning = true;
+  try {
+    const results = await pollDriftJobsOnce(driftExecDeps());
+    for (const r of results) if (r.status !== 'skipped' || !/^(status_|in_progress_elsewhere)/.test(r.reason || '')) console.log(`[drift-exec] ${r.id}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`);
+    return { running: false, results };
+  } catch (e) {
+    console.log(`[drift-exec] poll failed: ${e?.message || e}`);
+    throw e;
+  } finally { driftExecRunning = false; }
+}
 /** Poll approved drift jobs every 10 min and execute them one at a time. Off unless DRIFT_JOBS_EXECUTE=1. */
 function startDriftJobPoller() {
   if ((process.env.DRIFT_JOBS_EXECUTE || repoEnv('DRIFT_JOBS_EXECUTE')) !== '1' || driftPollTimer) return;
-  const tick = async () => {
-    if (driftExecRunning) return;
-    driftExecRunning = true;
-    try {
-      const results = await pollDriftJobsOnce(driftExecDeps());
-      for (const r of results) if (r.status !== 'skipped' || !/^(status_|in_progress_elsewhere)/.test(r.reason || '')) console.log(`[drift-exec] ${r.id}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`);
-    } catch (e) { console.log(`[drift-exec] poll failed: ${e?.message || e}`); }
-    finally { driftExecRunning = false; }
-  };
+  const tick = () => { runDriftJobPollOnce().catch(() => {}); };
   console.log('[drift-exec] executor enabled (DRIFT_JOBS_EXECUTE=1): approved drift jobs are rendered, verified and published, one at a time, every 10 min');
   setTimeout(tick, 30000); driftPollTimer = setInterval(tick, 10 * 60 * 1000);
 }
@@ -1089,20 +1096,32 @@ const DRIFT_SCRATCH = process.env.HADRIUS_DRIFT_SCRATCH || path.join(process.env
 const DRIFT_WEEKLY_LOG = path.join(process.env.HOME || '', 'Library', 'Logs', 'kbstudio-drift-weekly.log');
 const DRIFT_ALLOWLIST = path.join(REPO_ROOT, 'tools', 'drift', 'allowlist.json');
 const driftStudioUrl = (job) => `${serviceUrlFrom(LIBRARY_URL).replace(/\/api\/studio-drift$/, '')}/api/studio-open?job=${job.id}`;
-/** A weekly-* run directory directly under the drift scratch dir that has a summary.json; else null. */
+/** A weekly-* run directory directly under the drift scratch dir (or an archived/prepared run under .drift-cache/automation/runs or out/drift-runs) that has a summary.json; else null. */
 function driftRunDir(p) {
   try {
     const real = fs.realpathSync(String(p || ''));
+    if (!fs.existsSync(path.join(real, 'summary.json'))) return null;
     const root = fs.realpathSync(DRIFT_SCRATCH);
-    return path.dirname(real) === root && /^weekly-[\w.-]+$/.test(path.basename(real)) && fs.existsSync(path.join(real, 'summary.json')) ? real : null;
+    if (path.dirname(real) === root && /^weekly-[\w.-]+$/.test(path.basename(real))) return real;
+    const allowedRoots = [path.join(REPO_ROOT, '.drift-cache', 'automation', 'runs'), path.join(REPO_ROOT, 'out', 'drift-runs')];
+    for (const r of allowedRoots) {
+      try {
+        const rr = fs.realpathSync(r);
+        if (real.startsWith(rr + path.sep)) return real;
+      } catch { /* root may not exist */ }
+    }
+    return null;
   } catch { return null; }
 }
-async function submitWeeklyRun({ runDir, names = null, dryRun = true, prsByName = {} }) {
+async function submitWeeklyRun({ runDir, names = null, dryRun = true, prsByName = {}, includeAutomaticRepairs = false }) {
   const dir = driftRunDir(runDir);
-  if (!dir) throw Object.assign(new Error(`runDir must be a weekly-* run directory (with summary.json) directly under ${DRIFT_SCRATCH}`), { status: 400 });
+  if (!dir) throw Object.assign(new Error(`runDir must be a weekly-* run directory (with summary.json) directly under ${DRIFT_SCRATCH} or an archived run under .drift-cache/automation/runs`), { status: 400 });
   const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+  const autoRepairs = Boolean(includeAutomaticRepairs || (process.env.DRIFT_SUBMIT_AUTOMATIC_REPAIRS || repoEnv('DRIFT_SUBMIT_AUTOMATIC_REPAIRS')) === '1');
   const rows = prepareSubmissions({
     summary: readJson(path.join(dir, 'summary.json')), runDir: dir, names: Array.isArray(names) && names.length ? names : null, prsByName, pylonUrl: pylonArticleUrl, createdBy: WHOAMI,
+    exclude: driftExcluder, // tools/drift/exclusions.json: excluded videos are never posted (throws = submit refused)
+    includeAutomaticRepairs: autoRepairs,
     io: { readJson, readScript: (n) => readJson(path.join(REPO_ROOT, 'scripts', `${n}.script.json`)), readAssembly: (n) => readJson(path.join(REPO_ROOT, 'out', n, 'assembly.json')) },
   });
   let existing = null, existingError = null;
@@ -1110,6 +1129,15 @@ async function submitWeeklyRun({ runDir, names = null, dryRun = true, prsByName 
     try { existing = (await driftJobs.list({ limit: 200 })).jobs || []; dedupeAgainst(rows, existing); } catch (e) { existingError = String(e?.message || e); }
   }
   if (!dryRun && existingError) throw Object.assign(new Error(`could not check existing drift jobs, not submitting: ${existingError}`), { status: 503 });
+  // Preview-bound approvals: an update is offered only when its preview was built on the video live on Drive now
+  // (read-only Drive metadata check, dry runs included so the report shows it).
+  const liveDrive = createDriftDriveClient({ fetchAuthorized: googleDriveAuthorizedFetch });
+  for (const r of rows) {
+    if (r.decision !== 'post' || r.kind !== 'auto_update') continue;
+    const live = await previewBaseIsLive(r.payload, { repo: REPO_ROOT, drive: liveDrive, readScript: (n) => readJson(path.join(REPO_ROOT, 'scripts', `${n}.script.json`)) });
+    r.liveCheck = live;
+    if (!live.ok) { r.decision = 'skip'; r.reason = `preview_not_built_on_live_video:${live.reason}`; }
+  }
   for (const r of rows) {
     if (r.decision !== 'post') continue;
     if (dryRun) {
@@ -1141,17 +1169,19 @@ const driftWeeklyRunner = createWeeklyRunner({
 // PR-triggered early checks: DRIFT_PR_TRIGGER=1 -> flagged allowlisted videos get an early run (dry-run submit);
 // DRIFT_PR_TRIGGER=post -> same, but the submit is live. Off by default.
 const driftPrTriggerMode = () => { const v = (process.env.DRIFT_PR_TRIGGER || repoEnv('DRIFT_PR_TRIGGER') || '').trim(); return v === '1' || v === 'post' ? v : ''; };
+const driftExcluder = makeExcluder({ repo: REPO_ROOT });
 const driftEarlyQueue = createEarlyCheckQueue({ statePath: path.join(REPO_ROOT, 'out', '_drift-early-queue.json'), debounceMs: 30 * 60 * 1000, maxPerDay: 6 });
 function driftPrTriggerEnqueue(items) {
   if (!driftPrTriggerMode() || !items?.length) return;
   let allowed; try { allowed = new Set(readAllowlist(DRIFT_ALLOWLIST)); } catch { allowed = new Set(); } // unreadable allowlist = queue nothing
-  const r = driftEarlyQueue.enqueue(items, { allowed });
-  console.log(`[drift-weekly] PR trigger queued ${r.added.length} video(s)${r.skipped.length ? `; not in allowlist: ${r.skipped.join(', ')}` : ''}`);
+  // Temporary module exclusions (tools/drift/exclusions.json): recorded as 'excluded', never queued. Unreadable = queue nothing.
+  let r; try { r = driftEarlyQueue.enqueue(items, { allowed, exclude: driftExcluder }); } catch (e) { console.log(`[drift-weekly] PR trigger: exclusions unreadable, nothing queued (${e?.message || e})`); return; }
+  console.log(`[drift-weekly] PR trigger queued ${r.added.length} video(s)${r.skipped.length ? `; not in allowlist: ${r.skipped.join(', ')}` : ''}${r.excluded?.length ? `; excluded: ${r.excluded.join(', ')}` : ''}`);
 }
 function driftPrTriggerTick() {
   const mode = driftPrTriggerMode();
   if (!mode) return;
-  const batch = driftEarlyQueue.take({ busy: driftWeeklyRunner.busy });
+  let batch; try { batch = driftEarlyQueue.take({ busy: driftWeeklyRunner.busy, exclude: driftExcluder }); } catch (e) { console.log(`[drift-weekly] PR early check skipped: ${e?.message || e}`); return; }
   if (!batch) return;
   const r = driftWeeklyRunner.start({ names: batch.names, source: 'pr', submitDryRun: mode !== 'post', prsByName: batch.prsByName });
   if (!r.started) { driftEarlyQueue.requeue(batch); console.log(`[drift-weekly] PR early check not started (${r.error}); requeued`); }
@@ -1681,7 +1711,7 @@ async function findCoverageInfo(scriptName) {
 // Render-bar picks beyond the coverage modules: Academy curriculum tabs with no app module of
 // their own, plus "Other". They're always explicit (never inferred). Platform and Employee
 // Training have their own Drive folders (gdrive.mjs) and Pylon collections (pylon.mjs).
-const EXTRA_RENDER_MODULES = ['Platform', 'Employee Training', 'Other'];
+// (Defined in tools/drift/modules.mjs, shared with the drift job's exclusions; imported above.)
 
 // Voices offered in the render bar. ElevenLabs names are the voices' names in the ElevenLabs library.
 const NARRATION_VOICES = [
@@ -1806,20 +1836,14 @@ function narrationEnv(voice) {
   if (v) env.NARRATION_VOICE = v; else delete env.NARRATION_VOICE;
   return env;
 }
-function explicitModule(raw) {
-  const v = String(raw || '').trim();
-  return canonicalModule(v) || EXTRA_RENDER_MODULES.find((m) => m.toLowerCase() === v.toLowerCase()) || null;
-}
-
 async function resolveScriptModule(name, scriptObj, coverageModule) {
   // A coverage module, or a deliberate render-bar pick (Platform, Employee Training, Other); don't re-infer over it.
-  const own = explicitModule(scriptObj?.module);
-  if (own) return { module: own, inferred: false };
-  const cov = canonicalModule(coverageModule !== undefined ? coverageModule : (await findCoverageInfo(name)).module);
-  if (cov) return { module: cov, inferred: false };
-  const guess = inferModuleFromScript(scriptObj);
-  if (guess) return { module: guess, inferred: true };
-  return { module: scriptObj?.module || coverageModule || null, inferred: false };
+  // Same order as the drift job's exclusions (tools/drift/modules.mjs resolveModuleSync); only the coverage lookup
+  // (library service) lives here.
+  if (explicitModule(scriptObj?.module)) { const r = resolveModuleSync(scriptObj); return { module: r.module, inferred: r.inferred }; }
+  const cov = coverageModule !== undefined ? coverageModule : (await findCoverageInfo(name)).module;
+  const r = resolveModuleSync(scriptObj, cov);
+  return { module: r.module, inferred: r.inferred };
 }
 
 function formatHumanTitle(str) {
@@ -2128,7 +2152,11 @@ const server = http.createServer(async (req, res) => {
     // write-back end to end without touching any real video. Uses the How-to-Find-a-Project-ID pilot's
     // recorded vs. recaptured screenshot as sample evidence when those files exist on this machine.
     try {
-      const { before = null, after = null, kind = 'auto_update', tag = new Date().toISOString() } = await readJsonBody(req);
+      const { before = null, after = null, kind = 'auto_update', tag = new Date().toISOString(), preview = null } = await readJsonBody(req);
+      // Optional local MP4 to exercise the preview upload (first thread reply). The job carries no certified
+      // automaticResult, so approving it is refused by the executor (not_previewed) and nothing is ever published.
+      const previewFile = preview ? driftEvidenceFile(String(preview)) : null;
+      if (preview && (!previewFile || !/\.mp4$/i.test(previewFile))) return sendJson(res, 400, { ok: false, error: 'preview must be an .mp4 under the drift scratch dir, out/ or .drift-cache' });
       const name = 'routing-check-do-not-process';
       const isAuto = kind !== 'manual_rerecord';
       const change = {
@@ -2146,6 +2174,7 @@ const server = http.createServer(async (req, res) => {
         untouched: { steps: [2, 3], narrationUnchangedSteps: [2, 3], unverified: [], framesPreservedPct: 66.7, oldDurationSec: 27, newDurationSec: 27.4 },
         elevenLabsChars: isAuto ? change.newNarration.length : 0,
         rerecordReason: isAuto ? [] : ['ROUTING CHECK — synthetic re-record job. Do not act on it.'],
+        ...(isAuto && previewFile ? { preview: { path: previewFile, sha256: crypto.createHash('sha256').update(fs.readFileSync(previewFile)).digest('hex') } } : {}),
       };
       const fingerprint = 'routing-check-' + crypto.createHash('sha256').update(`${kind}|${tag}`).digest('hex').slice(0, 16);
       const out = await submitDriftJob({ video_name: name, video_title: details.video.title, kind: isAuto ? 'auto_update' : 'manual_rerecord', fingerprint, details, created_by: WHOAMI });
@@ -2158,7 +2187,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && u.pathname === '/drift/weekly/submit') {
     try {
       const body = await readJsonBody(req);
-      const r = await submitWeeklyRun({ runDir: body.runDir, names: body.names, dryRun: body.dryRun !== false });
+      const r = await submitWeeklyRun({ runDir: body.runDir, names: body.names, dryRun: body.dryRun !== false, includeAutomaticRepairs: !!body.includeAutomaticRepairs });
       return sendJson(res, 200, { ok: true, ...r });
     } catch (e) { return sendJson(res, e?.status || driftErrorStatus(e), { ok: false, error: String(e?.message || e) }); }
   }
@@ -2171,7 +2200,10 @@ const server = http.createServer(async (req, res) => {
         if (allowlistPath !== DRIFT_ALLOWLIST) return sendJson(res, 400, { ok: false, error: 'allowlist must be tools/drift/allowlist.json' });
       }
       if (!allowlistPath && !(Array.isArray(body.names) ? body.names.length : body.names)) return sendJson(res, 400, { ok: false, error: 'names or allowlist required' });
-      const r = driftWeeklyRunner.start({ names: allowlistPath ? null : body.names, allowlistPath, source: String(body.source || 'manual'), submitDryRun: body.dryRun !== false, captureDryRun: !!body.captureDryRun, noJudge: !!body.noJudge });
+      // Capture identity: body.session, else DRIFT_CAPTURE_SESSION in .env ('owner' = the operator's Chrome sign-in,
+      // which sees the same records as the original recordings; 'automation' = each tenant's automation account).
+      const session = body.session != null ? String(body.session) : (repoEnv('DRIFT_CAPTURE_SESSION') || 'automation');
+      const r = driftWeeklyRunner.start({ names: allowlistPath ? null : body.names, allowlistPath, source: String(body.source || 'manual'), submitDryRun: body.dryRun !== false, captureDryRun: !!body.captureDryRun, noJudge: !!body.noJudge, session });
       return sendJson(res, r.started ? 202 : (String(r.error).startsWith('busy') ? 409 : 400), { ok: !!r.started, ...r });
     } catch (e) { return sendJson(res, 400, { ok: false, error: String(e?.message || e) }); }
   }
@@ -2185,12 +2217,21 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, jobs, pending: jobs.filter((j) => j.status === 'pending_approval' || j.status === 'needs_rerecord').length, me: WHOAMI });
     } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e), code: e?.code || null }); }
   }
+  if (req.method === 'POST' && u.pathname === '/drift/jobs/poll') {
+    try {
+      const out = await runDriftJobPollOnce();
+      return sendJson(res, 200, { ok: true, ...out });
+    } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e) }); }
+  }
   const driftDecisionMatch = req.method === 'POST' && u.pathname.match(/^\/drift\/jobs\/([0-9a-f-]{36})\/decision$/i);
   if (driftDecisionMatch) {
     try {
       const body = await readJsonBody(req);
       const out = await driftJobs.decide({ id: driftDecisionMatch[1], decision: String(body.decision || ''), by: WHOAMI, via: 'extension', note: body.note ? String(body.note).slice(0, 1000) : null, expectedVersion: body.expectedVersion ?? null });
       console.log(`[drift-jobs] ${WHOAMI}: ${body.decision} ${driftDecisionMatch[1]}`);
+      if (String(body.decision || '') === 'approve' && (process.env.DRIFT_JOBS_EXECUTE || repoEnv('DRIFT_JOBS_EXECUTE')) === '1') {
+        setTimeout(() => { runDriftJobPollOnce().catch(() => {}); }, 250);
+      }
       return sendJson(res, 200, { ok: true, job: out.job, slack: out.slack || null });
     } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e), code: e?.code || null, job: e?.body?.job || null, decided_by: e?.body?.decided_by || null }); }
   }
@@ -2206,6 +2247,34 @@ const server = http.createServer(async (req, res) => {
       const code = e?.code || null;
       return sendJson(res, code === 'no_local_record' ? 404 : code === 'busy' ? 409 : code ? 400 : 500, { ok: false, code, error: String(e?.message || e) });
     }
+  }
+  // The exact certified video an approval would publish (job.details.preview), streamed only while its bytes still
+  // hash to the previewed sha256. Range requests for seeking in the panel's <video>.
+  const driftPreviewMatch = req.method === 'GET' && u.pathname.match(/^\/drift\/jobs\/([0-9a-f-]{36})\/preview$/i);
+  if (driftPreviewMatch) {
+    try {
+      const { job } = await driftJobs.get(driftPreviewMatch[1]);
+      const p = job?.details?.preview;
+      const file = p?.path ? driftEvidenceFile(p.path) : null;
+      if (!file || !/\.mp4$/i.test(file)) return sendJson(res, 404, { ok: false, error: 'preview not on this machine' });
+      const st = fs.statSync(file);
+      const key = `${file}:${st.size}:${st.mtimeMs}`;
+      if (driftPreviewHashCache.get(key) !== p.sha256) {
+        const h = crypto.createHash('sha256'); await new Promise((ok, ko) => fs.createReadStream(file).on('data', (b) => h.update(b)).on('end', ok).on('error', ko));
+        if (h.digest('hex') !== p.sha256) return sendJson(res, 409, { ok: false, error: 'the file on disk no longer matches the previewed video' });
+        driftPreviewHashCache.set(key, p.sha256);
+      }
+      const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+      if (range) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, st.size - Number(range[2] || 0));
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), st.size - 1) : st.size - 1;
+        if (!(start <= end && end < st.size)) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+        res.writeHead(206, { 'Content-Type': 'video/mp4', 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store' });
+        return fs.createReadStream(file, { start, end }).pipe(res);
+      }
+      res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': st.size, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store' });
+      return fs.createReadStream(file).pipe(res);
+    } catch (e) { return sendJson(res, driftErrorStatus(e), { ok: false, error: String(e?.message || e) }); }
   }
   const driftEvidenceMatch = req.method === 'GET' && u.pathname.match(/^\/drift\/jobs\/([0-9a-f-]{36})\/evidence\/(\d{1,4})\/(before|after)$/i);
   if (driftEvidenceMatch) {

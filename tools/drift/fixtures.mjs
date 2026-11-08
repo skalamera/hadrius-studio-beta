@@ -1,5 +1,6 @@
-// Fixture lifecycle for the weekly drift check: replay data-changing walkthrough steps in Hadrius Academy prod
-// (company 1150) ONLY on job-owned test records labelled '[Studio QA]'.
+// Fixture lifecycle for the weekly drift check: replay data-changing walkthrough steps in a registered tenant
+// (tenants.mjs: Hadrius Academy 1150, Hadrius Sandbox 1048) ONLY on job-owned test records labelled '[Studio QA]'.
+// A spec's companyId must equal the run tenant's company; the script must name that company too.
 //
 // Import-safe: no side effects at import (Playwright/capture are imported lazily by the CLI).
 //
@@ -13,18 +14,19 @@
 // CLI:
 //   node tools/drift/fixtures.mjs --run --script scripts/X.script.json [--spec SPEC] [--out NEW_DIR]
 //        [--journal-dir DIR] [--simulate-crash-after-step N]     (N: test only, SIGKILLs itself after step N)
-//   node tools/drift/fixtures.mjs --reconcile [--spec SPEC ...]     (reconcile unfinished runs + sweep, no replay)
+//   node tools/drift/fixtures.mjs --reconcile [--tenant academy|sandbox] [--spec SPEC ...]  (reconcile + sweep, no replay)
 //   node tools/drift/fixtures.mjs --status [--journal-dir DIR]
 //   node tools/drift/fixtures.mjs --draft --script S --requests RUN/requests.json [--out spec.json]
 import {readFileSync,existsSync,readdirSync,writeFileSync} from 'node:fs';
 import {join,resolve,dirname,basename} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {openJournal,newRunId,runIdTime,reduceJournal,readJournalFile,listJournals,openRuns,acquireLock,DEFAULT_JOURNAL_DIR} from './journal.mjs';
+import {getTenant,tenantForCompanyId,detectScriptTenant,tenantProfileDir,APP_ORIGIN} from './tenants.mjs';
 
 export const REPO=resolve(dirname(fileURLToPath(import.meta.url)),'..','..');
 export const SPEC_DIR=join(REPO,'tools','drift','fixture-specs');
 export const LABEL_PREFIX='[Studio QA]';
-export const EXPECTED_COMPANY_ID=1150;
+export const EXPECTED_COMPANY_ID=1150; // Academy (default tenant); other tenants: tenants.mjs
 export const SWEEP_MAX_AGE_MS=24*3600*1000;
 const ID_SRC=String.raw`(\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`;
 const TELEMETRY_RE=/^\/api\/users\/analytics\/\d+\/track-event\/?$/;
@@ -51,10 +53,12 @@ export function listSpecs(dir=SPEC_DIR){return existsSync(dir)?readdirSync(dir).
 const STEP_KINDS=['ui_only','type','set_slider','create','mutate'];
 /** -> string[] problems (empty = valid). With script: every statically mutating step must be covered or the
  *  replay stops there (reported, not an error); spec steps must exist in the script. */
-export function validateSpec(spec,{script=null,mutationPlan=null,requireReviewed=true}={}){
+export function validateSpec(spec,{script=null,mutationPlan=null,requireReviewed=true,tenant='academy'}={}){
   const p=[];if(!spec||typeof spec!=='object')return ['spec_not_object'];
+  const T=getTenant(tenant);
   if(spec.schema!==1)p.push('schema_not_1');
-  if(spec.companyId!==EXPECTED_COMPANY_ID)p.push('company_not_1150');
+  if(spec.companyId!==T.companyId)p.push(`company_not_${T.companyId}`);
+  if(script){const d=detectScriptTenant(script);if(d.status!=='ok'||d.tenant!==T.key)p.push(`script_tenant_${d.tenant??d.status}_not_${T.key}`);}
   if(!/^[a-z0-9][a-z0-9-]{2,40}$/.test(spec.labelKey??''))p.push('bad_labelKey');
   if(requireReviewed&&!(spec.reviewed?.by&&spec.reviewed?.at))p.push('spec_not_reviewed');
   if(!/^[a-z0-9.-]+$/.test(spec.apiHost??''))p.push('bad_apiHost');
@@ -160,9 +164,12 @@ export function createPageBackend(page,spec,{waitForSession=15000}={}){
 /** Ties spec + journal + backend together. capture.mjs drives it through these hooks:
  *  allow (guard predicate) · prepare(page) · stepDecision(step,mutation) · beforeStep(step) · onResponse(r) ·
  *  afterStep(step, requests) · teardown(page) · finish(status). */
-export function createFixtureSession({spec,script,journalDir=DEFAULT_JOURNAL_DIR,runId=newRunId(),backendFor=(page)=>createPageBackend(page,spec),
+export function createFixtureSession({spec,script,tenant='academy',journalDir=DEFAULT_JOURNAL_DIR,runId=newRunId(),backendFor=(page)=>createPageBackend(page,spec),
   specPath=null,now=()=>new Date(),otherSpecs=[],afterStepHook=null,log=()=>{}}){
-  const problems=validateSpec(spec,{script});if(problems.length)throw Object.assign(new Error(`invalid_fixture_spec: ${problems.join(', ')}`),{problems});
+  const T=getTenant(tenant);
+  const problems=validateSpec(spec,{script,tenant:T.key});
+  // Reconcile/sweep may only touch specs of the SAME tenant (their records live in that company).
+  otherSpecs=otherSpecs.filter(o=>o?.companyId===T.companyId);if(problems.length)throw Object.assign(new Error(`invalid_fixture_spec: ${problems.join(', ')}`),{problems});
   const label=fixtureLabel(spec,runId);const journal=openJournal({dir:journalDir,runId,now});
   const fixtures=spec.fixtures.map(f=>({key:f.key,recordType:f.recordType,via:f.create.via,createSteps:f.create.steps??[],name:renderValue(f.name,{label}),created:false,body:f.create.body??null}));
   const names=Object.fromEntries(fixtures.map(f=>[f.key,f.name]));
@@ -173,7 +180,7 @@ export function createFixtureSession({spec,script,journalDir=DEFAULT_JOURNAL_DIR
   const F=(k)=>fixtures.find(f=>f.key===k);
   const created=(f,id,how)=>{if(f.created)return;f.created=true;state.ids[f.key].add(String(id));journal.append('created',{fixture:f.key,recordType:f.recordType,id:String(id),how});
     report.fixtures[f.key]={...(report.fixtures[f.key]??{}),id:String(id),name:f.name,recordType:f.recordType,createdHow:how};log(`created ${f.key} id=${id}`);};
-  const s={runId,label,names,state,report,journal,spec,pageInit:pageApiInit(spec.apiHost),
+  const s={runId,label,names,state,report,journal,spec,tenant:T.key,pageInit:pageApiInit(spec.apiHost),
     allow:fixtureAllow(spec,()=>state),
     /** On a signed-in, tenant-verified page: reconcile earlier unfinished runs, sweep stale labels, api-create fixtures. */
     async prepare(page){const backend=backendFor(page);
@@ -213,7 +220,7 @@ export function createFixtureSession({spec,script,journalDir=DEFAULT_JOURNAL_DIR
           if(!f.created){out.ok=false;out.notes.push('fixture_not_created');}}
         if(e.kind==='mutate'){const ok=allowed.some(r=>r.reason.startsWith(`fixture_mutate:${e.fixture}`)||r.reason.startsWith('fixture_id:'));
           if(ok)journal.append('mutated',{fixture:e.fixture,step:step.index});else{out.ok=false;out.notes.push('expected_mutation_request_not_seen');}}
-        if(e.kind==='ui_only'||e.kind==='type'||e.kind==='set_slider'){const w=mine.filter(r=>r.decision!=='allow'&&!/^(cognito|oauth|feature_flag|read_named_post|graphql_query)/.test(r.reason));
+        if(e.kind==='ui_only'||e.kind==='type'||e.kind==='set_slider'){const w=mine.filter(r=>r.decision!=='allow'&&!/^(cognito|oauth|feature_flag|read_named_post|known_read_only_post|sign_in_lookup|graphql_query|websocket_blocked)/.test(r.reason));
           if(w.length){out.ok=false;out.notes.push(`unexpected_write_requests:${w.map(r=>`${r.method} ${r.path}`).join(',')}`);}}}
       report.steps[step.index]=out;if(!out.ok)report.findings.push({kind:'fixture_step_check_failed',...out});
       state.currentStep=null;if(afterStepHook)await afterStepHook(step,s);return out;},
@@ -288,7 +295,7 @@ export async function sweepStale({specs,backend=null,backendFor=()=>backend,jour
 // ---------- drafting helper ----------
 /** Propose a spec from a script + observed non-GET requests (requests.json from a fixture/recapture run, with
  *  `step` on each entry). Output is a DRAFT (reviewed:null): a human must check endpoints, effects and undo. */
-export function draftSpec({script,requests=[],mutationPlan=[],companyId=EXPECTED_COMPANY_ID,apiHost='hadriusapi.com'}){
+export function draftSpec({script,requests=[],mutationPlan=[],companyId=EXPECTED_COMPANY_ID,apiHost='api.hadrius.com'}){
   const labelKey=String(script.name).toLowerCase().replace(/^how-to-/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40);
   const spec={schema:1,video:script.name,labelKey,companyId,apiHost,reviewed:null,draftNotes:[],recordTypes:{},fixtures:[],steps:[],cleanupOrder:[]};
   const tpl=(p)=>p.replace(`/api/company/${companyId}/`,'/api/company/{companyId}/').replace(/\/(\d+|[0-9a-f-]{36})(?=\/|$)/gi,'/{fixtureId}');
@@ -320,15 +327,21 @@ export async function main(a=process.argv.slice(2)){
   const journalDir=resolve(arg(a,'--journal-dir')??DEFAULT_JOURNAL_DIR);
   if(a.includes('--status')){console.log(JSON.stringify(status(journalDir),null,2));return;}
   if(a.includes('--draft')){const script=JSON.parse(readFileSync(arg(a,'--script'),'utf8'));const req=arg(a,'--requests')?JSON.parse(readFileSync(arg(a,'--requests'),'utf8')).nonGet??[]:[];
-    const {mutationPlan}=await import('./capture.mjs');const d=draftSpec({script,requests:req,mutationPlan:mutationPlan(script)});
+    const {mutationPlan}=await import('./capture.mjs');const dt=detectScriptTenant(script);if(dt.status!=='ok')throw new Error(`tenant_${dt.status}: ${dt.reason}`);
+    const d=draftSpec({script,requests:req,mutationPlan:mutationPlan(script),companyId:getTenant(dt.tenant).companyId});
     const o=arg(a,'--out');if(o){if(existsSync(o))throw new Error('output_exists');writeFileSync(o,JSON.stringify(d,null,2)+'\n');}console.log(JSON.stringify(d,null,2));return;}
   const lock=acquireLock(journalDir);if(!lock.ok)throw new Error(`fixture_runner_busy pid=${lock.heldBy.pid}`);
   try{
-    const {captureRun,DEFAULT_PROFILE}=await import('./capture.mjs');
-    if(a.includes('--reconcile')){const specs=(a.filter((x,i)=>a[i-1]==='--spec').length?a.filter((x,i)=>a[i-1]==='--spec'):listSpecs()).map(loadSpec);
+    const {captureRun}=await import('./capture.mjs');
+    if(a.includes('--reconcile')){const T=getTenant(arg(a,'--tenant')??'academy');
+      const all=(a.filter((x,i)=>a[i-1]==='--spec').length?a.filter((x,i)=>a[i-1]==='--spec'):listSpecs()).map(loadSpec);
+      // Only this tenant's specs: their records live in its company and its session can't see the others.
+      const specs=all.filter(sp=>sp.companyId===T.companyId);const other=all.filter(sp=>sp.companyId!==T.companyId).map(sp=>sp.video);
+      if(other.length)console.log(`[fixture] reconcile ${T.key}: skipping specs of other tenants: ${other.join(', ')}`);
+      if(!specs.length){const r={status:'no_specs_for_tenant',tenant:T.key};console.log(JSON.stringify(r,null,2));return r;}
       const {withAppPage}=await import('./capture.mjs');
       const st={phase:'reconcile',currentStep:null,fixtures:[],ids:{},extraIds:[]};
-      const res=await withAppPage({profileDir:DEFAULT_PROFILE,startUrl:`https://app.hadrius.com/testing-program/risks?company_id=${EXPECTED_COMPANY_ID}`,
+      const res=await withAppPage({tenant:T.key,profileDir:tenantProfileDir(T.key,REPO),startUrl:`${APP_ORIGIN}/testing-program/risks?company_id=${T.companyId}`,
         allow:specs.map(sp=>fixtureAllow(sp,()=>st)),pageInit:pageApiInit(specs[0].apiHost),log:console.log,
         fn:async(page)=>{const backendFor=(sp)=>createPageBackend(page,sp);st.phase='reconcile';
           const rec=await reconcileRuns({journalDir,backendFor,specs,state:st,log:console.log});st.phase='sweep';
@@ -338,12 +351,15 @@ export async function main(a=process.argv.slice(2)){
     const scriptPath=resolve(arg(a,'--script'));const script=JSON.parse(readFileSync(scriptPath,'utf8'));
     const specPath=resolve(arg(a,'--spec')??specPathFor(script.name)??'');if(!existsSync(specPath))throw new Error('no_fixture_spec');
     const spec=loadSpec(specPath);const runId=newRunId();
+    // Run tenant = the script's company (never guessed); the spec must belong to the same tenant (validateSpec).
+    const dt=detectScriptTenant(script);if(dt.status!=='ok')throw new Error(`tenant_${dt.status}: ${dt.reason}`);const T=getTenant(dt.tenant);
+    const st=tenantForCompanyId(spec.companyId);if(!st||st.key!==T.key)throw new Error(`spec_tenant_mismatch: spec company ${spec.companyId}, script tenant ${T.key} (${T.companyId})`);
     const outDir=resolve(arg(a,'--out')??join(process.env.TMPDIR??'/tmp',`fixture-run-${runId}`));
     const crashAfter=arg(a,'--simulate-crash-after-step');
-    const session=createFixtureSession({spec,script,specPath,journalDir,runId,otherSpecs:listSpecs().filter(p=>resolve(p)!==specPath).map(loadSpec),log:(m)=>console.log(`[fixture] ${m}`),
+    const session=createFixtureSession({spec,script,tenant:T.key,specPath,journalDir,runId,otherSpecs:listSpecs().filter(p=>resolve(p)!==specPath).map(loadSpec),log:(m)=>console.log(`[fixture] ${m}`),
       afterStepHook:crashAfter!=null?async(step)=>{if(step.index===Number(crashAfter)){console.log(`[fixture] SIMULATED CRASH after step ${step.index} (SIGKILL)`);process.kill(process.pid,'SIGKILL');}}:null});
     console.log(`[fixture] run ${runId} label="${session.label}" journal=${session.journal.file}`);
-    const run=await captureRun({scriptPath,outDir,profileDir:DEFAULT_PROFILE,fixture:session});
+    const run=await captureRun({scriptPath,outDir,tenant:T.key,profileDir:tenantProfileDir(T.key,REPO),fixture:session});
     if(run.fixture?.status==='pending'){const fin=session.finish(run.status);Object.assign(run.fixture,{status:fin.clean?'clean':'dirty',dirty:fin.dirty});}
     console.log(JSON.stringify({status:run.status,aborted:run.aborted,outDir,fixture:run.fixture,findings:run.findings,
       steps:run.steps.map(s=>({index:s.index,shot:s.screenshot,performed:s.performed??null,guard:s.mutationGuard?.status??null,target:s.target?.status,error:s.error}))},null,2));

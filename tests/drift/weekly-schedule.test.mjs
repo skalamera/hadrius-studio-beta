@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import { execFileSync } from 'node:child_process';
-import { createWeeklyRunner, createEarlyCheckQueue, scrubEnv, weeklyArgs, LOCK_NAME } from '../../tools/drift/weekly-runner.mjs';
+import { createWeeklyRunner, createEarlyCheckQueue, scrubEnv, weeklyArgs, LOCK_NAME, readAllowlist } from '../../tools/drift/weekly-runner.mjs';
 import { renderPlist, LABEL } from '../../tools/drift/schedule/render-plist.mjs';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'drift-sched-'));
@@ -121,8 +121,12 @@ test('plist: renders a valid launchd agent that only curls the local bridge, dry
   assert.throws(() => renderPlist({ template: '{{NOPE}}' }), /unknown_placeholder/);
   if (process.platform === 'darwin') { const f = join(tmp(), 'p.plist'); writeFileSync(f, x); execFileSync('/usr/bin/plutil', ['-lint', f]); }
 });
-test('allowlist.json: 41 Academy (company 1150) walkthroughs, no internal records', () => {
-  const list = JSON.parse(readFileSync(new URL('../../tools/drift/allowlist.json', import.meta.url), 'utf8'));
-  assert.equal(list.length, 41); assert.ok(list.every((x) => x.company_id === '1150' && !x.name.startsWith('_studio')));
-  assert.equal(new Set(list.map((x) => x.name)).size, 41);
+test('allowlist.json: Academy (company 1150) walkthroughs + Sandbox list, no internal records; readers get academy+sandbox only', () => {
+  const text = readFileSync(new URL('../../tools/drift/allowlist.json', import.meta.url), 'utf8');
+  const o = JSON.parse(text); const list = o.academy;
+  assert.ok(list.length >= 41); assert.equal(list.length, o.counts.academy); assert.ok(list.every((x) => x.company_id === '1150' && !x.name.startsWith('_studio')));
+  assert.equal(new Set(list.map((x) => x.name)).size, list.length);
+  const names = readAllowlist(new URL('../../tools/drift/allowlist.json', import.meta.url));
+  assert.equal(names.length, o.academy.length + o.sandbox.length);
+  assert.ok(!o.unknown.some((x) => names.includes(x.name)), 'unknown-tenant scripts are never run');
 });

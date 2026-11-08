@@ -5,6 +5,7 @@ out/
 .browser-profile/
 .browser-profile-ai-*/
 .browser-profile-drift/
+.browser-profile-drift-sandbox/
 .DS_Store
 __pycache__/
 *.pyc
@@ -30,3 +31,6 @@ skills-lock.json
 
 # installer/build.sh output: the installer zip carries the team's live credentials
 dist/
+
+# Bare frontend mirror for drift release attribution (tools/drift/frontend-git.mjs)
+.drift-cache/

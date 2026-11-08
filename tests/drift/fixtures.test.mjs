@@ -14,7 +14,7 @@ import {openJournal,readJournalFile,reduceJournal,openRuns,newRunId,runIdTime,ac
 const HERE=dirname(fileURLToPath(import.meta.url));
 const SPEC_PATH=join(HERE,'..','..','tools','drift','fixture-specs','How-to-Populate-Controls-and-Risks-Manually.fixture.json');
 const SPEC=loadSpec(SPEC_PATH);
-const APP='https://app.hadrius.com',API='https://hadriusapi.com';
+const APP='https://app.hadrius.com',API='https://api.hadrius.com';
 const RISKS='/api/company/1150/firm_oversight/risks/',CONTROLS='/api/company/1150/firm_oversight/controls/';
 const tmp=()=>mkdtempSync(join(tmpdir(),'drift-fx-'));
 // A minimal script with the pilot's step layout (indices 0..11).
@@ -91,7 +91,7 @@ test('fixture guard: only the labelled create request, in its step, once', () =>
   assert.equal(g.decide({...post(RISKS,{scenario:name}),url:`${APP}${RISKS}`}).decision,'abort','API host only');
   s.fixtures[0].created=true;s.ids.risk.add('48742');
   assert.equal(g.decide(post(RISKS,{scenario:name})).decision,'abort','a second create of the same fixture');
-  assert.match(g.failure(),/network_guard: POST hadriusapi\.com\/api\/company\/1150\/firm_oversight\/risks\/ \(unclassified_app_post\)/);
+  assert.match(g.failure(),/network_guard: POST api\.hadrius\.com\/api\/company\/1150\/firm_oversight\/risks\/ \(unclassified_app_post\)/);
 });
 test('fixture guard: writes on the run\'s fixture ids pass; any other record id is aborted', () => {
   const s=st();s.ids.risk.add('48742');s.fixtures[0].created=true;const g=guardFor(s);
@@ -142,8 +142,8 @@ async function drive(session,be,{badStep=null}={}){
     session.beforeStep(step);
     const e=SPEC.steps.find(x=>x.stepIndex===step.index);
     if(e.kind==='create'){const f=session.state.fixtures.find(x=>x.key===e.fixture);const path=e.fixture==='risk'?RISKS:CONTROLS;
-      const dec=session.allow({method:'POST',host:'hadriusapi.com',path,postData:JSON.stringify({[e.fixture==='risk'?'scenario':'display_name']:f.name})});
-      reqs.push({step:step.index,method:'POST',host:'hadriusapi.com',path,decision:dec?'allow_logged':'abort',reason:dec||'x'});
+      const dec=session.allow({method:'POST',host:'api.hadrius.com',path,postData:JSON.stringify({[e.fixture==='risk'?'scenario':'display_name']:f.name})});
+      reqs.push({step:step.index,method:'POST',host:'api.hadrius.com',path,decision:dec?'allow_logged':'abort',reason:dec||'x'});
       if(dec){const json=be.uiCreate(f.recordType,f.name);await session.onResponse({method:'POST',path,status:200,json:async()=>json});}}
     await session.afterStep(step,reqs,{});}
   await session.teardown({});return session.finish('captured');
@@ -211,9 +211,9 @@ test('sweep deletes [Studio QA] records older than 24h; keeps young, unknown-age
 
 // ---------- drafting helper ----------
 test('draftSpec proposes create fixtures + labelled typed names from observed requests (unreviewed)', () => {
-  const requests=[{step:4,method:'POST',host:'hadriusapi.com',path:RISKS,bodyKeys:['scenario','notes'],bodyValues:{scenario:SCRIPT.steps[2].value}},
-    {step:10,method:'POST',host:'hadriusapi.com',path:CONTROLS,bodyKeys:['display_name'],bodyValues:{display_name:'Approved AI Tools Review'}},
-    {step:4,method:'POST',host:'hadriusapi.com',path:'/api/users/analytics/1/track-event/'}];
+  const requests=[{step:4,method:'POST',host:'api.hadrius.com',path:RISKS,bodyKeys:['scenario','notes'],bodyValues:{scenario:SCRIPT.steps[2].value}},
+    {step:10,method:'POST',host:'api.hadrius.com',path:CONTROLS,bodyKeys:['display_name'],bodyValues:{display_name:'Approved AI Tools Review'}},
+    {step:4,method:'POST',host:'api.hadrius.com',path:'/api/users/analytics/1/track-event/'}];
   const d=draftSpec({script:SCRIPT,requests,mutationPlan:mutationPlan(SCRIPT)});
   assert.equal(d.reviewed,null);assert.ok(validateSpec(d).includes('spec_not_reviewed'));
   assert.equal(d.recordTypes['firm_oversight.risks'].create.nameField,'scenario');
@@ -278,7 +278,7 @@ test('captureRun fixture mode: a write on a non-fixture record is aborted, fails
   const origFetch=globalThis.fetch;globalThis.fetch=async()=>({json:async()=>({running:false})});
   try{const run=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run'),log:()=>{},chromium:fc,fixture:session,
       ensureSession:async()=>({status:'already_signed_in'}),limits:{stepMs:5000,totalMs:30000,settleMs:0,idleMs:0,manualLoginMs:0,loadingWaitMs:0}});
-    assert.equal(run.status,'aborted');assert.match(run.aborted,/DELETE hadriusapi\.com\/api\/company\/1150\/firm_oversight\/risks\/46444\//);
+    assert.equal(run.status,'aborted');assert.match(run.aborted,/DELETE api\.hadrius\.com\/api\/company\/1150\/firm_oversight\/risks\/46444\//);
     assert.ok(fc.actions.some(a=>a[0]==='net_abort'&&a[1]==='DELETE'));assert.ok(be.db['firm_oversight.risk'].some(x=>x.id===46444),'teammate record untouched');
     assert.deepEqual(be.studioQa(),[],'the fixture created before the abort was cleaned up');assert.equal(run.fixture.status,'clean');
   }finally{globalThis.fetch=origFetch;}

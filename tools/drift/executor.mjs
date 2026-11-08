@@ -12,6 +12,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { openJournal, publishCandidate, rollbackPublish, PublishError, md5File, sha256File } from './publish.mjs';
+import { loadExclusions, exclusionFor } from './exclusions.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, '..', '..');
@@ -66,19 +67,30 @@ export function resolveInputs(job, { repo = REPO } = {}) {
       if (weeklyDir) break;
     }
   }
+  const rebaselineDir = ex.rebaselineDir || ex.automaticResult?.baselineDir || null;
   const identifiedScript = ex.identifiedScript || (weeklyDir && path.join(weeklyDir, 'identified-base.script.json'));
   if (!identifiedScript || !fs.existsSync(identifiedScript)) fail('missing_identified_script', 'job.details.execution.identifiedScript / weeklyDir not found on this machine');
   const script = JSON.parse(fs.readFileSync(identifiedScript, 'utf8'));
   if (!Array.isArray(script.steps) || script.steps.some((s) => !s.id)) fail('script_needs_stable_step_ids');
-  const recordingsDir = ex.recordingsDir || path.join(repo, 'out', '_recordings', script.recording?.id || '');
+  const snapRec = rebaselineDir && script.recording?.id ? path.join(rebaselineDir, 'source', '_recordings', script.recording.id) : null;
+  const recordingsDir = ex.recordingsDir && fs.existsSync(ex.recordingsDir)
+    ? ex.recordingsDir
+    : (snapRec && fs.existsSync(snapRec) ? snapRec : path.join(repo, 'out', '_recordings', script.recording?.id || ''));
   if (!script.recording?.id || !fs.existsSync(recordingsDir)) fail('missing_recordings_dir', recordingsDir);
-  const buildDir = ex.buildDir || path.join(repo, 'out', name, '_build');
-  if (!fs.existsSync(buildDir)) fail('missing_build_dir', `${buildDir} (render.sh wipes out/<name>; the baseline _build is required)`);
-  const reportPath = ex.reportPath || path.join(repo, 'out', name, 'report.json');
+  const snapBuild = rebaselineDir ? path.join(rebaselineDir, 'source', '_build') : null;
+  const buildDir = ex.buildDir && fs.existsSync(ex.buildDir)
+    ? ex.buildDir
+    : (snapBuild && fs.existsSync(snapBuild) ? snapBuild : path.join(repo, 'out', name, '_build'));
+  if (!fs.existsSync(buildDir) && !ex.automaticResult) fail('missing_build_dir', `${buildDir} (render.sh wipes out/<name>; the baseline _build is required)`);
+  const snapReport = rebaselineDir ? path.join(rebaselineDir, 'source', 'report.json') : null;
+  const reportPath = ex.reportPath || (snapReport && fs.existsSync(snapReport) ? snapReport : path.join(repo, 'out', name, 'report.json'));
   const candidateManifest = ex.candidateManifest || (weeklyDir && path.join(weeklyDir, 'candidate-manifest.json'));
-  return { name, weeklyDir, identifiedScript, script, recordingsDir, buildDir, reportPath: fs.existsSync(reportPath) ? reportPath : null,
+  const snapOriginal = rebaselineDir ? path.join(rebaselineDir, 'source', `${name}.mp4`) : null;
+  const repoOriginal = path.join(repo, 'out', name, `${name}.mp4`);
+  const originalVideo = fs.existsSync(repoOriginal) ? repoOriginal : (snapOriginal && fs.existsSync(snapOriginal) ? snapOriginal : repoOriginal);
+  return { name, weeklyDir, identifiedScript, script, recordingsDir, buildDir: fs.existsSync(buildDir) ? buildDir : null, reportPath: fs.existsSync(reportPath) ? reportPath : null,
     candidateManifest: candidateManifest && fs.existsSync(candidateManifest) ? candidateManifest : null, changeManifest: ex.changeManifest || null,
-    rebaselineDir: ex.rebaselineDir || null, originalVideo: path.join(repo, 'out', name, `${name}.mp4`) };
+    rebaselineDir, automaticResult: ex.automaticResult || null, candidateRecordingsDir: ex.candidateRecordingsDir || null, originalVideo };
 }
 
 /**
@@ -177,6 +189,52 @@ export function checkVerification(outputDir) {
     candidateScript: v.candidate_script, dirtySlides: v.plan?.dirty_slides || [] };
 }
 
+/** Verify a pre-certified candidate produced by automation.mjs without re-running drift_update.py. */
+/** Throws not_previewed / preview_mismatch unless the approved job carries one previewed, certified file. */
+export function requirePreviewBinding(job) {
+  const d = job?.details || {};
+  const p = d.preview, ar = d.execution?.automaticResult;
+  const hex = (x) => /^[0-9a-f]{64}$/.test(String(x || ''));
+  if (!p || !hex(p.sha256) || !ar || !hex(ar.sha256)) fail('not_previewed', 'this update was not posted with a certified preview video, so its approval covers nothing that can be published; it will be offered again with a preview after the next weekly check');
+  if (p.sha256 !== ar.sha256 || (p.path && ar.candidate && path.resolve(p.path) !== path.resolve(ar.candidate))) fail('preview_mismatch', 'the previewed video and the certified result differ');
+  return { sha256: p.sha256 };
+}
+
+export function checkAutomaticVerification(autoRes, { baselineManifestHash = null } = {}) {
+  if (!autoRes || typeof autoRes !== 'object') fail('verification_missing', 'automaticResult missing');
+  const f = autoRes.verification;
+  if (!f || !fs.existsSync(f)) fail('verification_missing', f || 'automaticResult.verification');
+  const v = readPyJson(f);
+  if (v.ok !== true) fail('verification_failed', v.rejected || 'verification.json ok=false');
+  if (v.dry_run) fail('verification_dry_run');
+  if (v.noop) fail('noop_candidate', 'the approved change set rendered to the baseline itself; nothing to publish');
+  if (v.source_unchanged === false) fail('source_files_changed_during_render');
+  const candidate = autoRes.candidate && fs.existsSync(autoRes.candidate) ? autoRes.candidate : v.candidate;
+  if (!candidate || !fs.existsSync(candidate)) fail('candidate_missing', autoRes.candidate || v.candidate);
+  const sha = sha256File(candidate);
+  if (sha !== v.candidate_sha256 || (autoRes.sha256 && sha !== autoRes.sha256)) fail('candidate_hash_mismatch');
+  if (autoRes.automaticQa) {
+    if (!fs.existsSync(autoRes.automaticQa)) fail('automatic_qa_missing', autoRes.automaticQa);
+    const qa = readPyJson(autoRes.automaticQa);
+    if (qa.ok !== true) fail('automatic_qa_failed', autoRes.automaticQa);
+  }
+  const resultJsonPath = path.join(path.dirname(candidate), 'result.json');
+  if (fs.existsSync(resultJsonPath)) {
+    const saved = readPyJson(resultJsonPath);
+    if (saved.qa?.ok !== true) fail('automatic_qa_failed', resultJsonPath);
+    if (baselineManifestHash && saved.baselineManifestHash && saved.baselineManifestHash !== baselineManifestHash) fail('baseline_manifest_conflict');
+  }
+  const retainedScript = path.join(path.dirname(f), 'candidate-final.script.json');
+  const candidateScript = fs.existsSync(retainedScript) ? retainedScript : v.candidate_script;
+  if (!candidateScript || !fs.existsSync(candidateScript)) fail('candidate_script_missing', candidateScript);
+  const cells = v.plan?.cell_map || [];
+  const fNew = v.plan?.frames?.new, fBase = v.plan?.frames?.base;
+  const reused = cells.filter((c) => c.action === 'reuse').reduce((a, c) => a + (c.new[1] - c.new[0]), 0);
+  return { file: f, v, outputDir: path.dirname(f), candidate, sha256: sha, framesPreservedPct: fNew ? Math.round((reused / fNew) * 1000) / 10 : null,
+    oldDurationSec: fBase ? Math.round((fBase / 30) * 10) / 10 : null, newDurationSec: fNew ? Math.round((fNew / 30) * 10) / 10 : null, elevenLabsChars: v.elevenlabs_characters || 0,
+    candidateScript, dirtySlides: v.plan?.dirty_slides || [] };
+}
+
 // ------------------------------------------------------------------ notes
 async function note(deps, job, text) {
   try {
@@ -198,9 +256,34 @@ const mmss = (s) => (s == null ? '?' : `${Math.floor(s / 60)}:${String(Math.roun
  *        render?, rebaseline?, slackThreadReply?, undoUrl?(job), log?, now?}
  * Returns {status: 'skipped'|'published'|'failed', reason?, links?}
  */
+/**
+ * Temporary module exclusions (exclusions.json): an APPROVED job for an excluded video is never executed. It stays
+ * approved (no claim, no status change) and gets ONE thread note per job (marker file in the state root).
+ * deps.exclusions (object) / deps.readScriptForExclusion(name) are injectable; defaults: exclusions.json + the local
+ * script (publishDeps.local.read). Unreadable exclusions => skipped too (fail closed).
+ */
+export async function excludedApprovedJob(job, deps) {
+  if (job.status !== 'approved') return null;
+  let ex;
+  try {
+    const excl = deps.exclusions ?? loadExclusions();
+    const read = deps.readScriptForExclusion ?? ((n) => deps.publishDeps?.local?.read?.(n) ?? null);
+    ex = exclusionFor(read(job.video_name), excl);
+  } catch (e) { return { status: 'skipped', reason: `exclusions_unreadable: ${String(e?.message || e).slice(0, 200)}` }; }
+  if (!ex) return null;
+  const marker = path.join(deps.stateRoot, job.id, 'excluded-note.json');
+  if (!fs.existsSync(marker)) {
+    await note(deps, job, `⏸️ Not executed: this video is temporarily excluded from drift updates (${ex.rule}: ${ex.reason}). The job stays approved; it will run once the exclusion is removed.`);
+    try { fs.mkdirSync(path.dirname(marker), { recursive: true }); fs.writeFileSync(marker, JSON.stringify({ at: new Date().toISOString(), rule: ex.rule }) + '\n'); } catch { /* note may repeat */ }
+  }
+  return { status: 'skipped', reason: `excluded:${ex.rule}` };
+}
+
 export async function executeJob(job, deps) {
   deps = { log: () => {}, noteViaService: true, stateRoot: DEFAULT_STATE_ROOT, render: defaultRender, rebaseline: defaultRebaseline, ...deps };
   if (job.kind !== 'auto_update') return { status: 'skipped', reason: 'not_auto_update' };
+  const excluded = await excludedApprovedJob(job, deps);
+  if (excluded) return excluded;
   const jobDir = path.join(deps.stateRoot, job.id);
   const lock = acquireLock(path.join(deps.stateRoot, 'executor.lock'));
   if (!lock) return { status: 'skipped', reason: 'another_execution_running' };
@@ -233,6 +316,12 @@ export async function executeJob(job, deps) {
 
     let stage = 'inputs';
     try {
+      // Preview-bound approval: only a job that was posted with its exact certified video (details.preview) may be
+      // executed, and only that file (same sha256) may be published. Jobs from before previews existed, or whose
+      // preview and certified result disagree, are refused: nothing was ever shown that the approval could cover.
+      // deps.unsafeSkipPreviewBindingForTests exists only so the unit tests can still exercise the legacy render
+      // machinery; the bridge never sets it.
+      const preview = deps.unsafeSkipPreviewBindingForTests === true ? null : requirePreviewBinding(current); if (preview) journal.set('previewSha256', preview.sha256);
       const inputs = resolveInputs(current, { repo: deps.repo || REPO });
       const targets = await deps.getTargets(inputs.name);
       if (!targets?.driveFileId) fail('missing_drive_file_id', 'the script has no driveVideoId; drift updates never create a new Drive file');
@@ -250,7 +339,15 @@ export async function executeJob(job, deps) {
       const baselineManifestHash = sha256File(path.join(rebaselineDir, 'baseline-manifest.json'));
 
       stage = 'render';
-      let ver = journal.get('render')?.output ? (() => { try { return checkVerification(journal.get('render').output); } catch { return null; } })() : null;
+      const prevRender = journal.get('render');
+      let ver = prevRender?.automaticResult
+        ? (() => { try { return checkAutomaticVerification(prevRender.automaticResult, { baselineManifestHash }); } catch { return null; } })()
+        : (prevRender?.output ? (() => { try { return checkVerification(prevRender.output); } catch { return null; } })() : null);
+      if (!ver && inputs.automaticResult) {
+        ver = checkAutomaticVerification(inputs.automaticResult, { baselineManifestHash });
+        journal.set('render', { output: ver.outputDir, automaticResult: inputs.automaticResult, ok: true, candidate: ver.candidate, sha256: ver.sha256, startedAt: new Date().toISOString() });
+        await note(deps, current, `✅ Pre-certified candidate verified (all automatic QA & preservation checks passed): ≈${ver.framesPreservedPct ?? '?'}% of frames reused unchanged, duration ${mmss(ver.oldDurationSec)} → ${mmss(ver.newDurationSec)}, ${ver.elevenLabsChars} ElevenLabs characters. Publishing to the same Drive file, the same Pylon article (video only) and the shared script.`);
+      }
       if (!ver) {
         const changes = inputs.changeManifest ? JSON.parse(fs.readFileSync(inputs.changeManifest, 'utf8')) : buildChangeManifest(current, inputs, baselineManifestHash);
         if (changes.baselineManifestHash !== baselineManifestHash) fail('baseline_manifest_conflict');
@@ -266,12 +363,18 @@ export async function executeJob(job, deps) {
         await note(deps, current, `✅ Candidate verified (preservation checks passed): ≈${ver.framesPreservedPct ?? '?'}% of frames reused unchanged, duration ${mmss(ver.oldDurationSec)} → ${mmss(ver.newDurationSec)}, ${ver.elevenLabsChars} ElevenLabs characters. Publishing to the same Drive file, the same Pylon article (video only) and the shared script.`);
       }
 
+      // The file about to be published must be byte-identical to the one the approver watched.
+      if (preview && ver.sha256 !== preview.sha256) fail('preview_mismatch', `about to publish ${String(ver.sha256).slice(0, 12)}, previewed ${String(preview?.sha256).slice(0, 12)}`);
       stage = 'publish';
       const candidateScript = readPyJson(ver.candidateScript);
-      const candRec = path.join(journal.get('render').output, 'candidate', '_recordings', candidateScript.recording?.id || '');
+      const renderOut = journal.get('render')?.output || ver.outputDir;
+      const defaultCandRec = renderOut ? path.join(renderOut, 'candidate', '_recordings', candidateScript.recording?.id || '') : '';
+      const candRec = defaultCandRec && fs.existsSync(defaultCandRec)
+        ? defaultCandRec
+        : (inputs.candidateRecordingsDir && fs.existsSync(inputs.candidateRecordingsDir) ? inputs.candidateRecordingsDir : null);
       const ctx = { jobId: job.id, name: inputs.name, title: targets.title || inputs.script.title || inputs.name, driveFileId: targets.driveFileId, pylonArticleId: targets.pylonArticleId || null,
         candidatePath: ver.candidate, candidateSha256: ver.sha256, candidateScript, identifiedBase: inputs.script,
-        candidateRecordingsDir: fs.existsSync(candRec) ? candRec : null,
+        candidateRecordingsDir: candRec,
         baselineMd5: rbManifest.original?.sha256 && fs.existsSync(inputs.originalVideo) && sha256File(inputs.originalVideo) === rbManifest.original.sha256 ? md5File(inputs.originalVideo) : null };
       if (!ctx.baselineMd5) fail('baseline_video_missing', 'out/<name>/<name>.mp4 must be the rebaseline\'s original (it proves Drive still holds the baseline)');
       const pub = await publishCandidate(ctx, { ...deps.publishDeps, log: deps.log }, journal);

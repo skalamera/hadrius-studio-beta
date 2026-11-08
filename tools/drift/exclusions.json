@@ -1,0 +1,13 @@
+{
+  "schema": 2,
+  "rules": [
+    {
+      "module": "Employee Training",
+      "topicModule": "Marketing",
+      "reason": "Marketing-Review Employee Training videos handled by someone else (temporary)"
+    }
+  ],
+  "addedAt": "2026-10-30",
+  "addedBy": "stephen.skalamera",
+  "note": "TEMPORARY. A video is skipped by every drift path (weekly runs, PR early checks, weekly submit, executor) when it matches a rule: its module (script module, else the route-inferred one) equals `module` (case-insensitive) AND, when `topicModule` is set, the walkthrough is about that area (a start/step URL under its route, e.g. /marketing, or the route-inferred module). To include the videos again, remove the rule (or delete this file)."
+}

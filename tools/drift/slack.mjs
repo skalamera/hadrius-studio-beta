@@ -30,6 +30,19 @@ export function stepText(c, { images = true } = {}) {
   } else if (c.oldNarration) {
     lines.push(`_Narration unchanged:_ “${esc(trunc(c.oldNarration, 300))}”`);
   }
+  const release = c.uiReleaseEvidence;
+  if (release?.baselineSha && release?.currentSha) {
+    const compare = `https://github.com/1Quantbase/hadrius_frontend/compare/${release.baselineSha}...${release.currentSha}`;
+    const range = `${release.baselineSha.slice(0, 12)} → ${release.currentSha.slice(0, 12)}`;
+    lines.push(`*Production release:* ${link(compare, range) || range}`);
+    const byCommit = new Map((release.commits || []).map((x) => [x.sha, x]));
+    for (const ch of (release.redesign?.changes || []).filter((x) => x.verified).slice(0, 4)) {
+      const cm = byCommit.get(ch.commit);
+      const pr = cm?.pr ? (link(`https://github.com/1Quantbase/hadrius_frontend/pull/${cm.pr}`, `#${cm.pr}`) || `#${cm.pr}`) : String(ch.commit || '').slice(0, 12);
+      const what = ch.kind === 'renamed' ? `“${esc(ch.before)}” → “${esc(ch.after)}”` : `“${esc(ch.after ?? ch.before)}”`;
+      lines.push(`• ${esc(ch.kind)} ${what} — ${pr}${cm?.subject ? ` ${esc(trunc(cm.subject, 120))}` : ''}`);
+    }
+  }
   if (images && (c.before || c.after)) lines.push('_Before/after screenshots: in the thread_ 🧵');
   return lines.join('\n');
 }
@@ -58,12 +71,15 @@ export function buildDriftMessage(job, { channel = DRIFT_CHANNEL, studioUrl = nu
   const why = [];
   const prs = (det.prs || []).filter((p) => p && (p.url || p.number));
   if (prs.length) why.push('*Triggered by merged PR(s):* ' + prs.map((p) => link(p.url, `#${p.number ?? '?'}${p.title ? ` ${trunc(p.title, 80)}` : ''}`) || `#${p.number}`).join(', '));
-  why.push(`*Evidence:* the weekly check replayed this walkthrough against the live Academy UI${det.runAt ? ` on ${det.runAt.slice(0, 10)}` : ''} and compared every screenshot with the recording.`);
+  why.push(`*Evidence:* the weekly check replayed this walkthrough against the live ${det.tenantName ? esc(String(det.tenantName).replace(/^Hadrius /, '')) : 'Academy'} UI${det.runAt ? ` on ${det.runAt.slice(0, 10)}` : ''} and compared every screenshot with the recording.`);
   if (det.summary) why.push(`*Classifier:* ${esc(trunc(det.summary, 700))}`);
+  if (det.releaseEvidence?.status) why.push(`*Production code check:* ${esc(det.releaseEvidence.status)}${det.releaseEvidence.reason ? ` — ${esc(trunc(det.releaseEvidence.reason, 300))}` : ''}`);
   if (d.reasons?.length) why.push(d.reasons.slice(0, 8).map((r) => `• ${esc(r)}`).join('\n'));
   blocks.push(section(`*Why it needs updating*\n${why.join('\n')}`, 'drift_why'));
   if (manual && d.rerecordReason?.length) blocks.push(section(`*Why it can't be updated automatically*\n${d.rerecordReason.slice(0, 8).map((r) => `• ${esc(r)}`).join('\n')}\nA person needs to re-record this video. Nothing will change until someone does.`, 'drift_rerecord'));
 
+  const preview = !manual && d.preview?.sha256 ? d.preview : null;
+  if (preview) blocks.push(section(`*▶️ Watch before approving:* the complete updated video is the first reply in the thread 🧵. *Approve publishes exactly that file* (sha256 \`${esc(String(preview.sha256).slice(0, 12))}\`), already rendered and automatically checked: unchanged steps, narration and audio verified identical to the current video.`, 'drift_preview'));
   blocks.push({ type: 'divider' });
   blocks.push(section(manual ? `*Steps with evidence (${changes.length})*` : `*Exactly what will change (${changes.length} step${changes.length === 1 ? '' : 's'})*`, 'drift_changes_head'));
 
@@ -78,7 +94,7 @@ export function buildDriftMessage(job, { channel = DRIFT_CHANNEL, studioUrl = nu
     if (u.oldDurationSec != null) keep.push(`*Duration:* ${mmss(u.oldDurationSec)} → ${mmss(u.newDurationSec)}`);
     if (u.unverified?.length) keep.push(`*Not verified (left as-is):* ${u.unverified.map((x) => `step ${x.step}${x.why?.[0] ? ` — ${esc(trunc(x.why[0], 120))}` : ''}`).join('; ')}`);
     tail.push(section(`*What stays untouched*\n${keep.join('\n')}`, 'drift_untouched'));
-    tail.push(context(`ElevenLabs: ≈${(d.elevenLabsChars || 0).toLocaleString('en-US')} characters to re-voice · Nothing is published until a human approves here or in the Studio extension.`, 'drift_cost'));
+    tail.push(context(`ElevenLabs: ≈${(d.elevenLabsChars || 0).toLocaleString('en-US')} characters to re-voice · Nothing is published until a human approves here or in the Studio extension${preview ? ', and only the previewed file can be published' : ''}.`, 'drift_cost'));
   } else {
     tail.push(context('Anyone in this channel can claim it. Claiming just records who is re-recording; nothing changes automatically.', 'drift_cost'));
   }
@@ -101,13 +117,15 @@ export function buildDriftMessage(job, { channel = DRIFT_CHANNEL, studioUrl = nu
   for (const c of rest) { const t = stepText(c); if (buf && buf.length + t.length > LIMITS.fallbackText) { overflow.push(buf); buf = ''; } buf += (buf ? '\n\n' : '') + t; }
   if (buf) overflow.push(buf);
 
+  const video = preview?.path ? { path: preview.path, sha256: preview.sha256, filename: `${job.video_name}-UPDATED-PREVIEW.mp4`,
+    comment: `▶️ *Preview — this exact file is what Approve publishes* (sha256 \`${String(preview.sha256).slice(0, 12)}\`). Watch it before approving.` } : null;
   const images = changes.filter((c) => c.before?.path || c.after?.path).map((c) => ({
     step: c.step,
     comment: `*Step ${c.step}* — ${c.changeTypes.join(' + ')}: *before* (current video) and *after* (live UI today).`,
     files: [c.before?.path && { path: c.before.path, title: `Step ${c.step} — before (current video)` }, c.after?.path && { path: c.after.path, title: `Step ${c.step} — after (live UI today)` }].filter(Boolean),
   }));
   const text = trunc(`${manual ? 'Needs a re-record' : 'Update proposed'}: ${title} — ${changes.length} step(s). ${manual ? '' : 'Approve or deny in Slack or the Studio extension.'}`, LIMITS.fallbackText);
-  return { channel, text, blocks: blocks.slice(0, LIMITS.blocks), overflow, images };
+  return { channel, text, blocks: blocks.slice(0, LIMITS.blocks), overflow, images, video };
 }
 
 // ---------------------------------------------------------------- Slack Web API client
@@ -170,6 +188,20 @@ export async function postDriftJob({ job, slack, jobs, channel = DRIFT_CHANNEL, 
     catch (e) { errors.push({ stage: 'overflow', error: String(e?.message || e) }); }
   }
   const files = [];
+  // The preview goes first so it is the top of the thread. If it can't be attached, say so loudly in the thread:
+  // the approver must not approve a video they couldn't watch (the executor still publishes only this exact file).
+  let preview = null;
+  if (msg.video) {
+    try {
+      const bytes = await readFile(msg.video.path);
+      const up = await slack.uploadFiles({ channel, threadTs: ts, initialComment: msg.video.comment, files: [{ filename: msg.video.filename, title: 'Updated video (preview)', bytes }] });
+      preview = { files: up, bytes: bytes.length };
+    } catch (e) {
+      errors.push({ stage: 'preview', error: String(e?.message || e) });
+      try { await slack.call('chat.postMessage', { channel, thread_ts: ts, text: `⚠️ The preview video could not be attached (${String(e?.message || e).slice(0, 200)}). Don't approve until you've watched it: open it from the Studio extension (Updates) on the machine that prepared it.`, unfurl_links: false }); }
+      catch (e2) { errors.push({ stage: 'preview_warning', error: String(e2?.message || e2) }); }
+    }
+  }
   for (const img of msg.images) {
     try {
       const payload = [];
@@ -182,7 +214,7 @@ export async function postDriftJob({ job, slack, jobs, channel = DRIFT_CHANNEL, 
       files.push({ step: img.step, files: up });
     } catch (e) { errors.push({ stage: 'upload', step: img.step, error: String(e?.message || e) }); }
   }
-  return { channel, ts, files, errors };
+  return { channel, ts, files, preview, errors };
 }
 
 /** Optional per-step evidence override: {stepNumber: {before, after}} (paths). */

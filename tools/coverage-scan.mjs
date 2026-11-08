@@ -79,6 +79,13 @@ export function inferModuleFromScript(script) {
 // resulting failures looked like an account-wide spend limit rather than a config bug.
 export const planModel = () => process.env.KBS_PLAN_MODEL || 'claude-sonnet-5';
 export const decisionModel = () => process.env.KBS_DECISION_MODEL || 'claude-sonnet-5';
+export const decisionEffort = () => process.env.KBS_DECISION_EFFORT || null;
+const EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+export function claudeEffortArgs(effort = decisionEffort()) {
+  if (!effort) return [];
+  if (!EFFORT_LEVELS.has(effort)) throw new Error(`invalid_claude_effort:${effort}`);
+  return ['--effort', effort];
+}
 
 const ALLOWED_TOOLS = [
   'mcp__hadrius-codebase__search_code',
@@ -217,12 +224,17 @@ function killProcessGroupSoon(child, timeoutMs, signal) {
   return () => { clearTimeout(timer); signal?.removeEventListener?.('abort', killGroup); };
 }
 
-function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = ALLOWED_TOOLS, noTools = false, systemPrompt = null, model = planModel(), signal, onMeta } = {}) {
+function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = ALLOWED_TOOLS, noTools = false, systemPrompt = null, addDirs = null, jsonSchema = null, model = planModel(), signal, onMeta } = {}) {
   return new Promise((resolve, reject) => {
     const args = ['-p', prompt, '--output-format', 'json', '--max-turns', String(maxTurns), '--model', model];
+    args.push(...claudeEffortArgs());
     // (not --bare: it skips the settings the keychain login lookup needs and reports "Not logged in")
     if (noTools) args.push('--tools', '', '--strict-mcp-config', '--no-session-persistence');
     else if (allowedTools) args.push('--allowedTools', allowedTools);
+    if (Array.isArray(addDirs)) {
+      for (const d of [...new Set(addDirs.filter(Boolean))]) args.push('--add-dir', String(d));
+    }
+    if (jsonSchema) args.push('--json-schema', typeof jsonSchema === 'string' ? jsonSchema : JSON.stringify(jsonSchema));
     if (systemPrompt) args.push('--system-prompt', systemPrompt);
     const child = execFile('claude', args, { maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env: claudeEnv() }, (err, stdout, stderr) => {
       clearWatchdog();

@@ -253,9 +253,21 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
           // (a stale or unrelated one), silently mis-wiring which capture folder it points to.
           state.recordingId = sc.recording?.id || null;
           state.script = {
+            ...(sc.id ? { id: sc.id } : {}),
             name: sc.name || '',
             title: sc.title || '', // lets Save keep the loaded library name (e.g. "…-ai") while the title is unchanged
+            ...(sc.module ? { module: sc.module } : {}),
+            ...(Array.isArray(sc.workflowPlan) ? { workflowPlan: sc.workflowPlan } : {}),
+            ...(sc.environment ? { environment: sc.environment, environmentName: sc.environment.name } : {}),
+            ...(sc.recording ? { recording: sc.recording } : {}),
             captionsFromNarration: !!sc.captionsFromNarration,
+            ...(sc.voice ? { voice: sc.voice } : {}),
+            ...(sc.fx ? { fx: true } : {}),
+            ...(sc.driveVideoId ? { driveVideoId: sc.driveVideoId } : {}),
+            ...(sc.driveVideoUrl ? { driveVideoUrl: sc.driveVideoUrl } : {}),
+            ...(sc.pylonArticleId ? { pylonArticleId: sc.pylonArticleId } : {}),
+            ...(sc.pylonArticleUrl ? { pylonArticleUrl: sc.pylonArticleUrl } : {}),
+            ...(sc.driftUpdate ? { driftUpdate: sc.driftUpdate } : {}),
             // The Spanish translation (and its Drive link) lives on the script; keep it for editing/saving.
             ...(sc.translations ? { translations: sc.translations } : {}),
             createdAt: sc.createdAt || new Date().toISOString(),
@@ -312,7 +324,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         // Carry the old narration/caption/capture settings onto the first meaningful replacement
         // step so the user doesn't lose their writing just because a button got renamed.
         const first = buf.find((s) => s.action !== 'navigate') || buf[0];
-        if (old) { if (!first.narration) first.narration = old.narration || ''; if (old.caption && !first.caption) first.caption = old.caption; first.capture = old.capture; first.motion = old.motion; }
+        if (old) {
+          if (!first.narration) first.narration = old.narration || '';
+          if (old.caption && !first.caption) first.caption = old.caption;
+          if (buf.length === 1 && old.id && !first.id) first.id = old.id;
+          first.capture = old.capture;
+          first.motion = old.motion;
+        }
         state.steps.splice(rr.replaceIndex, 1, ...buf);
         state.steps.forEach((s, k) => (s.index = k));
         await persist();
@@ -503,8 +521,7 @@ async function startRecording(tabId, fresh, initialNav = null) {
     state.pendingNote = null;
     state.recordingId = crypto.randomUUID(); // new recording -> its own slide folder, out/_recordings/<id>/
     const now = new Date().toISOString();
-    state.script.createdAt = now;
-    state.script.updatedAt = now;
+    state.script = { name: state.script?.name || '', createdAt: now, updatedAt: now, recording: { id: state.recordingId, recordedAt: now } };
   }
   let ok = await ensureContentScript(tabId);
   if (!ok) {

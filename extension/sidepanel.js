@@ -2789,27 +2789,38 @@ function renderSteps() {
 
 function toScript() {
   const now = new Date().toISOString();
-  const firstUrl = state.steps.find((s)=>s.url)?.url || null;
-  const envName = state.script?.environmentName || (firstUrl?.includes('staging') ? 'staging' : 'prod');
+  const firstUrl = state.steps.find((s)=>s.url)?.url || state.script?.environment?.startUrl || null;
+  const envName = state.script?.environmentName || state.script?.environment?.name || (firstUrl?.includes('staging') ? 'staging' : 'prod');
   const humanTitle = $('#scriptName').value.trim() || 'untitled';
+  const recId = state.recordingId || state.script?.recording?.id;
+  const sameRecording = !!(recId && state.script?.recording?.id === recId);
+  const recordedAt = (sameRecording && state.script?.recording?.recordedAt) || state.script?.recordingMeta?.recordedAt || now;
   return {
     version: 1,
+    ...(state.script?.id ? { id: state.script.id } : {}),
     name: humanTitle,
     title: humanTitle,
     module: (typeof modulePick !== 'undefined' && modulePick.override) || selected?.module || state.script?.module || '',
     workflowPlan: selected?.steps || state.script?.workflowPlan || [],
     createdAt: state.script?.createdAt || now,
     updatedAt: now,
-    environment: { name: envName, startUrl: firstUrl },
-    recording: { id: state.recordingId || state.script?.recording?.id, recordedAt: now },
-    captionsFromNarration: false,
-    voice: (typeof currentVoice === 'function' && currentVoice()) || undefined,
+    environment: { ...(state.script?.environment || {}), name: envName, startUrl: firstUrl },
+    recording: { ...(sameRecording ? state.script.recording : {}), id: recId, recordedAt },
+    captionsFromNarration: !!state.script?.captionsFromNarration,
+    voice: (typeof currentVoice === 'function' && currentVoice()) || state.script?.voice || undefined,
     // Extra FX switch in the render bar (previews follow it too, so an unchanged preview can still
     // become the final video). Omitted when off so plain renders keep their old render keys.
-    ...(typeof renderChoice !== 'undefined' && renderChoice.fx ? { fx: true } : {}),
+    ...((typeof renderChoice !== 'undefined' && renderChoice.fx) || state.script?.fx ? { fx: true } : {}),
+    ...(state.script?.driveVideoId ? { driveVideoId: state.script.driveVideoId } : {}),
+    ...(state.script?.driveVideoUrl ? { driveVideoUrl: state.script.driveVideoUrl } : {}),
+    ...(state.script?.pylonArticleId ? { pylonArticleId: state.script.pylonArticleId } : {}),
+    ...(state.script?.pylonArticleUrl ? { pylonArticleUrl: state.script.pylonArticleUrl } : {}),
+    ...(state.script?.driftUpdate ? { driftUpdate: state.script.driftUpdate } : {}),
     // Translations (Spanish) ride on the same script; the English fields above are never replaced.
     ...(state.script?.translations ? { translations: state.script.translations } : {}),
     steps: state.steps.map((s) => ({
+      ...(s.id ? { id: s.id } : {}),
+      ...(s.captureId ? { captureId: s.captureId } : {}),
       index: s.index,
       action: s.action,
       ...(s.key ? { key: s.key } : {}),
@@ -4107,7 +4118,7 @@ function driftJobHtml(j) {
   const prs = (det.prs || []).filter((p) => p && (p.url || p.number)).map((p) => driftHref(p.url) ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">#${esc(p.number ?? '?')}${p.title ? ` ${esc(p.title)}` : ''}</a>` : `#${esc(p.number)}`);
   const why = [
     prs.length ? `<li>Triggered by merged PR ${prs.join(', ')}</li>` : '',
-    `<li>The weekly check replayed this walkthrough on the live Academy UI${det.runAt ? ` (${esc(driftWhen(det.runAt))})` : ''} and compared each screenshot with the recording.</li>`,
+    `<li>The weekly check replayed this walkthrough on the live ${esc(String(det.tenantName || 'Hadrius Academy').replace(/^Hadrius /, ''))} UI${det.runAt ? ` (${esc(driftWhen(det.runAt))})` : ''} and compared each screenshot with the recording.</li>`,
     ...(d.reasons || []).slice(0, 8).map((r) => `<li>${esc(r)}</li>`),
   ].join('');
   const rerecord = manual && (d.rerecordReason || []).length ? `<div class="drift-why"><div class="drift-section-title">Why it can't be updated automatically</div><ul>${d.rerecordReason.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>` : '';
@@ -4117,6 +4128,12 @@ function driftJobHtml(j) {
       ${u.oldDurationSec != null ? `<li>Duration ${esc(driftMmss(u.oldDurationSec))} → ${esc(driftMmss(u.newDurationSec))}</li>` : ''}
       ${(u.unverified || []).length ? `<li>Not verified, left as-is: step ${u.unverified.map((x) => esc(x.step)).join(', ')}</li>` : ''}
       <li>ElevenLabs: ≈${esc((d.elevenLabsChars || 0).toLocaleString())} characters to re-voice</li></ul></div>`;
+  // Preview-bound approval: the exact certified file Approve publishes (bridge streams it only while its sha256 matches).
+  const preview = !manual && d.preview?.sha256
+    ? `<div class="drift-preview"><div class="drift-section-title">▶️ Watch before approving: Approve publishes exactly this file</div>
+      <video controls preload="metadata" style="width:100%;border-radius:6px;background:#000" src="${esc(`${BRIDGE}/drift/jobs/${encodeURIComponent(j.id)}/preview`)}"></video>
+      <div class="drift-meta"><span>sha256 ${esc(String(d.preview.sha256).slice(0, 12))}</span>${j.slack_ts ? '<span>Also the first reply in the Slack thread</span>' : ''}</div></div>`
+    : '';
   const busy = driftUpdates.busy.has(j.id);
   let actions = '';
   if (open) {
@@ -4134,7 +4151,7 @@ function driftJobHtml(j) {
     <div class="drift-meta">${v.module ? `<span>${esc(v.module)}</span>` : ''}<span>${esc((d.changes || []).length)} step(s)</span><span>found ${esc(driftWhen(j.created_at))}</span>${links}</div>
     ${status ? `<div class="drift-status ${esc(j.status)}">${status}</div>` : ''}
     <details${open ? ' open' : ''}><summary>Details</summary><div class="drift-body">
-      <div class="drift-why"><div class="drift-section-title">Why it needs updating</div><ul>${why}</ul></div>${rerecord}
+      ${preview}<div class="drift-why"><div class="drift-section-title">Why it needs updating</div><ul>${why}</ul></div>${rerecord}
       <div class="drift-section-title">${manual ? 'Steps with evidence' : 'Exactly what will change'}</div>
       ${(d.changes || []).map((c) => driftStepHtml(j, c)).join('')}
       ${keep}

@@ -92,13 +92,22 @@ export function classifyStep({dimensionsMatch,diffFractionNonDynamic,ssimMasked,
   return 'unchanged';
 }
 const r6=(v)=>v==null?null:Math.round(v*1e6)/1e6;
-export function compareImages(a,b,{dynamicRects=[],cell=DEFAULT_THRESHOLDS.cell,thresholds=DEFAULT_THRESHOLDS,target=null}={}){
+// dataRects (today's DOM, capture.mjs DATA_FN): table rows / list containers / record cards / count text. In shared
+// tenants other people's records come and go; changes inside them are DATA differences. They are reported separately
+// (dataChangedPixels, region.data) and the UI-only metrics (diffFractionUi, ssimUi) exclude them; `dataOnly` = the
+// frame changed only inside data areas (UI-only metrics within the unchanged thresholds).
+export function compareImages(a,b,{dynamicRects=[],dataRects=[],cell=DEFAULT_THRESHOLDS.cell,thresholds=DEFAULT_THRESHOLDS,target=null}={}){
   if(a.width!==b.width||a.height!==b.height){const res={dimensionsMatch:false,recorded:{w:a.width,h:a.height},today:{w:b.width,h:b.height},changedPixels:null,diffFraction:null,diffFractionNonDynamic:null,dynamicChangedPixels:null,ssim:null,ssimMasked:null,regions:[]};res.classification=classifyStep({...res,target},thresholds);return res;}
   const {mask,changedPixels,fraction}=diffImages(a,b,{pixel:thresholds.pixel});
   const dyn=rectMask(a.width,a.height,dynamicRects);let nonDyn=0,dynChanged=0;
   for(let i=0;i<mask.length;i++)if(mask[i]){if(dyn[i])dynChanged++;else nonDyn++;}
   const regions=changedRegions(mask,a.width,a.height,{cell}).map(r=>{let nd=0,all=0;for(let y=r.y;y<r.y+r.h;y++)for(let x=r.x;x<r.x+r.w;x++){const i=y*a.width+x;if(mask[i]){all++;if(!dyn[i])nd++;}}return {...r,changedPixels:all,dynamic:nd===0};});
   const res={dimensionsMatch:true,recorded:{w:a.width,h:a.height},today:{w:b.width,h:b.height},changedPixels,diffFraction:r6(fraction),diffFractionNonDynamic:r6(nonDyn/mask.length),dynamicChangedPixels:dynChanged,ssim:r6(ssim(a,b)),ssimMasked:dynamicRects.length?r6(ssim(a,b,{exclude:dyn})):r6(ssim(a,b)),regions};
+  if(dataRects?.length){const data=rectMask(a.width,a.height,dataRects);let ui=0,dataChanged=0;const both=new Uint8Array(mask.length);
+    for(let i=0;i<mask.length;i++){if(dyn[i]||data[i])both[i]=1;if(mask[i]&&!dyn[i]){if(data[i])dataChanged++;else ui++;}}
+    for(const r of regions){if(r.dynamic)continue;let u=0;for(let y=r.y;y<r.y+r.h;y++)for(let x=r.x;x<r.x+r.w;x++){const i=y*a.width+x;if(mask[i]&&!dyn[i]&&!data[i])u++;}if(u===0)r.data=true;}
+    res.dataChangedPixels=dataChanged;res.diffFractionUi=r6(ui/mask.length);res.ssimUi=r6(ssim(a,b,{exclude:both}));
+    res.dataOnly=dataChanged>0&&res.diffFractionUi<=thresholds.diffFraction&&(res.ssimUi==null||res.ssimUi>=thresholds.ssim);}
   Object.defineProperty(res,'mask',{value:mask,enumerable:false});Object.defineProperty(res,'dynMask',{value:dyn,enumerable:false});
   res.classification=classifyStep({...res,target},thresholds);return res;
 }
@@ -109,10 +118,11 @@ function strokeRect(img,r,[cr,cg,cb],t=3){if(!r)return;const put=(x,y)=>{if(x<0|
   for(let k=0;k<t;k++){for(let x=r.x;x<r.x+r.w;x++){put(x,r.y+k);put(x,r.y+r.h-1-k);}for(let y=r.y;y<r.y+r.h;y++){put(r.x+k,y);put(r.x+r.w-1-k,y);}}}
 // Diff view: today's frame faded; changed px red, dynamic-region changes yellow, dynamic rects blue,
 // recorded target magenta, today's target cyan.
-export function renderDiff(today,cmp,{dynamicRects=[],recordedTarget=null,todayTarget=null}={}){
+export function renderDiff(today,cmp,{dynamicRects=[],dataRects=[],recordedTarget=null,todayTarget=null}={}){
   const out={width:today.width,height:today.height,data:new Uint8Array(today.data)};
   for(let i=0;i<today.width*today.height;i++){const o=i*4;const g=0.299*today.data[o]+0.587*today.data[o+1]+0.114*today.data[o+2];const v=Math.round(200+g*0.2);out.data[o]=out.data[o+1]=out.data[o+2]=v;
     if(cmp.mask&&cmp.mask[i]){if(cmp.dynMask[i]){out.data[o]=240;out.data[o+1]=200;out.data[o+2]=0;}else{out.data[o]=230;out.data[o+1]=0;out.data[o+2]=0;}}}
+  for(const r of dataRects)strokeRect(out,{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.w),h:Math.round(r.h)},[0,170,90],1);
   for(const r of dynamicRects)strokeRect(out,{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.w),h:Math.round(r.h)},[30,90,255],2);
   for(const r of cmp.regions||[])strokeRect(out,r,r.dynamic?[240,200,0]:[230,0,0],2);
   strokeRect(out,recordedTarget,[220,0,220],3);strokeRect(out,todayTarget,[0,200,220],3);
@@ -145,15 +155,16 @@ export function compareRun({runDir,recordingsDir,thresholds=DEFAULT_THRESHOLDS})
       entry.reason=s.mutationGuard?.reason??s.error??'no screenshot';steps.push(entry);continue;}
     const rec=decodePng(readFileSync(join(recordingsDir,s.recordedMedia))),today=decodePng(readFileSync(join(runDir,s.screenshot)));
     const target=s.target?{status:s.target.status,delta:s.target.delta??null}:null;
-    const cmp=compareImages(rec,today,{dynamicRects:s.dynamicRects??[],thresholds,target,cell:thresholds.cell});
+    const cmp=compareImages(rec,today,{dynamicRects:s.dynamicRects??[],dataRects:s.dataRects??[],thresholds,target,cell:thresholds.cell});
     const diffName=`diff-${String(s.index).padStart(2,'0')}.png`;
-    const diff=cmp.dimensionsMatch?renderDiff(today,cmp,{dynamicRects:s.dynamicRects??[],recordedTarget:s.target?.recordedRect??null,todayTarget:s.target?.rect??null}):blank(today.width,today.height,[255,0,0]);
+    const diff=cmp.dimensionsMatch?renderDiff(today,cmp,{dynamicRects:s.dynamicRects??[],dataRects:s.dataRects??[],recordedTarget:s.target?.recordedRect??null,todayTarget:s.target?.rect??null}):blank(today.width,today.height,[255,0,0]);
     writeFileSync(join(runDir,diffName),encodePng(diff),{flag:'wx'});
-    Object.assign(entry,{classification:cmp.classification,dimensions:{recorded:cmp.recorded,today:cmp.today,match:cmp.dimensionsMatch},changedPixels:cmp.changedPixels,diffFraction:cmp.diffFraction,diffFractionNonDynamic:cmp.diffFractionNonDynamic,dynamicChangedPixels:cmp.dynamicChangedPixels,ssim:cmp.ssim,ssimMasked:cmp.ssimMasked,regions:cmp.regions,dynamicRegions:s.dynamicRects??[],target:s.target??null,diff:diffName});
+    Object.assign(entry,{classification:cmp.classification,dimensions:{recorded:cmp.recorded,today:cmp.today,match:cmp.dimensionsMatch},changedPixels:cmp.changedPixels,diffFraction:cmp.diffFraction,diffFractionNonDynamic:cmp.diffFractionNonDynamic,dynamicChangedPixels:cmp.dynamicChangedPixels,ssim:cmp.ssim,ssimMasked:cmp.ssimMasked,regions:cmp.regions,dynamicRegions:s.dynamicRects??[],target:s.target??null,diff:diffName,
+      ...(s.dataRects?{dataRegions:s.dataRects,dataChangedPixels:cmp.dataChangedPixels??0,diffFractionUi:cmp.diffFractionUi??cmp.diffFractionNonDynamic,ssimUi:cmp.ssimUi??cmp.ssimMasked,dataOnly:!!cmp.dataOnly}:{})});
     steps.push(entry);rows.push({classification:cmp.classification,images:[rec,today,diff]});
   }
   const sheet=rows.length?contactSheet(rows):null;if(sheet)writeFileSync(join(runDir,'contact-sheet.png'),encodePng(sheet),{flag:'wx'});
-  const report={schema:1,script:run.script,recordingId:run.recordingId,thresholds,legend:{columns:'recorded | today | diff',diffColours:{red:'changed (non-dynamic)',yellow:'changed inside detected dynamic text',blue:'dynamic text rect (today DOM)',magenta:'recorded target rect',cyan:"today's resolved target rect"},barColours:{green:'unchanged',orange:'screenshot_changed',magenta:'target_geometry_changed',red:'target_missing',blue:'needs_fixture (pre-action shot of the step the guard stopped at)'}},steps,contactSheet:sheet?'contact-sheet.png':null};
+  const report={schema:1,script:run.script,recordingId:run.recordingId,thresholds,legend:{columns:'recorded | today | diff',diffColours:{red:'changed (non-dynamic)',yellow:'changed inside detected dynamic text',blue:'dynamic text rect (today DOM)',green:'data area (rows/lists/records/counts; changes inside are data, not UI)',magenta:'recorded target rect',cyan:"today's resolved target rect"},barColours:{green:'unchanged',orange:'screenshot_changed',magenta:'target_geometry_changed',red:'target_missing',blue:'needs_fixture (pre-action shot of the step the guard stopped at)'}},steps,contactSheet:sheet?'contact-sheet.png':null};
   writeFileSync(join(runDir,'compare.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'});return report;
 }
 function arg(args,name){const i=args.indexOf(name);return i>=0?args[i+1]:undefined;}

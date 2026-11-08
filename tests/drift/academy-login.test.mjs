@@ -7,21 +7,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  ensureAcademySession, KeychainMissingError, ACCOUNT, EXIT_CODES, classifyAuthOrigin,
+  ensureAcademySession, ensureTenantSession, KeychainMissingError, ACCOUNT, EXIT_CODES, classifyAuthOrigin,
   companiesFromUserPayload, maskEmail, redact,
 } from '../../tools/drift/academy-login.mjs';
 
 const FAKE_PW = 'Fake-Pw-ZZ9!synthetic-only-7731';
 const scratch = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'academy-login-test-'));
 
-const state = { mode: 'onepage', submits: 0, typed: 0, lastPasswordOk: null, extraCompany: false };
-function reset(mode, extra = {}) { Object.assign(state, { mode, submits: 0, typed: 0, lastPasswordOk: null, extraCompany: false }, extra); }
+const SANDBOX_ACCOUNT = 'stephen+hsandbox@hadrius.com';
+const ACADEMY_CO = { id: 1150, name: 'Hadrius Academy', email: ACCOUNT };
+const state = { mode: 'onepage', submits: 0, typed: 0, lastPasswordOk: null, extraCompany: false, co: ACADEMY_CO, extraIds: null };
+function reset(mode, extra = {}) { Object.assign(state, { mode, submits: 0, typed: 0, lastPasswordOk: null, extraCompany: false, co: ACADEMY_CO, extraIds: null }, extra); }
 
 const appPage = () => `<!doctype html><title>app</title><body><div id="root">loading</div><script>
 if (!document.cookie.includes('sess=ok')) {
   ${'MODE' /* replaced */}
 } else {
-  document.getElementById('root').innerHTML = '<nav><a href="/overview">Overview</a><a href="/settings">Settings</a></nav><h1>Marketing projects</h1><div>Hadrius Academy 1150</div>';
+  document.getElementById('root').innerHTML = '<nav><a href="/overview">Overview</a><a href="/settings">Settings</a></nav><h1>Marketing projects</h1><div>${'CONAME' /* replaced */}</div>';
   fetch('/api/users/?uuid=u1').then(r => r.json());
 }
 </script></body>`;
@@ -49,7 +51,7 @@ document.getElementById('f').addEventListener('submit', async (e) => {
   const r = await fetch('/__submit', { method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({ email: document.getElementById('email').value, password: document.getElementById('pw').value }) });
   const j = await r.json();
-  if (j.ok) { location.href = '/app?company_id=1150'; return; }
+  if (j.ok) { location.href = '/app?company_id=${'COID' /* replaced */}'; return; }
   if (j.mfa) {
     const l = document.createElement('label'); l.textContent = 'MFA code ';
     const i = document.createElement('input'); i.type = 'text'; i.setAttribute('autocomplete', 'one-time-code'); i.inputMode = 'numeric';
@@ -74,9 +76,9 @@ const server = http.createServer((req, res) => {
     const redirect = state.mode === 'foreign'
       ? `location.replace('http://localhost:${port}/login');`
       : `location.replace('/auth/sign-in?deeplink=' + encodeURIComponent(location.pathname + location.search));`;
-    return send(200, appPage().replace("MODE", redirect));
+    return send(200, appPage().replace("MODE", redirect).replace('CONAME', `${state.co.name} ${state.co.id}`));
   }
-  if (u.pathname === '/auth/sign-in') return send(200, loginForm({ twoStep: state.mode === 'twostep' }));
+  if (u.pathname === '/auth/sign-in') return send(200, loginForm({ twoStep: state.mode === 'twostep' }).replace('COID', String(state.co.id)));
   if (u.pathname === '/login' && host === 'localhost') return send(200, foreignForm);
   if (u.pathname === '/__typed') { state.typed++; return send(204, ''); }
   if (u.pathname === '/__submit') {
@@ -85,7 +87,7 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       state.submits++;
       const j = JSON.parse(body || '{}');
-      state.lastPasswordOk = j.password === FAKE_PW && j.email === ACCOUNT;
+      state.lastPasswordOk = j.password === FAKE_PW && j.email === state.co.email;
       const json = (o, h = {}) => send(200, JSON.stringify(o), { 'content-type': 'application/json', ...h });
       if (state.mode === 'invalid') return json({ error: 'Incorrect username or password.' });
       if (state.mode === 'mfa') return json({ mfa: true });
@@ -95,9 +97,10 @@ const server = http.createServer((req, res) => {
   }
   if (u.pathname === '/api/users/') {
     const children = state.extraCompany ? [{ id: 999, display_name: 'Some Other Firm', company_type: 'CUSTOMER' }] : [];
-    return send(200, JSON.stringify({ id: 1, uuid: 'u1', email_address: ACCOUNT, is_hadrius_employee: false,
+    for (const id of state.extraIds || []) children.push({ id, display_name: `Firm ${id}`, company_type: 'CUSTOMER' });
+    return send(200, JSON.stringify({ id: 1, uuid: 'u1', email_address: state.co.email, is_hadrius_employee: false,
       has_customer_firm_staff_access: false, roles: [{ name: 'Admin' }],
-      company: { id: 1150, display_name: 'Hadrius Academy', company_type: 'CUSTOMER', children } }), { 'content-type': 'application/json' });
+      company: { id: state.co.id, display_name: state.co.name, company_type: 'CUSTOMER', children } }), { 'content-type': 'application/json' });
   }
   send(404, 'nf');
 });
@@ -201,4 +204,68 @@ test('check mode never logs in; keychain missing aborts before typing', { timeou
   assert.equal(k.res.status, 'keychain_missing');
   assert.equal(state.submits, 0);
   assert.equal(state.typed, 0);
+});
+
+// ---------- Sandbox tenant (company 1048, its own account / profile) ----------
+const SANDBOX_CO = { id: 1048, name: 'Hadrius Sandbox', email: SANDBOX_ACCOUNT };
+async function runSandbox(opts = {}) {
+  const logs = []; let pwCalls = 0;
+  const profileDir = opts.profileDir || path.join(scratch, `sbx-profile-${++profileN}`);
+  const res = await ensureTenantSession({
+    tenant: 'sandbox', profileDir, startUrl: opts.startUrl || `http://127.0.0.1:${port}/app?company_id=1048`,
+    timeoutMs: 90_000, stageTimeoutMs: 20_000, onLog: (m) => logs.push(m),
+    getPassword: opts.getPassword || (async () => { pwCalls++; return FAKE_PW; }), login: opts.login ?? true,
+  });
+  const blob = JSON.stringify(res) + '\n' + logs.join('\n');
+  assert.ok(!blob.includes(FAKE_PW), 'fake password leaked into result/logs');
+  assert.ok(!blob.includes(SANDBOX_ACCOUNT), 'raw sandbox account leaked into result/logs');
+  return { res, logs, pwCalls: () => pwCalls, profileDir };
+}
+
+test('sandbox: signs in with the SANDBOX account, tenant [1048] only, persists, password never logged', { timeout: 120_000 }, async () => {
+  reset('twostep', { co: SANDBOX_CO });
+  const first = await runSandbox();
+  assert.equal(first.res.status, 'signed_in', first.res.detail);
+  assert.equal(state.lastPasswordOk, true, 'sandbox email + injected password reached the form');
+  assert.deepEqual(first.res.companyIds, [1048]);
+  assert.equal(first.res.tenantKey, 'sandbox');
+  assert.equal(first.res.tenant.tenantNameVisible, true);
+  assert.ok(first.logs.some((l) => l.includes('st***@hadrius.com')));
+  reset('twostep', { co: SANDBOX_CO });
+  const check = await runSandbox({ profileDir: first.profileDir, login: false, getPassword: async () => { throw new Error('must not be called'); } });
+  assert.equal(check.res.status, 'already_signed_in');
+  assert.equal(state.submits, 0);
+});
+
+test('sandbox: an account that also sees Academy (or anything else) fails closed', { timeout: 120_000 }, async () => {
+  reset('onepage', { co: SANDBOX_CO, extraIds: [1150] });
+  const { res } = await runSandbox();
+  assert.equal(res.status, 'tenant_mismatch');
+  assert.deepEqual(res.companyIds, [1048, 1150]);
+  assert.match(res.detail, /1150/);
+});
+
+test('sandbox: the Academy account/company is rejected by the sandbox tenant check', { timeout: 120_000 }, async () => {
+  reset('onepage', { co: { id: 1150, name: 'Hadrius Academy', email: SANDBOX_ACCOUNT } });
+  const { res } = await runSandbox({ startUrl: `http://127.0.0.1:${port}/app` });
+  assert.equal(res.status, 'tenant_mismatch');
+  assert.match(res.detail, /company 1048 not accessible/);
+});
+
+test('sandbox: a start URL naming another company is refused before any browser launch', async () => {
+  let launched = false;
+  const res = await ensureTenantSession({ tenant: 'sandbox', profileDir: path.join(scratch, 'never'), startUrl: 'https://app.hadrius.com/x?company_id=1150',
+    chromium: { launchPersistentContext: async () => { launched = true; throw new Error('no'); } }, getPassword: async () => { throw new Error('no'); } });
+  assert.equal(res.status, 'tenant_mismatch'); assert.equal(launched, false);
+});
+
+test('sandbox: MFA -> mfa_required, nothing typed into the code field', { timeout: 120_000 }, async () => {
+  reset('mfa', { co: SANDBOX_CO });
+  const { res } = await runSandbox();
+  assert.equal(res.status, 'mfa_required', res.detail);
+  assert.equal(state.typed, 0);
+});
+
+test('unknown tenant key throws (never guessed)', async () => {
+  await assert.rejects(ensureTenantSession({ tenant: 'prod' }), /unknown_tenant/);
 });

@@ -9,6 +9,7 @@
     "check": "node --check tools/deck-studio.mjs && python3 -m py_compile renderer/deck.py renderer/deck_qa.py renderer/deck_boxes.py && node --check extension/background.js && node --check extension/content.js && node --check extension/sidepanel.js && node --check extension/create.js && node --check tools/ai-bridge.mjs && node --check tools/ai-record.mjs && node --check tools/coverage-scan.mjs && node --check tools/pylon.mjs"
   },
   "dependencies": {
-    "playwright": "^1.63.0"
+    "playwright": "^1.63.0",
+    "typescript": "6.0.3"
   }
 }

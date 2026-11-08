@@ -1,0 +1,200 @@
+// Owner session for drift captures: replay a walkthrough with the SAME data the original recording showed by
+// borrowing the Hadrius sign-in of the operator's everyday Chrome (a Hadrius staff account that sees every record
+// in Sandbox 1048 and Academy 1150), instead of the narrowly scoped automation accounts.
+//
+// How (and why this way):
+//  - Chrome must have remote debugging switched on (chrome://inspect/#remote-debugging), which writes
+//    ~/Library/Application Support/Google/Chrome/DevToolsActivePort. We connect over CDP, open ONE background tab
+//    in a new window, guard it with the same request guard as every capture (no app writes leave it), load
+//    app.hadrius.com so the app itself refreshes its tokens if needed, and read ONLY the short-lived Cognito
+//    access/id tokens (+ LastAuthUser, clockDrift, signInDetails). The tab is closed and we disconnect; the operator's
+//    Chrome, tabs and browsing are otherwise untouched.
+//  - The refresh token and device keys are NEVER copied. Hadrius uses Cognito refresh-token rotation: a second
+//    browser refreshing with a copied refresh token would sign the operator's Chrome out. Without it the borrowed
+//    session simply ends when the access token expires; we borrow afresh for every video and require
+//    MIN_REMAINING_MS of validity first.
+//  - The replay runs in a separate, NON-persistent headless Chromium context: the tokens live only in memory and
+//    in that context's localStorage, never on disk. lastCompanyId is pinned to the run's tenant on every document
+//    load, and capture.mjs re-checks it on every step.
+//  - Nothing here prints, logs or returns token values. borrowOwnerSession() returns an opaque object whose
+//    `initScriptArg` is handed straight to context.addInitScript.
+//
+// Import-safe: importing this module connects to nothing and reads nothing.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { classifyRequest } from './capture.mjs';
+import { companiesFromUserPayload } from './academy-login.mjs';
+import { getTenant } from './tenants.mjs';
+
+export const APP_ORIGIN = 'https://app.hadrius.com';
+export const MIN_REMAINING_MS = 17 * 60 * 1000; // one video's capture is bounded at 15 min by weekly.mjs (timeout - 1 min)
+export const MAX_WAIT_FOR_REFRESH_MS = 20 * 60 * 1000;
+export const DEVTOOLS_ACTIVE_PORT = path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome', 'DevToolsActivePort');
+// Only these localStorage keys are copied. Everything else (refreshToken, deviceKey, deviceGroupKey,
+// randomPasswordKey, the user's own settings) stays in the operator's Chrome.
+export const BORROW_KEY_RE = /^CognitoIdentityServiceProvider\.[A-Za-z0-9]+\.(LastAuthUser|[^.]+\.(idToken|accessToken|clockDrift|signInDetails))$/;
+const NEVER_COPY_RE = /(refreshToken|deviceKey|deviceGroupKey|randomPasswordKey)$/;
+// In-memory only (this process): the last borrowed entries, reused while they still have MIN_REMAINING_MS of
+// validity so a weekly run touches the operator's Chrome about once an hour, not once per video.
+let cache = null;
+export function clearOwnerSessionCache() { cache = null; }
+
+export class OwnerSessionError extends Error {
+  constructor(code, detail = null) { super(detail ? `${code}: ${detail}` : code); this.code = code; this.detail = detail; }
+}
+
+/** ws:// endpoint of the operator's Chrome. Prefers DevToolsActivePort; processes macOS keeps out of Chrome's
+ *  profile folder (the launchd bridge gets EPERM) use the default chrome://inspect port, whose bare
+ *  /devtools/browser path Chrome accepts. Connecting proves nothing by itself: the borrow still requires a
+ *  signed-in Hadrius account that can open the tenant's company. */
+export const DEFAULT_DEBUG_PORT = 9222;
+export function chromeEndpoint({ file = DEVTOOLS_ACTIVE_PORT, read = fs.readFileSync, env = process.env } = {}) {
+  const fallbackPort = /^\d{2,5}$/.test(String(env.DRIFT_CHROME_DEBUG_PORT || '')) ? Number(env.DRIFT_CHROME_DEBUG_PORT) : DEFAULT_DEBUG_PORT;
+  let text;
+  try { text = String(read(file, 'utf8')); } catch { return `ws://127.0.0.1:${fallbackPort}/devtools/browser`; }
+  const [port, wsPath] = text.trim().split('\n');
+  if (!/^\d{2,5}$/.test(port ?? '') || !/^\/devtools\/browser\/[\w-]+$/.test(wsPath ?? '')) throw new OwnerSessionError('owner_chrome_unreachable', 'unreadable DevToolsActivePort');
+  return `ws://127.0.0.1:${port}${wsPath}`;
+}
+
+/** exp (ms) of a JWT without verifying it; null when unreadable. Never returns or logs the token. */
+export function jwtExpiryMs(token) {
+  try { const p = JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url').toString('utf8')); return Number.isFinite(p.exp) ? p.exp * 1000 : null; } catch { return null; }
+}
+/** Stable, non-reversible account label for run.json (sha256 of the Cognito username, first 12 hex). */
+export const accountLabel = (username) => (username ? `owner:${crypto.createHash('sha256').update(String(username)).digest('hex').slice(0, 12)}` : null);
+
+/** Keep only the borrowable keys; refuse if anything long-lived slipped in. */
+export function selectBorrowedEntries(all) {
+  const out = {};
+  for (const [k, v] of Object.entries(all || {})) {
+    if (NEVER_COPY_RE.test(k)) continue;
+    if (BORROW_KEY_RE.test(k) && typeof v === 'string') out[k] = v;
+  }
+  const keys = Object.keys(out);
+  if (keys.some((k) => NEVER_COPY_RE.test(k))) throw new OwnerSessionError('owner_session_unsafe_key');
+  return out;
+}
+
+/** -> {ok, problem?, expiresAt, username} for a borrowed entry set (no values returned). */
+export function inspectBorrowed(entries, { now = Date.now(), minRemainingMs = MIN_REMAINING_MS } = {}) {
+  const last = Object.entries(entries).find(([k]) => k.endsWith('.LastAuthUser'));
+  if (!last) return { ok: false, problem: 'owner_not_signed_in' };
+  const username = last[1];
+  const token = (kind) => Object.entries(entries).find(([k]) => k.endsWith(`.${username}.${kind}`))?.[1];
+  const access = token('accessToken'), id = token('idToken');
+  if (!access || !id) return { ok: false, problem: 'owner_not_signed_in' };
+  const expiresAt = Math.min(jwtExpiryMs(access) ?? 0, jwtExpiryMs(id) ?? 0);
+  if (!expiresAt) return { ok: false, problem: 'owner_token_unreadable' };
+  if (expiresAt - now < minRemainingMs) return { ok: false, problem: 'owner_token_expiring', expiresAt, username };
+  return { ok: true, expiresAt, username };
+}
+
+/** Body for context.addInitScript(fn, arg): restores the borrowed keys and pins the tenant on app pages only.
+ *  Announcement pop-ups are treated as dismissed (component_announcement_modal.tsx reads
+ *  `hadrius:announcement-modal:<id>:dismissed` === "true"), as for any user who has already closed them. */
+export function ownerInitScript({ entries, companyId, origin }) {
+  if (location.origin !== origin) return;
+  try {
+    for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
+    localStorage.setItem('lastCompanyId', String(companyId));
+  } catch { /* storage unavailable: the probe then sees a signed-out page and fails closed */ }
+}
+
+/**
+ * Borrow the operator's Hadrius session for `tenant` from their running Chrome.
+ * deps: {chromium (playwright), endpoint?, now?, log?, waitMs?}
+ * -> {status:'owner_session', account, expiresAt, companyCount, tenantAccessible:true, initScriptArg}
+ * Throws OwnerSessionError(code) — codes: owner_chrome_unreachable, owner_not_signed_in, owner_token_expiring,
+ * owner_token_unreadable, owner_tenant_not_accessible.
+ */
+export async function borrowOwnerSession({ tenant, chromium, endpoint = null, now = () => Date.now(), log = () => {}, waitMs = 8000, minRemainingMs = MIN_REMAINING_MS, maxWaitMs = 0, useCache = true } = {}) {
+  const T = getTenant(tenant);
+  if (useCache && cache && cache.expiresAt - now() >= minRemainingMs) {
+    if (!cache.companies.some((c) => c.id === T.companyId)) throw new OwnerSessionError('owner_tenant_not_accessible', `the Chrome account cannot open company ${T.companyId}`);
+    return sessionFrom(cache, T, now, { reused: true });
+  }
+  const ws = endpoint ?? chromeEndpoint();
+  let browser;
+  try { browser = await chromium.connectOverCDP(ws, { timeout: 20000 }); }
+  catch (e) { throw new OwnerSessionError('owner_chrome_unreachable', `Chrome is not running with remote debugging on (chrome://inspect/#remote-debugging): ${String(e?.message || e).split('\n')[0].slice(0, 160)}`); }
+  let entries = null, user = null; const aborted = [];
+  try {
+    const ctx = browser.contexts()[0];
+    if (!ctx) throw new OwnerSessionError('owner_chrome_unreachable', 'no default browser context');
+    // A background tab in its own window: the operator's current window/tab keep focus.
+    const cdp = await browser.newBrowserCDPSession();
+    const opened = ctx.waitForEvent('page', { timeout: 15000 });
+    await cdp.send('Target.createTarget', { url: 'about:blank', background: true, newWindow: true });
+    const page = await opened;
+    try {
+      await page.route('**/*', (route) => {
+        const r = route.request();
+        const c = classifyRequest({ method: r.method(), url: r.url(), postData: r.postData(), headers: r.headers() });
+        if (c.decision === 'allow' || c.decision === 'allow_logged') return route.continue();
+        // Aborted requests never leave the browser (the home page fires read-only searches the guard can't
+        // prove are reads); they are only counted. The borrow needs the page's sign-in, not its content.
+        if (aborted.length < 50) aborted.push(`${r.method()} ${(() => { try { const u = new URL(r.url()); return u.hostname + u.pathname; } catch { return '?'; } })()} (${c.reason})`);
+        return route.abort('blockedbyclient');
+      });
+      page.on('response', async (res) => {
+        try {
+          const u = new URL(res.url());
+          if (res.request().method() !== 'GET' || !/\/users\/?$/.test(u.pathname) || !u.searchParams.has('uuid') || !res.ok()) return;
+          user = companiesFromUserPayload(await res.json());
+        } catch { /* passive */ }
+      });
+      // /home names no company: the operator's own selected company in their Chrome is not changed.
+      // The app refreshes its tokens (in the operator's own Chrome, with their own refresh token) only once they
+      // have expired; when they are valid but too short-lived for a capture, wait for expiry (up to maxWaitMs)
+      // and reload, rather than ever touching the refresh token ourselves.
+      const deadline = now() + maxWaitMs;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        await page.goto(`${APP_ORIGIN}/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(waitMs);
+        const all = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('CognitoIdentityServiceProvider.')).map((k) => [k, localStorage.getItem(k)])));
+        entries = selectBorrowedEntries(all);
+        const st = inspectBorrowed(entries, { now: now(), minRemainingMs });
+        if (st.ok || st.problem !== 'owner_token_expiring') break;
+        const until = st.expiresAt + 15000 - now();
+        if (now() + until > deadline) break;
+        log(`[owner-session] tokens expire in ${Math.round((st.expiresAt - now()) / 60000)} min; waiting for the app to refresh them in the operator's own Chrome`);
+        await page.waitForTimeout(Math.max(1000, until));
+      }
+    } finally { await page.close().catch(() => {}); }
+  } finally { await browser.close().catch(() => {}); } // connectOverCDP: close() only disconnects
+  const st = inspectBorrowed(entries || {}, { now: now(), minRemainingMs });
+  if (!st.ok) throw new OwnerSessionError(st.problem);
+  const companies = user?.companies ?? null;
+  if (!companies) throw new OwnerSessionError('owner_not_signed_in', 'the app did not load the signed-in user');
+  if (!companies.some((c) => c.id === T.companyId)) throw new OwnerSessionError('owner_tenant_not_accessible', `the Chrome account cannot open company ${T.companyId}`);
+  log(`[owner-session] borrowed ${accountLabel(st.username)} for ${T.key} (${companies.length} companies visible, ${Math.round((st.expiresAt - now()) / 60000)} min left)`);
+  const fresh = { entries: Object.freeze({ ...entries }), expiresAt: st.expiresAt, username: st.username, companies, aborted: aborted.length };
+  if (useCache) cache = fresh;
+  return sessionFrom(fresh, T, now, { reused: false });
+}
+
+function sessionFrom(c, T, now, { reused }) {
+  const session = {
+    status: 'owner_session', source: 'chrome', account: accountLabel(c.username), expiresAt: new Date(c.expiresAt).toISOString(),
+    minutesLeft: Math.round((c.expiresAt - now()) / 60000), reusedBorrow: reused,
+    companyCount: c.companies.length, companyIds: [T.companyId], tenantAccessible: true, borrowTabAbortedRequests: c.aborted,
+  };
+  // Non-enumerable: JSON.stringify(session) (run.json) can never include the tokens.
+  Object.defineProperty(session, 'initScriptArg', { value: Object.freeze({ entries: c.entries, companyId: T.companyId, origin: APP_ORIGIN }), enumerable: false });
+  return session;
+}
+
+/** Non-persistent, guarded-by-caller headless context carrying a borrowed session. Caller closes `browser`. */
+export async function launchOwnerContext({ chromium, session, ctxOpts, headless = true }) {
+  if (!session?.initScriptArg) throw new OwnerSessionError('owner_not_signed_in', 'no borrowed session');
+  const browser = await chromium.launch({ headless });
+  try {
+    const ctx = await browser.newContext({ ...ctxOpts });
+    await ctx.addInitScript(ownerInitScript, session.initScriptArg);
+    ctx.on('close', () => { browser.close().catch(() => {}); });
+    return ctx;
+  } catch (e) { await browser.close().catch(() => {}); throw e; }
+}
