@@ -245,3 +245,28 @@ test('classifyRun asks the redesign judge only for release candidates and stores
   assert.equal(r.steps[1].verdict, 'unverified'); assert.equal(r.steps[1].reasons[0].code, 'no_release_touched_screen');
   assert.equal(r.verdict, 'full_rerecord');
 });
+
+// CRIT-18: capture.mjs acts on a never-named target by position on a verified draft-only page and tags it
+// 'unnamed_css_on_draft_page'; classify must not turn that into target_renamed / narration_review.
+test('classifyRun: an unnamed_css_on_draft_page target is not "renamed"; an untagged CSS-only target still is', async () => {
+  const run = async (notes) => {
+    const dir = mkdtempSync(join(tmpdir(), 'cls-unnamed-'));
+    const url = 'https://app.hadrius.com/account/settings/templates/new?title=T';
+    const target = { status: 'resolved', method: 'css', notes, recordedRect: { x: 733, y: 550, w: 400, h: 40 }, resolved: { name: '', role: 'textbox' }, matches: [{ name: '', role: 'textbox' }], delta: { dx: 0, dy: -11, dw: 0, dh: 0, max: 11 } };
+    writeFileSync(join(dir, 'run.json'), JSON.stringify({ status: 'captured', steps: [
+      { index: 0, todayUrl: url, visibleText: 'Template' },
+      { index: 1, todayUrl: url, visibleText: 'Template', target, performed: 'type' }] }));
+    writeFileSync(join(dir, 'compare.json'), JSON.stringify({ steps: [0, 1].map((index) => ({ index, classification: 'unchanged', todayScreenshot: `t${index}.png`, dimensions: { match: true }, diffFractionNonDynamic: 0, ssimMasked: 1, regions: [] })) }));
+    const script = { name: 'Vid', title: 'Vid', steps: [
+      { index: 0, action: 'navigate', narration: '', url, media: { pre: 'r0.png' } },
+      { index: 1, action: 'type', value: 'Q', narration: '', url, target: { name: '', role: 'textbox' }, media: { pre: 'r1.png' } }] };
+    return classifyRun({ runDir: dir, script, recordingsDir: join(dir, 'rec'), write: false });
+  };
+  const tagged = await run(['unnamed_css_on_draft_page']);
+  assert.ok(!tagged.steps[1].reasons.some((x) => x.code === 'target_renamed'), JSON.stringify(tagged.steps[1].reasons));
+  assert.equal(tagged.steps[1].verdict, 'unchanged');
+  assert.equal(tagged.verdict, 'unchanged', 'the video verdict is not escalated by that step');
+  const untagged = await run([]);
+  assert.ok(untagged.steps[1].reasons.some((x) => x.code === 'target_renamed'));
+  assert.equal(untagged.verdict, 'narration_review');
+});

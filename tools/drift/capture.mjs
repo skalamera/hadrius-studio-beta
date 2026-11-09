@@ -273,7 +273,11 @@ export function unnamedCssTargetOk(step,res,delta,pageUrl){
 /** step + today's element (resolved BY NAME) [+ the page it is on] -> {kind:'type'|'select'|'open'|'key', reason} | null */
 export function rehearsalFor(step,today,{pageUrl=null}={}){
   if(!today)return null;
-  const m=classifyStepMutation(step,today);if(!m.mutating)return null;
+  // The caller judged the step mutating from the RECORDED step alone when today's element was found only by position
+  // (e.g. a never-named click = unnamed_target). Today's name must not turn that back into 'not mutating' here (which
+  // returned null and stopped the step): fall back to the step-only classification; every gate below still applies.
+  const m0=classifyStepMutation(step,today),m=m0.mutating?m0:classifyStepMutation(step);
+  if(!m.mutating)return null;
   const t=step?.target??{};
   const names=[t.name,t.text,t.ariaLabel,today.name,today.ariaLabel].filter(Boolean).map(String);
   const draft=draftPageFor(pageUrl);

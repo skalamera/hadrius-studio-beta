@@ -144,7 +144,9 @@ export function classifyStepSignals(sig,T=THRESHOLDS){
   // other columns hold the records), otherwise a missing target stays a re-record.
   if(sig.targetStatus&&(sig.targetStatus!=='resolved'||sig.targetMethod==='css')&&sig.emptyState&&sig.judge?.data_missing)
     return {verdict:'unverified',reasons:[{verdict:'unverified',code:'record_not_visible',detail:`recorded target "${sig.targetName??'?'}" not found and the page shows an empty state ("${sig.emptyState}"): the capture account likely cannot see this record`}],needsJudge:true};
-  if(sig.targetMethod==='css'&&sig.targetStatus==='resolved')add('narration_review','target_renamed',`target found only by its CSS path; recorded name "${sig.targetName}" is now "${sig.todayTargetName}"`);
+  // capture.mjs acts on a never-named target by position on a verified draft-only page ('unnamed_css_on_draft_page'):
+  // nothing was renamed there.
+  if(sig.targetMethod==='css'&&sig.targetStatus==='resolved'&&!sig.targetNotes?.includes('unnamed_css_on_draft_page'))add('narration_review','target_renamed',`target found only by its CSS path; recorded name "${sig.targetName}" is now "${sig.todayTargetName}"`);
   if(sig.routeChanged)add('full_rerecord','route_changed',`page route changed: recorded ${sig.recordedPath} -> today ${sig.todayPath}`);
   if(sig.flowChanged)add('full_rerecord','flow_changed',sig.flowDetail??'the recorded click no longer leads to the next recorded page');
   if(!sig.dimensionsMatch&&sig.compareClass!=='unchanged')add('full_rerecord','viewport_changed','screenshot size differs from the recording');
@@ -281,7 +283,7 @@ export async function classifyRun({runDir,script,recordingsDir,judge=null,thresh
     const sig={index:st.index,action:st.action,narration:st.narration??'',hasScreenshot:!!(c.todayScreenshot&&c.classification!=='not_captured'&&c.classification!=='needs_fixture'),
       compareClass,dimensionsMatch:c.dimensions?.match!==false,guardStatus:r.mutationGuard?.status??null,guardReason:r.mutationGuard?.reason??null,error:r.error??c.reason??null,
       prerequisiteUnverified:!!r.prerequisiteUnverified,prerequisiteReason:r.readGuard?.reason??r.prerequisiteFailure?.reason??null,
-      targetStatus:tgt?.status??null,targetMethod:tgt?.method??null,targetName:st.target?.name??null,todayTargetName:tgt?.resolved?.name??null,targetMatches:tgt?.matches?.length??null,targetDeltaMax:tgt?.delta?.max??null,
+      targetStatus:tgt?.status??null,targetMethod:tgt?.method??null,targetNotes:tgt?.notes??null,targetName:st.target?.name??null,todayTargetName:tgt?.resolved?.name??null,targetMatches:tgt?.matches?.length??null,targetDeltaMax:tgt?.delta?.max??null,
       disambiguation:disamb,targetIsRecord:!!(tgt?.resolved?.recordHint&&(tgt.resolved.recordHint.id||tgt.resolved.recordHint.label)),
       dataOnly:!!c.dataOnly,dataChangedPixels:c.dataChangedPixels??null,
       routeChanged:!!(recPath&&todayPath&&recPath!==todayPath),recordedPath:recPath,todayPath,flowChanged:!!flow,flowDetail:flow?`${flow.kind}: expected ${flow.expected} got ${flow.actual}`:null,

@@ -461,7 +461,8 @@ export async function main(args=process.argv.slice(2)){
     timeoutMs:arg(args,'--timeout-min')?Number(arg(args,'--timeout-min'))*60_000:DEFAULT_TIMEOUT_MS,maxModelCalls:cap!=null?Number(cap):null,rehearse:!args.includes('--no-rehearse'),
     autoRepair:args.includes('--no-auto-repair')?false:undefined,repairSettings:{...(arg(args,'--codex-bin')?{binary:arg(args,'--codex-bin')}:{}),...(arg(args,'--repair-model')?{model:arg(args,'--repair-model')}:{}),...(arg(args,'--repair-effort')?{effort:arg(args,'--repair-effort')}:{})}});}
   // One Chrome debugging connection served every borrow of this run (one Allow prompt); release it so the run exits.
-  finally{if(session==='owner')await (await import('./owner-session.mjs')).releaseOwnerConnection().catch(()=>{});}
+  // Unconditional: a resumed run takes its session from summary.json inside runWeekly, not from this CLI's --session.
+  finally{await (await import('./owner-session.mjs')).releaseOwnerConnection().catch(()=>{});}
   console.log(JSON.stringify({outDir:s.outDir,counts:s.counts,tenantCounts:s.tenantCounts,reviewUsage:s.reviewUsage??null,reviewProvider:s.reviewProvider??null,reviewPending:s.reviewPending,automation:s.automation??null,videos:s.videos.map(v=>({name:v.name,tenant:v.tenant,status:v.status,verdict:v.verdict,summary:v.summary,candidate:v.candidatePath}))},null,2));
   return s;
 }

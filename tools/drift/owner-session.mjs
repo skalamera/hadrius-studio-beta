@@ -56,19 +56,25 @@ export function clearOwnerSessionCache() { cache = null; conn = null; lastFailur
 export const CONNECT_COOLDOWN_MS = 5 * 60 * 1000;
 let conn = null;
 let lastFailure = null;
+const borrowPages = new WeakSet();
 async function ownerConnection(chromium, endpoint, now) {
   if (conn?.browser && (typeof conn.browser.isConnected !== 'function' || conn.browser.isConnected())) return conn.browser;
   conn = null;
   if (lastFailure && now() - lastFailure.at < CONNECT_COOLDOWN_MS)
     throw new OwnerSessionError('owner_chrome_unreachable', `not retried for ${Math.round((CONNECT_COOLDOWN_MS - (now() - lastFailure.at)) / 1000)} s (avoids repeated Chrome prompts): ${lastFailure.detail}`);
   let browser;
-  try { browser = await chromium.connectOverCDP(endpoint ?? chromeEndpoint(), { timeout: 60000 }); }
+  // noDefaults: the connection is held for the whole run, so Playwright must not re-route the operator's downloads
+  // (acceptDownloads -> its temp dir, deleted on disconnect) or emulate focus/media in their everyday Chrome.
+  try { browser = await chromium.connectOverCDP(endpoint ?? chromeEndpoint(), { timeout: 60000, noDefaults: true }); }
   catch (e) {
     const detail = `Chrome refused or did not answer the debugging connection (chrome://inspect/#remote-debugging; click Allow once per run): ${String(e?.message || e).split('\n')[0].slice(0, 160)}`;
     lastFailure = { at: now(), detail };
     throw new OwnerSessionError('owner_chrome_unreachable', detail);
   }
   lastFailure = null;
+  // With no 'dialog' listener Playwright auto-answers every alert/confirm/prompt (and accepts beforeunload) in ALL
+  // attached tabs, i.e. the operator's own. Listen so it does not; only drift's own borrow tab is answered.
+  browser.contexts()[0]?.on?.('dialog', (d) => { if (borrowPages.has(d.page())) d.dismiss().catch(() => {}); });
   conn = { browser };
   if (typeof browser.on === 'function') browser.on('disconnected', () => { if (conn?.browser === browser) conn = null; });
   return browser;
@@ -188,27 +194,60 @@ async function openChromeTab(chromium, endpoint, now) {
     const opened = ctx.waitForEvent('page', { timeout: 15000 });
     await cdp.send('Target.createTarget', { url: 'about:blank', background: true, newWindow: true });
     const page = await opened;
+    borrowPages.add(page);
     return { page, close: () => page.close().catch(() => {}), failed: dropIfBroken };
   } catch (e) { dropIfBroken(); throw e; }
 }
 
 /** The dedicated Studio profile, headless. Waits (bounded) while another Studio process has it open. */
-async function openProfilePage(chromium, profileDir, { busyWaitMs = 120000 } = {}) {
+async function openProfilePage(chromium, profileDir, { busyWaitMs = 120000, pollMs = 3000 } = {}) {
   if (!fs.existsSync(profileDir)) throw new OwnerSessionError('owner_profile_missing', `no Studio profile at ${profileDir}: run node tools/drift/owner-profile.mjs --sign-in`);
   const until = Date.now() + busyWaitMs;
   for (;;) {
+    // Playwright's headless:true (chromium-headless-shell) neither takes nor honours Chromium's SingletonLock: on a
+    // profile another process holds it launches anyway and reads EMPTY storage (owner_not_signed_in). Lock first.
+    const unlock = lockOwnerProfile(profileDir);
+    if (!unlock) {
+      if (Date.now() < until) { await new Promise((r) => setTimeout(r, pollMs)); continue; }
+      throw new OwnerSessionError('owner_profile_busy', 'the Studio profile stayed open in another window or Studio process (close the sign-in window)');
+    }
     try {
       const ctx = await chromium.launchPersistentContext(profileDir, { headless: true, viewport: { width: 1600, height: 900 }, serviceWorkers: 'block' });
       const page = ctx.pages()[0] || await ctx.newPage();
-      return { page, close: () => ctx.close().catch(() => {}) };
+      return { page, close: () => ctx.close().catch(() => {}).finally(unlock) };
     } catch (e) {
+      unlock();
       const m = String(e?.message || e);
       const busy = /ProcessSingleton|SingletonLock|profile.*in use|already running/i.test(m);
-      if (busy && Date.now() < until) { await new Promise((r) => setTimeout(r, 3000)); continue; }
+      if (busy && Date.now() < until) { await new Promise((r) => setTimeout(r, pollMs)); continue; }
       if (busy) throw new OwnerSessionError('owner_profile_busy', 'the Studio profile stayed open in another window (close the sign-in window)');
       throw new OwnerSessionError('owner_profile_unavailable', m.split('\n')[0].slice(0, 200));
     }
   }
+}
+
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+/**
+ * Studio's own lock on the profile (`studio-profile.lock`, O_EXCL, holds the pid; a dead holder's lock is cleared),
+ * plus a live Chromium SingletonLock (only a headed window, e.g. one not opened by Studio, creates it).
+ * -> release fn (idempotent; removes the file only while it is still ours), or null when another live process holds it.
+ */
+export function lockOwnerProfile(profileDir) {
+  try { const pid = Number(String(fs.readlinkSync(path.join(profileDir, 'SingletonLock'))).split('-').pop()); if (pid && pid !== process.pid && pidAlive(pid)) return null; } catch { /* none */ }
+  const f = path.join(profileDir, 'studio-profile.lock');
+  for (let i = 0; i < 2; i++) {
+    try {
+      const fd = fs.openSync(f, 'wx', 0o600); fs.writeSync(fd, String(process.pid)); fs.closeSync(fd);
+      let held = true;
+      return () => { if (!held) return; held = false; try { if (fs.readFileSync(f, 'utf8') === String(process.pid)) fs.unlinkSync(f); } catch { /* gone */ } };
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let pid = 0; try { pid = Number(fs.readFileSync(f, 'utf8')); } catch { continue; } // removed meanwhile: retry
+      if (pid && pidAlive(pid)) return null;
+      try { fs.unlinkSync(f); } catch { /* raced */ } // stale (holder died)
+    }
+  }
+  return null;
 }
 
 /** Guarded (writes aborted, only counted), load /home, read the signed-in user and the short-lived tokens. */
@@ -289,9 +328,12 @@ export function ownerSource(env = process.env) {
  */
 export async function inspectOwnerProfile({ chromium, profileDir = OWNER_PROFILE_DIR, waitMs = 8000, headless = true }) {
   if (!fs.existsSync(profileDir)) throw new OwnerSessionError('owner_profile_missing', `no Studio profile at ${profileDir}: run node tools/drift/owner-profile.mjs --sign-in`);
+  const unlock = lockOwnerProfile(profileDir);
+  if (!unlock) throw new OwnerSessionError('owner_profile_busy', 'the Studio profile is open in another window or Studio process (close the sign-in window)');
   let ctx;
   try { ctx = await chromium.launchPersistentContext(profileDir, { headless, viewport: { width: 1600, height: 900 }, serviceWorkers: 'block' }); }
   catch (e) {
+    unlock();
     const m = String(e?.message || e);
     if (/ProcessSingleton|SingletonLock|profile.*in use|already running/i.test(m)) throw new OwnerSessionError('owner_profile_busy', 'the Studio profile is open in another window (close the sign-in window)');
     throw new OwnerSessionError('owner_profile_unavailable', m.split('\n')[0].slice(0, 200));
@@ -317,5 +359,5 @@ export async function inspectOwnerProfile({ chromium, profileDir = OWNER_PROFILE
     const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => /\.LastAuthUser$/.test(k)).map((k) => localStorage.getItem(k))).catch(() => []);
     if (!user?.companies) throw new OwnerSessionError('owner_not_signed_in', `the Studio profile is not signed in to Hadrius (page: ${landed ?? 'unknown'}): run node tools/drift/owner-profile.mjs --sign-in`);
     return { companies: user.companies, username: keys[0] || null };
-  } finally { await ctx.close().catch(() => {}); }
+  } finally { await ctx.close().catch(() => {}); unlock(); }
 }

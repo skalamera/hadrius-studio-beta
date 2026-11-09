@@ -1035,11 +1035,20 @@ most record-dependent slides unverifiable. `--session owner` (weekly/capture CLI
   which makes it the default source (`DRIFT_OWNER_SOURCE=chrome|profile` overrides). It is borrowed exactly like
   Chrome below: opened headless and guarded only to load `/home` (the app refreshes its own tokens there), short-lived
   tokens copied out, profile closed. Captures NEVER run inside it: the first version did, and a walkthrough step left it
-  signed out mid-run (every later video `owner_not_signed_in`). If another Studio process has it open, the borrow waits
-  up to 2 min (`owner_profile_busy` after). No Chrome prompts, works unattended.
+  signed out mid-run (every later video `owner_not_signed_in`). Concurrent use is serialised by Studio's own lock,
+  `studio-profile.lock` in the profile (O_EXCL, holds the pid, cleared when that pid is dead), taken by every Studio
+  launch of the profile (borrows, `owner-profile.mjs --sign-in` and `--check`); a live Chromium `SingletonLock` (a
+  headed window Studio did not open) also counts as busy. Chromium's own lock can't be relied on: Playwright's
+  headless launches (chromium-headless-shell) neither create nor honour `SingletonLock`, so a second launch on a held
+  profile succeeds with EMPTY storage and reads as signed out. A borrow polls every 3 s for up to 2 min, then fails
+  `owner_profile_busy`; `--check` fails `owner_profile_busy` at once; `--sign-in` refuses with
+  `profile_in_use_by_a_drift_run`. No Chrome prompts, works unattended.
 - **Chrome (fallback)**: the operator's running Chrome. Chrome 144+ asks "Allow remote debugging?" on EVERY new
   debugging connection (no always-allow), so one connection is kept per process (`releaseOwnerConnection()` at the end
-  of a weekly run / capture CLI) and a refused connection is not retried for 5 min (`CONNECT_COOLDOWN_MS`).
+  of a weekly run / capture CLI, unconditionally) and a refused connection is not retried for 5 min (`CONNECT_COOLDOWN_MS`).
+  The held connection is opened with `noDefaults` (the operator's downloads, focus and media settings untouched) and a
+  context `dialog` listener, so Playwright never auto-answers dialogs in the operator's tabs; only drift's own borrow
+  tab's dialogs are dismissed.
 
 - Chrome needs remote debugging on (chrome://inspect/#remote-debugging). The bridge (launchd) can't read Chrome's
   profile folder (macOS returns EPERM for `DevToolsActivePort`), so it connects to `ws://127.0.0.1:9222/devtools/browser`

@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { OWNER_PROFILE_DIR, APP_ORIGIN, inspectOwnerProfile, accountLabel } from './owner-session.mjs';
+import { OWNER_PROFILE_DIR, APP_ORIGIN, inspectOwnerProfile, accountLabel, lockOwnerProfile } from './owner-session.mjs';
 import { companiesFromUserPayload } from './academy-login.mjs';
 import { getTenant } from './tenants.mjs';
 
@@ -21,27 +21,32 @@ const describe = (companies) => Object.fromEntries(NEED.map((t) => [`${t.key} ($
 
 async function signIn({ timeoutMs = 15 * 60 * 1000 } = {}) {
   fs.mkdirSync(OWNER_PROFILE_DIR, { recursive: true, mode: 0o700 });
-  const ctx = await chromium.launchPersistentContext(OWNER_PROFILE_DIR, { headless: false, viewport: null, args: ['--window-size=1400,900'] });
-  let user = null, closed = false;
-  ctx.on('close', () => { closed = true; });
-  const watch = (page) => page.on('response', async (res) => {
-    try {
-      const u = new URL(res.url());
-      if (res.request().method() === 'GET' && /\/users\/?$/.test(u.pathname) && u.searchParams.has('uuid') && res.ok()) user = companiesFromUserPayload(await res.json());
-    } catch { /* passive */ }
-  });
-  ctx.on('page', watch);
-  const page = ctx.pages()[0] || await ctx.newPage();
-  watch(page);
-  await page.goto(`${APP_ORIGIN}/home`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-  console.log('A browser window opened on the Studio profile. Sign in to Hadrius there with your own account (this tool never types anything).');
-  const until = Date.now() + timeoutMs;
-  while (!closed && Date.now() < until && !(user?.companies && NEED.every((t) => user.companies.some((c) => c.id === t.companyId)))) await new Promise((r) => setTimeout(r, 2000));
-  if (closed) return { ok: false, reason: 'window_closed_before_sign_in' };
-  if (!user?.companies) { await ctx.close().catch(() => {}); return { ok: false, reason: 'not_signed_in_within_15_min' }; }
-  await new Promise((r) => setTimeout(r, 3000)); // let the app persist its session in the profile
-  await ctx.close().catch(() => {});
-  return { ok: true };
+  // A drift borrow holding the profile would leave this window on empty, unsaved storage (the sign-in would be lost).
+  const unlock = lockOwnerProfile(OWNER_PROFILE_DIR);
+  if (!unlock) return { ok: false, reason: 'profile_in_use_by_a_drift_run' };
+  try {
+    const ctx = await chromium.launchPersistentContext(OWNER_PROFILE_DIR, { headless: false, viewport: null, args: ['--window-size=1400,900'] });
+    let user = null, closed = false;
+    ctx.on('close', () => { closed = true; });
+    const watch = (page) => page.on('response', async (res) => {
+      try {
+        const u = new URL(res.url());
+        if (res.request().method() === 'GET' && /\/users\/?$/.test(u.pathname) && u.searchParams.has('uuid') && res.ok()) user = companiesFromUserPayload(await res.json());
+      } catch { /* passive */ }
+    });
+    ctx.on('page', watch);
+    const page = ctx.pages()[0] || await ctx.newPage();
+    watch(page);
+    await page.goto(`${APP_ORIGIN}/home`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    console.log('A browser window opened on the Studio profile. Sign in to Hadrius there with your own account (this tool never types anything).');
+    const until = Date.now() + timeoutMs;
+    while (!closed && Date.now() < until && !(user?.companies && NEED.every((t) => user.companies.some((c) => c.id === t.companyId)))) await new Promise((r) => setTimeout(r, 2000));
+    if (closed) return { ok: false, reason: 'window_closed_before_sign_in' };
+    if (!user?.companies) { await ctx.close().catch(() => {}); return { ok: false, reason: 'not_signed_in_within_15_min' }; }
+    await new Promise((r) => setTimeout(r, 3000)); // let the app persist its session in the profile
+    await ctx.close().catch(() => {});
+    return { ok: true };
+  } finally { unlock(); }
 }
 
 async function check() {

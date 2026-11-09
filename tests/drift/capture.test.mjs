@@ -633,3 +633,38 @@ test('captureRun: healthy verified CLOSED record proceeds read-only and still st
   assert.equal(run.prerequisiteStop,undefined);assert.equal(run.steps[3].prerequisiteUnverified,undefined);assert.equal(run.steps[3].closedRecord.verified,true);
   assert.deepEqual(fc.actions.filter(a=>a[0]==='click').map(a=>a[1]),['Closed 4','FLAG-TESTONLY']);assert.equal(run.mutationStop.index,4);
 });
+
+// CRIT-19: an unnamed recorded click on a verified draft page, found by position, whose element today HAS a
+// (harmless) name: the caller judged it mutating from the recorded step (unnamed_target); rehearsalFor must not
+// re-judge it 'read_only_click' from today's name and return null (which stopped the step).
+test('rehearsalFor: unnamed recorded click on a draft page is rehearsed even when today\u2019s element has a name', () => {
+  const ed={pageUrl:`${APP}/account/settings/templates/new?title=T`};
+  const step={index:1,action:'click',url:ed.pageUrl,target:{role:'button',tag:'button',name:'',text:''}};
+  const today={role:'button',tag:'button',name:'Question type',inForm:false,inDialog:false,submits:false};
+  assert.equal(classifyStepMutation(step).reason,'unnamed_target');
+  assert.equal(classifyStepMutation(step,today).mutating,false,'today\u2019s name alone looks read-only');
+  assert.deepEqual(rehearsalFor(step,today,ed),{kind:'open',reason:'draft_page:template_editor_new'});
+  assert.equal(rehearsalFor(step,{...today,name:'Publish'},ed),null,'a save is still never rehearsed');
+  assert.equal(rehearsalFor(step,today,{pageUrl:`${APP}/settings/roles`}),null,'off the draft page an unnamed click stays a stop');
+});
+test('captureRun --rehearse: an unnamed draft-page click found by position is performed, not stopped', async () => {
+  const dir=mkdtempSync(join(tmpdir(),'drift-cap-'));const prof=join(dir,'.browser-profile-drift');mkdirSync(prof);
+  const E=`${APP}/account/settings/templates/new?title=T&company_id=1150`;
+  const bbox={x:1,y:1,w:10,h:10},viewport={w:1600,h:900};
+  const script={name:'f',environment:{startUrl:E},recording:{id:'r'},steps:[
+    {index:0,action:'navigate',url:E,value:E,route:'/account/settings/templates/new',media:{pre:'0.png'}},
+    {index:1,action:'click',url:E,route:'/account/settings/templates/new',media:{pre:'1.png'},target:{role:'button',tag:'button',name:'',text:'',css:'div > button',bbox,viewport}},
+    {index:2,action:'click',url:E,route:'/account/settings/templates/new',media:{pre:'2.png'},target:{role:'button',tag:'button',name:'Preview'}}]};
+  const sp=join(dir,'s.json');writeFileSync(sp,JSON.stringify(script));
+  const fc=fakeChromium({[E]:{candidates:[{role:'button',tag:'button',name:'Question type',cssMatch:true,bbox},{role:'button',tag:'button',name:'Preview'}]}});
+  const origFetch=globalThis.fetch;globalThis.fetch=async()=>({json:async()=>({running:false})});
+  try{
+    const run=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run'),log:()=>{},chromium:fc,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),
+      limits:{stepMs:5000,totalMs:30000,settleMs:0,idleMs:0,manualLoginMs:0},rehearse:true});
+    assert.ok(!run.findings.some(f=>f.kind==='mutation_guard_stop'&&f.step===1),JSON.stringify(run.findings));
+    assert.ok(run.steps[1].target.notes.includes('unnamed_css_on_draft_page'));
+    assert.equal(run.steps[1].performed,'click');
+    assert.deepEqual(fc.actions.filter(a=>a[0]==='click').map(a=>a[1]),['Question type','Preview']);
+    assert.equal(run.mutationStop,null);
+  }finally{globalThis.fetch=origFetch;}
+});
