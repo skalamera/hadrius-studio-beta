@@ -22,7 +22,9 @@ const describe = (companies) => Object.fromEntries(NEED.map((t) => [`${t.key} ($
 async function signIn({ timeoutMs = 15 * 60 * 1000 } = {}) {
   fs.mkdirSync(OWNER_PROFILE_DIR, { recursive: true, mode: 0o700 });
   // A drift borrow holding the profile would leave this window on empty, unsaved storage (the sign-in would be lost).
-  const unlock = lockOwnerProfile(OWNER_PROFILE_DIR);
+  let unlock;
+  try { unlock = await lockOwnerProfile(OWNER_PROFILE_DIR); }
+  catch (e) { return { ok: false, reason: e?.code || 'profile_lock_failed', detail: String(e?.message || e).slice(0, 300) }; }
   if (!unlock) return { ok: false, reason: 'profile_in_use_by_a_drift_run' };
   try {
     const ctx = await chromium.launchPersistentContext(OWNER_PROFILE_DIR, { headless: false, viewport: null, args: ['--window-size=1400,900'] });
@@ -46,7 +48,7 @@ async function signIn({ timeoutMs = 15 * 60 * 1000 } = {}) {
     await new Promise((r) => setTimeout(r, 3000)); // let the app persist its session in the profile
     await ctx.close().catch(() => {});
     return { ok: true };
-  } finally { unlock(); }
+  } finally { await unlock(); }
 }
 
 async function check() {

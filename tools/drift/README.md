@@ -1036,16 +1036,21 @@ most record-dependent slides unverifiable. `--session owner` (weekly/capture CLI
   Chrome below: opened headless and guarded only to load `/home` (the app refreshes its own tokens there), short-lived
   tokens copied out, profile closed. Captures NEVER run inside it: the first version did, and a walkthrough step left it
   signed out mid-run (every later video `owner_not_signed_in`). Concurrent use is serialised by Studio's own lock,
-  `studio-profile.lock` in the profile (holds the pid), taken by every Studio launch of the profile (borrows,
-  `owner-profile.mjs --sign-in` and `--check`); a live Chromium `SingletonLock` (a headed window Studio did not open)
-  also counts as busy. The lock is atomic both ways: the pid is written to a unique temp file and hard-linked into
-  place (never visible empty); empty or unparseable content is busy, never stale; a dead holder's lock is reclaimed by
-  renaming it aside and re-reading the renamed copy (a successor's fresh lock is put back, never deleted). Not
-  `proper-lockfile`: its stale reclaim is the same stat-then-remove race. Chromium's own lock can't be relied on either:
-  Playwright's headless launches (chromium-headless-shell) neither create nor honour `SingletonLock`, so a second launch on a held
-  profile succeeds with EMPTY storage and reads as signed out. A borrow polls every 3 s for up to 2 min, then fails
-  `owner_profile_busy`; `--check` fails `owner_profile_busy` at once; `--sign-in` refuses with
-  `profile_in_use_by_a_drift_run`. No Chrome prompts, works unattended.
+  taken by every Studio launch of the profile (borrows, `owner-profile.mjs --sign-in` and `--check`): a localhost TCP
+  port derived from the profile path (`profileLockPort`: 49152 + sha256(realpath) mod 16000), bound on `127.0.0.1`.
+  bind() is atomic and the OS releases the port when the holder dies, so there is no stale lock and no reclaim step
+  (rounds 1-2 used a pid file; every reclaim scheme raced: council 20261109-b467b987, CRIT-25/26/27). The lock server
+  answers each connection with `studio-profile-lock <pid> <profileDir>`: that answer for this profile = busy (also from
+  a second borrow in the same process); a reset connection (a holder closing) = busy; anything else, no answer, or
+  another profile's lock = `owner_profile_lock_port_conflict` at once (no 2-minute wait). macOS lets a `127.0.0.1` bind
+  succeed over another program's wildcard listener on the same port, so the port is probed before binding. Release is
+  `server.close()` on our own socket (idempotent; can't touch anyone else's lock); the server is unref'd, so a held
+  lock never keeps Node alive. Leftover `studio-profile.lock*` files from older versions are ignored and deleted once
+  the lock is held. A live Chromium `SingletonLock` (a headed window Studio did not open) also counts as busy.
+  Chromium's own lock can't be relied on: Playwright's headless launches (chromium-headless-shell) neither create nor
+  honour `SingletonLock`, so a second launch on a held profile succeeds with EMPTY storage and reads as signed out. A
+  borrow polls every 3 s for up to 2 min, then fails `owner_profile_busy`; `--check` fails `owner_profile_busy` at
+  once; `--sign-in` refuses with `profile_in_use_by_a_drift_run`. No Chrome prompts, works unattended.
 - **Chrome (fallback)**: the operator's running Chrome. Chrome 144+ asks "Allow remote debugging?" on EVERY new
   debugging connection (no always-allow), so one connection is kept per process (`releaseOwnerConnection()` at the end
   of a weekly run / capture CLI, unconditionally) and a refused connection is not retried for 5 min (`CONNECT_COOLDOWN_MS`).

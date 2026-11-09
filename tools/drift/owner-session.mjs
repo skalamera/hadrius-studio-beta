@@ -32,6 +32,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { classifyRequest } from './capture.mjs';
 import { companiesFromUserPayload } from './academy-login.mjs';
 import { getTenant } from './tenants.mjs';
@@ -206,7 +207,7 @@ async function openProfilePage(chromium, profileDir, { busyWaitMs = 120000, poll
   for (;;) {
     // Playwright's headless:true (chromium-headless-shell) neither takes nor honours Chromium's SingletonLock: on a
     // profile another process holds it launches anyway and reads EMPTY storage (owner_not_signed_in). Lock first.
-    const unlock = lockOwnerProfile(profileDir);
+    const unlock = await lockOwnerProfile(profileDir); // owner_profile_lock_port_conflict propagates at once
     if (!unlock) {
       if (Date.now() < until) { await new Promise((r) => setTimeout(r, pollMs)); continue; }
       throw new OwnerSessionError('owner_profile_busy', 'the Studio profile stayed open in another window or Studio process (close the sign-in window)');
@@ -216,7 +217,7 @@ async function openProfilePage(chromium, profileDir, { busyWaitMs = 120000, poll
       const page = ctx.pages()[0] || await ctx.newPage();
       return { page, close: () => ctx.close().catch(() => {}).finally(unlock) };
     } catch (e) {
-      unlock();
+      await unlock();
       const m = String(e?.message || e);
       const busy = /ProcessSingleton|SingletonLock|profile.*in use|already running/i.test(m);
       if (busy && Date.now() < until) { await new Promise((r) => setTimeout(r, pollMs)); continue; }
@@ -227,51 +228,87 @@ async function openProfilePage(chromium, profileDir, { busyWaitMs = 120000, poll
 }
 
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-/**
- * Studio's own lock on the profile (`studio-profile.lock`, holds the pid), plus a live Chromium SingletonLock (only a
- * headed window, e.g. one not opened by Studio, creates it).
- * -> release fn (idempotent; removes the file only while it still holds our pid), or null when the profile is busy.
- *
- * Both directions are atomic (council round 2, 20261109-261d071f):
- *  - Publish: the pid is written to a unique temp file first and hard-linked into place, so the lock is never visible
- *    without its content (create-then-write let a second process read '' and reclaim a LIVE lock as stale).
- *  - Unreadable, empty or unparseable content is busy (retry later), never stale.
- *  - Reclaim only a parseable pid confirmed dead, by renaming the file aside and re-reading the renamed copy: if it is
- *    still the dead pid it is discarded; if it is anything else a successor got there first, so it is put back
- *    (link, EEXIST ignored) and the profile is busy. A plain read-check-unlink let one reclaimer delete the other's
- *    fresh lock. (Not proper-lockfile: its stale reclaim is the same stat-then-remove race.)
- */
-export function lockOwnerProfile(profileDir) {
-  try { const pid = Number(String(fs.readlinkSync(path.join(profileDir, 'SingletonLock'))).split('-').pop()); if (pid && pid !== process.pid && pidAlive(pid)) return null; } catch { /* none */ }
-  const f = path.join(profileDir, 'studio-profile.lock');
-  const me = String(process.pid);
-  const unique = (tag) => `${f}.${tag}.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const tmp = unique('tmp');
-    let linked = false;
-    fs.writeFileSync(tmp, me, { flag: 'wx', mode: 0o600 }); // unique name: complete before it can become the lock
-    try { fs.linkSync(tmp, f); linked = true; }
-    catch (e) { if (e.code !== 'EEXIST') throw e; }
-    finally { try { fs.unlinkSync(tmp); } catch { /* gone */ } }
-    if (linked) {
-      let held = true;
-      return () => { if (!held) return; held = false; try { if (fs.readFileSync(f, 'utf8') === me) fs.unlinkSync(f); } catch { /* gone */ } };
-    }
-    let text;
-    try { text = fs.readFileSync(f, 'utf8'); } catch (e) { if (e.code === 'ENOENT') continue; return null; } // released meanwhile: retry
-    if (!/^\d+$/.test(text)) return null; // empty / in flight / unknown: busy, never stale
-    const pid = Number(text);
-    if (pidAlive(pid)) return null;
-    // Dead holder: take the file aside, then make sure what we took is that dead holder's lock.
-    const aside = unique('stale');
-    try { fs.renameSync(f, aside); } catch (e) { if (e.code === 'ENOENT') continue; return null; } // another reclaimer won the rename
-    let taken = null; try { taken = fs.readFileSync(aside, 'utf8'); } catch { /* unreadable */ }
-    if (taken === text) { try { fs.unlinkSync(aside); } catch { /* gone */ } continue; } // discarded; acquire on the next pass
-    try { fs.linkSync(aside, f); } catch { /* EEXIST: someone else holds it now */ }
-    try { fs.unlinkSync(aside); } catch { /* gone */ }
-    return null;
+
+// ---------------------------------------------------------------- profile lock (OS-released)
+// Council round 3 (20261109-b467b987, CRIT-25/26/27): every file lock whose stale-reclaim is a separate step from
+// acquiring raced (rounds 1-2). The lock is now a localhost TCP port derived from the profile path: bind() is atomic and
+// the OS releases the port when the holder dies, so there is no stale state and no reclaim step at all. Release is
+// server.close() on our own socket and cannot affect anyone else's lock.
+const LOCK_BANNER = 'studio-profile-lock';
+const LOCK_PORT_BASE = 49152, LOCK_PORT_SPAN = 16000;
+/** Deterministic lock port for a profile directory (49152 + sha256(realpath) mod 16000). */
+export function profileLockPort(profileDir) {
+  const real = fs.realpathSync(profileDir);
+  return LOCK_PORT_BASE + (parseInt(crypto.createHash('sha256').update(real).digest('hex').slice(0, 8), 16) % LOCK_PORT_SPAN);
+}
+/** Who is on the port: {kind:'none'} (nothing listening) | {kind:'studio', pid, dir} | {kind:'other', detail}
+ *  | {kind:'flux'} (connection reset: a Studio holder closing its lock while we connected). */
+function identifyOnce(port, timeoutMs) {
+  return new Promise((resolve) => {
+    let data = '', done = false;
+    const finish = (r) => { if (!done) { done = true; sock.destroy(); resolve(r); } };
+    const sock = net.connect({ port, host: '127.0.0.1' });
+    sock.setTimeout(timeoutMs, () => finish({ kind: 'other', detail: `no answer within ${timeoutMs} ms` }));
+    sock.on('data', (d) => { data += d; if (data.length > 4096) finish({ kind: 'other', detail: 'unexpected answer' }); });
+    sock.on('end', () => {
+      const m = /^studio-profile-lock (\d+) (.+)\n?$/.exec(data);
+      finish(m ? { kind: 'studio', pid: Number(m[1]), dir: m[2] } : { kind: 'other', detail: data ? `answered ${JSON.stringify(data.slice(0, 60))}` : 'closed without answering' });
+    });
+    sock.on('error', (e) => finish(e.code === 'ECONNREFUSED' ? { kind: 'none' }
+      : ['ECONNRESET', 'EPIPE'].includes(e.code) ? { kind: 'flux', detail: e.code } : { kind: 'other', detail: e.code || String(e.message) }));
+  });
+}
+/** identifyOnce, re-asked while the port is in flux. A reset only happens when a listener closes with connections
+ *  still queued, i.e. a holder letting go: if it persists the profile is reported busy (the caller retries), never a
+ *  port conflict (under contention a releasing Studio holder resets every queued probe). */
+async function identifyLockPort(port, timeoutMs = 2000) {
+  for (let i = 0; ; i++) {
+    const who = await identifyOnce(port, timeoutMs);
+    if (who.kind !== 'flux' || i >= 5) return who;
+    await new Promise((r) => setTimeout(r, 20));
   }
-  return null;
+}
+const portConflict = (port, detail) => new OwnerSessionError('owner_profile_lock_port_conflict',
+  `another program is using 127.0.0.1:${port}, the Studio profile's lock port (${detail}); stop it or move the Studio profile`);
+const LEGACY_LOCK_RE = /^studio-profile\.lock(\..*)?$/; // round-1/2 lock file and its temp/aside files
+/**
+ * Lock the Studio profile for this caller, plus a live Chromium SingletonLock check (only a headed window, e.g. one
+ * not opened by Studio, creates it). -> async release fn (idempotent), or null when the profile is busy (another
+ * Studio holder, including one in THIS process). Throws owner_profile_lock_port_conflict, without waiting, when a
+ * non-Studio program owns the port.
+ */
+export async function lockOwnerProfile(profileDir) {
+  try { const pid = Number(String(fs.readlinkSync(path.join(profileDir, 'SingletonLock'))).split('-').pop()); if (pid && pid !== process.pid && pidAlive(pid)) return null; } catch { /* none */ }
+  const real = fs.realpathSync(profileDir);
+  const port = profileLockPort(real);
+  const holder = (who) => {
+    if ((who.kind === 'studio' && who.dir === real) || who.kind === 'flux') return null; // busy
+    if (who.kind === 'studio') throw portConflict(port, `Studio lock for another profile, ${who.dir}`);
+    throw portConflict(port, who.detail);
+  };
+  // macOS lets a 127.0.0.1 bind succeed over another program's wildcard (0.0.0.0 / ::) listener on the same port (BSD
+  // SO_REUSEADDR, always set by Node), which would silently shadow it: ask who is there first. Correctness between
+  // Studio processes rests on the bind below, not on this probe.
+  const before = await identifyLockPort(port);
+  if (before.kind !== 'none') return holder(before);
+  const server = net.createServer((c) => { c.on('error', () => {}); c.unref(); c.end(`${LOCK_BANNER} ${process.pid} ${real}\n`); });
+  for (let attempt = 0; ; attempt++) {
+    const err = await new Promise((resolve) => {
+      server.once('error', resolve);
+      server.listen({ port, host: '127.0.0.1', exclusive: true }, () => { server.off('error', resolve); resolve(null); });
+    });
+    if (!err) break;
+    if (err.code !== 'EADDRINUSE') throw new OwnerSessionError('owner_profile_unavailable', `lock port 127.0.0.1:${port}: ${err.code || err.message}`);
+    const who = await identifyLockPort(port);
+    if (who.kind !== 'none') return holder(who);
+    if (attempt >= 2) return null; // the holder is closing right now: busy, the caller retries
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  server.unref(); // a held lock never keeps Node alive (CRIT-17 class of hang)
+  for (const n of (() => { try { return fs.readdirSync(profileDir); } catch { return []; } })()) // older versions' lock files
+    if (LEGACY_LOCK_RE.test(n)) { try { fs.unlinkSync(path.join(profileDir, n)); } catch { /* best effort */ } }
+  let closing = null;
+  return () => (closing ??= new Promise((r) => server.close(() => r())));
 }
 
 /** Guarded (writes aborted, only counted), load /home, read the signed-in user and the short-lived tokens. */
@@ -352,12 +389,12 @@ export function ownerSource(env = process.env) {
  */
 export async function inspectOwnerProfile({ chromium, profileDir = OWNER_PROFILE_DIR, waitMs = 8000, headless = true }) {
   if (!fs.existsSync(profileDir)) throw new OwnerSessionError('owner_profile_missing', `no Studio profile at ${profileDir}: run node tools/drift/owner-profile.mjs --sign-in`);
-  const unlock = lockOwnerProfile(profileDir);
+  const unlock = await lockOwnerProfile(profileDir);
   if (!unlock) throw new OwnerSessionError('owner_profile_busy', 'the Studio profile is open in another window or Studio process (close the sign-in window)');
   let ctx;
   try { ctx = await chromium.launchPersistentContext(profileDir, { headless, viewport: { width: 1600, height: 900 }, serviceWorkers: 'block' }); }
   catch (e) {
-    unlock();
+    await unlock();
     const m = String(e?.message || e);
     if (/ProcessSingleton|SingletonLock|profile.*in use|already running/i.test(m)) throw new OwnerSessionError('owner_profile_busy', 'the Studio profile is open in another window (close the sign-in window)');
     throw new OwnerSessionError('owner_profile_unavailable', m.split('\n')[0].slice(0, 200));
@@ -383,5 +420,5 @@ export async function inspectOwnerProfile({ chromium, profileDir = OWNER_PROFILE
     const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => /\.LastAuthUser$/.test(k)).map((k) => localStorage.getItem(k))).catch(() => []);
     if (!user?.companies) throw new OwnerSessionError('owner_not_signed_in', `the Studio profile is not signed in to Hadrius (page: ${landed ?? 'unknown'}): run node tools/drift/owner-profile.mjs --sign-in`);
     return { companies: user.companies, username: keys[0] || null };
-  } finally { await ctx.close().catch(() => {}); unlock(); }
+  } finally { await ctx.close().catch(() => {}); await unlock(); }
 }
