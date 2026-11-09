@@ -985,7 +985,11 @@ Nothing publishes by itself. The only path to Drive/Pylon/the shared library is:
    `checkAutomaticVerification` re-hashes the file, and the sha is re-checked right before publish. Render-after-approval
    is unreachable in production (`deps.unsafeSkipPreviewBindingForTests` exists only for the legacy unit tests).
 5. **Changes automation can't make go to a person.** An automation row `human_required` is posted as `manual_rerecord`
-   (claim / mark re-recorded), never as an approvable `auto_update`.
+   (claim / mark re-recorded), never as an approvable `auto_update`. So is a held repair (`evidence_pending`) of a
+   release-confirmed UI change that stopped on a CONTENT blocker (`weekly-submit.mjs CONTENT_BLOCKERS`: changed click
+   target, large redesign, narration naming a renamed label, ...), as `automation.status: human_review` with the
+   blockers in plain English, but only when no reason is a capture failure (`CAPTURE_FAILURES`: page not loaded,
+   missing fixture, unverified replacement capture, model/budget unavailable, ...). Setup/capture holds never post.
 6. Publish preflight (Drive md5 = baseline, Pylon has no pending draft/review, shared script unchanged since detection)
    and rollback stay as described under "Executing approved jobs".
 7. **Published updates become the next baseline** (`promote.mjs` + `renderer/promote_baseline.py`). Right after a

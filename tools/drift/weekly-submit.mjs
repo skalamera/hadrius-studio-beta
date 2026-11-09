@@ -132,6 +132,34 @@ export function buildPayload({ job, script, assembly = null, prs = [], pylonUrl 
 }
 
 /**
+ * Held automatic repairs (automation status evidence_pending) that still go to a person as a re-record:
+ * the weekly check confirmed a production UI change (assessVideo 'post'), and the repair assessment stopped on a
+ * CONTENT blocker. A capture failure anywhere in the reasons means the evidence itself is unreliable: not posted
+ * (setup problems never reach Slack as re-record work).
+ */
+export const CONTENT_BLOCKERS = Object.freeze({
+  click_target_changed: 'the recorded click no longer matches the page',
+  click_target_uses_changed_label: 'the recorded click is on a renamed label',
+  large_redesign: 'the page was redesigned',
+  narration_flagged: 'the narration no longer matches the screen',
+  narration_mentions_changed_label: 'the narration names a renamed label',
+  kept_slide_shows_changed_element: 'an unchanged slide shows the renamed element',
+  unsupported_caption_rewrite: 'the caption needs rewriting',
+  unsupported_narration_change: 'the narration needs a change the repair cannot make',
+});
+export const CAPTURE_FAILURES = Object.freeze(['not_captured', 'page_not_loaded', 'page_error', 'no_replacement_screenshot', 'capture_pending',
+  'replacement_capture_unverified', // the capture behind the evidence has an unresolved page/prerequisite/fixture check
+  'needs_fixture', 'fixture_pending', 'record_not_visible', 'data_missing', 'model_unavailable', 'model_pending', 'budget_exhausted', 'budget_pending',
+  'selection_or_evidence_pending', 'capture_or_selection_evidence_pending', 'invalid_selected_scope', 'selected_scope_missing']);
+const codesOfAutomation = (a) => [a?.reason, ...(a?.reasons || []).map((r) => r?.code)].filter((c) => typeof c === 'string');
+export const contentBlockersOf = (a) => [...new Set(codesOfAutomation(a).filter((c) => Object.hasOwn(CONTENT_BLOCKERS, c)))];
+export const blockerLabel = (c) => CONTENT_BLOCKERS[c] || c;
+export function confirmedChangeNeedsPerson(a) {
+  const codes = codesOfAutomation(a);
+  return contentBlockersOf(a).length > 0 && !codes.some((c) => CAPTURE_FAILURES.includes(c));
+}
+
+/**
  * Decide + build for every video of a run.
  * io: {readJson(path)->obj|null, readScript(name)->script|null, readAssembly(name)->obj|null}
  * @returns [{name, decision, reason, verdict, kind?, payload?, assessment}]
@@ -211,6 +239,11 @@ export function prepareSubmissions({ summary, runDir, names = null, io, prsByNam
         row.automation={status:'automatically_repaired',reason:automatic.reason??null,candidate:automatic.result.candidate,
           sha256:automatic.result.sha256,verification:automatic.result.verification,automaticQa:automatic.result.automaticQa??null,
           baselineDir:automatic.qa?.baselineDir??null};
+      }else if(automatic?.status==='evidence_pending'&&confirmedChangeNeedsPerson(automatic)){
+        // A release-confirmed UI change the automatic repair positively could not handle (content blockers such as a
+        // changed click target, a large redesign or narration naming a renamed label), on a healthy capture: a person
+        // must look. Posted as a re-record (no Approve button, nothing can publish from it), never left invisible.
+        row.automation={status:'human_review',reason:automatic.reason,blockers:contentBlockersOf(automatic)};
       }else if(!automatic||automatic.status!=='human_required'){
         row.decision='skip';row.reason=automatic?.status??'automation_report_unverified';
         row.automation=automatic?{status:automatic.status,reason:automatic.reason??null}:null;
@@ -245,10 +278,13 @@ export function prepareSubmissions({ summary, runDir, names = null, io, prsByNam
         // Without one there is nothing a person could look at before approving, so it is not posted.
         // Automation established this change cannot be repaired automatically: it is a re-record for a person, never an
         // auto_update that would be rendered only after someone approved it.
-        if (row.automation?.status === 'human_required' && row.payload.kind !== 'manual_rerecord') {
+        if ((row.automation?.status === 'human_required' || row.automation?.status === 'human_review') && row.payload.kind !== 'manual_rerecord') {
           row.payload.kind = 'manual_rerecord';
           delete row.payload.details.execution;
-          row.payload.details.rerecordReason = [...new Set([...(row.payload.details.rerecordReason || []), `The automatic repair can't make this change (${row.automation.reason || 'unsupported change'}): a person needs to re-record it.`])];
+          const because = row.automation.status === 'human_review'
+            ? `The automatic repair stopped on this confirmed change (${(row.automation.blockers || []).map(blockerLabel).join('; ') || row.automation.reason}): a person needs to check the video and re-record what is out of date.`
+            : `The automatic repair can't make this change (${row.automation.reason || 'unsupported change'}): a person needs to re-record it.`;
+          row.payload.details.rerecordReason = [...new Set([...(row.payload.details.rerecordReason || []), because])];
           row.payload.fingerprint = stableFingerprint(row.payload);
         }
         const ar = row.payload.details.execution?.automaticResult;

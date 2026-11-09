@@ -113,6 +113,28 @@ test('weekly submission sends only human-required rows, never automatic repairs 
   report.sourceSelectionInputHash='wrong source';write(reportPath,report);rows=prepareSubmissions({summary:f.summary,runDir:f.out,io});assert.equal(rows[0].reason,'automation_report_unverified');
 });
 
+test('held repair of a confirmed UI change goes to a person only on a CONTENT blocker with a clean capture',t=>{
+  const f=fixture(t);for(const j of f.jobs)write(join(f.out,j.name,'job.json'),j);
+  const reportPath=join(f.out,'automation-report.json');
+  f.summary.automation={status:'finished',report:reportPath};
+  const io={readJson:p=>{try{return read(p);}catch{return null;}},readScript:n=>f.scripts[n],readAssembly:()=>null};
+  const run=(row)=>{write(reportPath,{schema:1,finishedAt:'2026-11-02T00:00:00Z',sourceSelectionInputHash:f.selection.inputHash,names:f.summary.names,selectedPairs:['Simple-video#0'],
+    rows:f.summary.names.map(name=>name==='Simple-video'?{name,status:'evidence_pending',...row}:{name,status:'no_change'})});return prepareSubmissions({summary:f.summary,runDir:f.out,io})[0];};
+  // changed click target + narration naming a renamed label: re-record card, no Approve, plain-English reason
+  let r=run({reason:'click_target_changed',reasons:[{code:'click_target_changed'},{code:'narration_mentions_changed_label'}]});
+  assert.equal(r.decision,'post');assert.equal(r.kind,'manual_rerecord');assert.equal(r.automation.status,'human_review');
+  assert.equal(r.payload.details.execution,undefined);assert.equal(r.payload.details.preview,undefined);
+  assert.ok(r.payload.details.rerecordReason.some(x=>/recorded click no longer matches the page; the narration names a renamed label/.test(x)));
+  // the same content blocker on an unreliable capture is a hold, not re-record work
+  for(const bad of ['replacement_capture_unverified','needs_fixture','page_not_loaded','model_unavailable']){
+    r=run({reason:'large_redesign',reasons:[{code:'large_redesign'},{code:bad}]});
+    assert.equal(r.decision,'skip',bad);assert.equal(r.reason,'evidence_pending',bad);
+  }
+  // pending evidence alone (no content blocker) and setup holds stay out of Slack
+  r=run({reason:'semantic_evidence_pending',reasons:[{code:'semantic_evidence_pending'}]});assert.equal(r.decision,'skip');
+  r=run({status:'setup_required',reason:'baseline_setup_required',reasons:[]});assert.equal(r.decision,'skip');assert.equal(r.reason,'setup_required');
+});
+
 test('source-flow replay binds the exact capture directory and byte-identical original script',async t=>{
   const f=fixture(t),s=stages(f);f.jobs[0].steps[0].reasons.push({code:'flow_changed',verdict:'unverified'});
   write(join(f.root,'run.json'),{scriptPath:f.jobs[0].scriptPath});
