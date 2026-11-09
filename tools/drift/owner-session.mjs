@@ -228,24 +228,48 @@ async function openProfilePage(chromium, profileDir, { busyWaitMs = 120000, poll
 
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 /**
- * Studio's own lock on the profile (`studio-profile.lock`, O_EXCL, holds the pid; a dead holder's lock is cleared),
- * plus a live Chromium SingletonLock (only a headed window, e.g. one not opened by Studio, creates it).
- * -> release fn (idempotent; removes the file only while it is still ours), or null when another live process holds it.
+ * Studio's own lock on the profile (`studio-profile.lock`, holds the pid), plus a live Chromium SingletonLock (only a
+ * headed window, e.g. one not opened by Studio, creates it).
+ * -> release fn (idempotent; removes the file only while it still holds our pid), or null when the profile is busy.
+ *
+ * Both directions are atomic (council round 2, 20261109-261d071f):
+ *  - Publish: the pid is written to a unique temp file first and hard-linked into place, so the lock is never visible
+ *    without its content (create-then-write let a second process read '' and reclaim a LIVE lock as stale).
+ *  - Unreadable, empty or unparseable content is busy (retry later), never stale.
+ *  - Reclaim only a parseable pid confirmed dead, by renaming the file aside and re-reading the renamed copy: if it is
+ *    still the dead pid it is discarded; if it is anything else a successor got there first, so it is put back
+ *    (link, EEXIST ignored) and the profile is busy. A plain read-check-unlink let one reclaimer delete the other's
+ *    fresh lock. (Not proper-lockfile: its stale reclaim is the same stat-then-remove race.)
  */
 export function lockOwnerProfile(profileDir) {
   try { const pid = Number(String(fs.readlinkSync(path.join(profileDir, 'SingletonLock'))).split('-').pop()); if (pid && pid !== process.pid && pidAlive(pid)) return null; } catch { /* none */ }
   const f = path.join(profileDir, 'studio-profile.lock');
-  for (let i = 0; i < 2; i++) {
-    try {
-      const fd = fs.openSync(f, 'wx', 0o600); fs.writeSync(fd, String(process.pid)); fs.closeSync(fd);
+  const me = String(process.pid);
+  const unique = (tag) => `${f}.${tag}.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const tmp = unique('tmp');
+    let linked = false;
+    fs.writeFileSync(tmp, me, { flag: 'wx', mode: 0o600 }); // unique name: complete before it can become the lock
+    try { fs.linkSync(tmp, f); linked = true; }
+    catch (e) { if (e.code !== 'EEXIST') throw e; }
+    finally { try { fs.unlinkSync(tmp); } catch { /* gone */ } }
+    if (linked) {
       let held = true;
-      return () => { if (!held) return; held = false; try { if (fs.readFileSync(f, 'utf8') === String(process.pid)) fs.unlinkSync(f); } catch { /* gone */ } };
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      let pid = 0; try { pid = Number(fs.readFileSync(f, 'utf8')); } catch { continue; } // removed meanwhile: retry
-      if (pid && pidAlive(pid)) return null;
-      try { fs.unlinkSync(f); } catch { /* raced */ } // stale (holder died)
+      return () => { if (!held) return; held = false; try { if (fs.readFileSync(f, 'utf8') === me) fs.unlinkSync(f); } catch { /* gone */ } };
     }
+    let text;
+    try { text = fs.readFileSync(f, 'utf8'); } catch (e) { if (e.code === 'ENOENT') continue; return null; } // released meanwhile: retry
+    if (!/^\d+$/.test(text)) return null; // empty / in flight / unknown: busy, never stale
+    const pid = Number(text);
+    if (pidAlive(pid)) return null;
+    // Dead holder: take the file aside, then make sure what we took is that dead holder's lock.
+    const aside = unique('stale');
+    try { fs.renameSync(f, aside); } catch (e) { if (e.code === 'ENOENT') continue; return null; } // another reclaimer won the rename
+    let taken = null; try { taken = fs.readFileSync(aside, 'utf8'); } catch { /* unreadable */ }
+    if (taken === text) { try { fs.unlinkSync(aside); } catch { /* gone */ } continue; } // discarded; acquire on the next pass
+    try { fs.linkSync(aside, f); } catch { /* EEXIST: someone else holds it now */ }
+    try { fs.unlinkSync(aside); } catch { /* gone */ }
+    return null;
   }
   return null;
 }

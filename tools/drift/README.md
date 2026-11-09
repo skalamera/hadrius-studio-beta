@@ -1036,10 +1036,13 @@ most record-dependent slides unverifiable. `--session owner` (weekly/capture CLI
   Chrome below: opened headless and guarded only to load `/home` (the app refreshes its own tokens there), short-lived
   tokens copied out, profile closed. Captures NEVER run inside it: the first version did, and a walkthrough step left it
   signed out mid-run (every later video `owner_not_signed_in`). Concurrent use is serialised by Studio's own lock,
-  `studio-profile.lock` in the profile (O_EXCL, holds the pid, cleared when that pid is dead), taken by every Studio
-  launch of the profile (borrows, `owner-profile.mjs --sign-in` and `--check`); a live Chromium `SingletonLock` (a
-  headed window Studio did not open) also counts as busy. Chromium's own lock can't be relied on: Playwright's
-  headless launches (chromium-headless-shell) neither create nor honour `SingletonLock`, so a second launch on a held
+  `studio-profile.lock` in the profile (holds the pid), taken by every Studio launch of the profile (borrows,
+  `owner-profile.mjs --sign-in` and `--check`); a live Chromium `SingletonLock` (a headed window Studio did not open)
+  also counts as busy. The lock is atomic both ways: the pid is written to a unique temp file and hard-linked into
+  place (never visible empty); empty or unparseable content is busy, never stale; a dead holder's lock is reclaimed by
+  renaming it aside and re-reading the renamed copy (a successor's fresh lock is put back, never deleted). Not
+  `proper-lockfile`: its stale reclaim is the same stat-then-remove race. Chromium's own lock can't be relied on either:
+  Playwright's headless launches (chromium-headless-shell) neither create nor honour `SingletonLock`, so a second launch on a held
   profile succeeds with EMPTY storage and reads as signed out. A borrow polls every 3 s for up to 2 min, then fails
   `owner_profile_busy`; `--check` fails `owner_profile_busy` at once; `--sign-in` refuses with
   `profile_in_use_by_a_drift_run`. No Chrome prompts, works unattended.

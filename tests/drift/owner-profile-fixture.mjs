@@ -5,6 +5,8 @@
 // - wrapChromium(app): Playwright's chromium with app.hadrius.com mapped to the fake server and EVERY other hostname
 //   unresolvable; logs each persistent launch/close with timestamps (to prove borrows did not overlap).
 // CLI (child processes): node owner-profile-fixture.mjs --borrow <profileDir> <port> -> one JSON line
+//   --lock-stress <dir> <iterations>              take/hold/release lockOwnerProfile repeatedly; prints hold intervals
+//   --lock-reclaim <dir> <iterations> <syncDir>   per round: wait for go-<i>, try ONCE to take the (stale) lock
 import https from 'node:https';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -71,5 +73,37 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     const s = await borrowOwnerSession({ tenant: 'academy', source: 'profile', profileDir, chromium: wrapChromium(Number(port), (e) => events.push(e)), waitMs: 1500, useCache: false });
     console.log(JSON.stringify({ ok: true, source: s.source, events }));
   } catch (e) { console.log(JSON.stringify({ ok: false, code: e.code, message: String(e.message).slice(0, 200), events })); }
+  process.exit(0);
+}
+
+const wallNow = () => performance.timeOrigin + performance.now(); // sub-ms wall clock, comparable across processes
+const spin = (ms) => { const end = wallNow() + ms; while (wallNow() < end); };
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href && process.argv[2] === '--lock-stress') {
+  const [, , , dir, iters] = process.argv;
+  const { lockOwnerProfile } = await import('../../tools/drift/owner-session.mjs');
+  const f = path.join(dir, 'studio-profile.lock'); const holds = []; let lost = 0;
+  for (let i = 0; i < Number(iters); i++) {
+    let unlock = null; while (!(unlock = lockOwnerProfile(dir))) await new Promise((r) => setImmediate(r));
+    const start = wallNow(); spin(2);
+    let still = null; try { still = fs.readFileSync(f, 'utf8'); } catch { /* deleted */ }
+    if (still !== String(process.pid)) lost++;
+    const end = wallNow(); unlock(); holds.push([start, end]);
+  }
+  console.log(JSON.stringify({ pid: process.pid, holds, lost }));
+  process.exit(0);
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href && process.argv[2] === '--lock-reclaim') {
+  const [, , , dir, iters, sync] = process.argv;
+  const { lockOwnerProfile } = await import('../../tools/drift/owner-session.mjs');
+  const f = path.join(dir, 'studio-profile.lock'); const rounds = [];
+  for (let i = 0; i < Number(iters); i++) {
+    while (!fs.existsSync(path.join(sync, `go-${i}`))) await new Promise((r) => setTimeout(r, 1));
+    const unlock = lockOwnerProfile(dir);
+    let kept = null;
+    if (unlock) { spin(20); try { kept = fs.readFileSync(f, 'utf8') === String(process.pid); } catch { kept = false; } unlock(); }
+    rounds.push({ i, won: !!unlock, kept });
+    fs.writeFileSync(path.join(sync, `done-${i}-${process.pid}`), '');
+  }
+  console.log(JSON.stringify({ pid: process.pid, rounds }));
   process.exit(0);
 }
