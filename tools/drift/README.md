@@ -836,6 +836,18 @@ Safety rests on the network layer, not the name check:
 - Tenant names ("Hadrius Sandbox LLC") no longer trip the word "sandbox".
 
 Measured on 8 videos (`out/drift-runs/rehearse-20261101/`): 30 → 50 usable slides of 133, 0 writes attempted.
+
+**Verified draft-only pages and dialog openers (`DRAFT_ONLY_PAGES`, `VERIFIED_DIALOG_OPENERS`).** A button inside a
+dialog is normally treated as the save. Some are not, and some pages keep every edit local until an explicit save.
+Each entry cites a guarded live probe (every non-GET aborted and logged, the page driven, left idle, the list checked):
+- `new_template_dialog`: "Create template" in the template library's "Create a new template" dialog only navigates
+  to `/account/settings/templates/new?title=...` (0 writes).
+- `template_editor_new`: on `/account/settings/templates/new` every step (question types, toggles, pickers, typing,
+  Add question/reviewer step) is walked through; only names matching publish/save/delete/remove/discard/upload,
+  file inputs and Enter stop. The probe added and typed a question and idled 20 s: 0 writes; the header shows Draft +
+  "Save as draft" + "Publish". An existing template's editor (`/templates/<id>`) is NOT covered.
+The network guard still aborts any write on these pages (graceful stop), so a page that later starts autosaving loses
+slides, never writes. Add an entry only with a probe of the same kind.
 Draft test-record list: `out/drift-runs/test-records-draft-20261101.md`.
 
 **Live weekly command:** Scripts are read from `scripts/<name>.script.json` only (the library endpoint is not queried: `/library?name=` caches
@@ -1015,13 +1027,24 @@ Nothing publishes by itself. The only path to Drive/Pylon/the shared library is:
 Replays must show the same records as the original recording. The tenant automation accounts (stephen+hstudio /
 stephen+hsandbox, roles=[]) see almost nothing (empty Marketing board, record pages stuck on "Loading..."), which made
 most record-dependent slides unverifiable. `--session owner` (weekly/capture CLI; bridge `body.session`, default
-`DRIFT_CAPTURE_SESSION` in `.env`, currently `owner`) replays as the operator's own Hadrius sign-in borrowed from their
-running Chrome:
+`DRIFT_CAPTURE_SESSION` in `.env`, currently `owner`) replays as the operator's own Hadrius sign-in. Two sources:
+
+- **Studio profile (default once set up)**: `.browser-profile-owner` (gitignored), signed into ONCE by the operator:
+  `node tools/drift/owner-profile.mjs --sign-in` (opens a window; the tool never types credentials), `--check` to
+  verify. A verified sign-in writes `studio-sign-in.json` (account label + which test companies are visible, no tokens),
+  which makes it the default source (`DRIFT_OWNER_SOURCE=chrome|profile` overrides). It is borrowed exactly like
+  Chrome below: opened headless and guarded only to load `/home` (the app refreshes its own tokens there), short-lived
+  tokens copied out, profile closed. Captures NEVER run inside it: the first version did, and a walkthrough step left it
+  signed out mid-run (every later video `owner_not_signed_in`). If another Studio process has it open, the borrow waits
+  up to 2 min (`owner_profile_busy` after). No Chrome prompts, works unattended.
+- **Chrome (fallback)**: the operator's running Chrome. Chrome 144+ asks "Allow remote debugging?" on EVERY new
+  debugging connection (no always-allow), so one connection is kept per process (`releaseOwnerConnection()` at the end
+  of a weekly run / capture CLI) and a refused connection is not retried for 5 min (`CONNECT_COOLDOWN_MS`).
 
 - Chrome needs remote debugging on (chrome://inspect/#remote-debugging). The bridge (launchd) can't read Chrome's
   profile folder (macOS returns EPERM for `DevToolsActivePort`), so it connects to `ws://127.0.0.1:9222/devtools/browser`
   (`DRIFT_CHROME_DEBUG_PORT` to change), which Chrome accepts without the browser id.
-- One guarded background tab (new window, `/home`, no company_id so the operator's selected company is untouched) is
+- Chrome: one guarded background tab (new window, `/home`, no company_id so the operator's selected company is untouched) is
   opened, ONLY the short-lived access/id tokens (+LastAuthUser, clockDrift, signInDetails) are read, the tab is closed and
   the connection dropped. The refresh token and device keys are never copied (Cognito refresh-token rotation would sign
   the operator's Chrome out). Aborted requests in the borrow tab never leave the browser and are only counted.

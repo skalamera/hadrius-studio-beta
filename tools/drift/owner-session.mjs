@@ -19,6 +19,14 @@
 //  - Nothing here prints, logs or returns token values. borrowOwnerSession() returns an opaque object whose
 //    `initScriptArg` is handed straight to context.addInitScript.
 //
+// Preferred source (DRIFT_OWNER_SOURCE=profile): a dedicated Studio browser profile, <repo>/.browser-profile-owner,
+// that the operator signs into ONCE with their own Hadrius account (tools/drift/owner-profile.mjs --sign-in). It is
+// its own sign-in session (its own refresh token, refreshed by the app inside that profile), so it never touches the
+// everyday Chrome, never raises Chrome's per-connection "Allow remote debugging?" prompt, and works unattended.
+// It is borrowed exactly like Chrome: opened headless and guarded only to load the app, its short-lived tokens copied
+// into a throwaway capture browser. Captures never run inside it (a walkthrough's "Use as employee" step once left
+// it signed out when they did). The Chrome borrow remains the fallback (DRIFT_OWNER_SOURCE=chrome).
+//
 // Import-safe: importing this module connects to nothing and reads nothing.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -39,7 +47,37 @@ const NEVER_COPY_RE = /(refreshToken|deviceKey|deviceGroupKey|randomPasswordKey)
 // In-memory only (this process): the last borrowed entries, reused while they still have MIN_REMAINING_MS of
 // validity so a weekly run touches the operator's Chrome about once an hour, not once per video.
 let cache = null;
-export function clearOwnerSessionCache() { cache = null; }
+export function clearOwnerSessionCache() { cache = null; conn = null; lastFailure = null; }
+
+// Chrome (144+, chrome://inspect/#remote-debugging) asks the operator to Allow EVERY new debugging connection, so a
+// process opens ONE connection and reuses it for every borrow (a weekly run = one prompt), releasing it when done.
+// After a refused/failed connection it does not retry for CONNECT_COOLDOWN_MS: an unanswered prompt must never turn
+// into a prompt per video.
+export const CONNECT_COOLDOWN_MS = 5 * 60 * 1000;
+let conn = null;
+let lastFailure = null;
+async function ownerConnection(chromium, endpoint, now) {
+  if (conn?.browser && (typeof conn.browser.isConnected !== 'function' || conn.browser.isConnected())) return conn.browser;
+  conn = null;
+  if (lastFailure && now() - lastFailure.at < CONNECT_COOLDOWN_MS)
+    throw new OwnerSessionError('owner_chrome_unreachable', `not retried for ${Math.round((CONNECT_COOLDOWN_MS - (now() - lastFailure.at)) / 1000)} s (avoids repeated Chrome prompts): ${lastFailure.detail}`);
+  let browser;
+  try { browser = await chromium.connectOverCDP(endpoint ?? chromeEndpoint(), { timeout: 60000 }); }
+  catch (e) {
+    const detail = `Chrome refused or did not answer the debugging connection (chrome://inspect/#remote-debugging; click Allow once per run): ${String(e?.message || e).split('\n')[0].slice(0, 160)}`;
+    lastFailure = { at: now(), detail };
+    throw new OwnerSessionError('owner_chrome_unreachable', detail);
+  }
+  lastFailure = null;
+  conn = { browser };
+  if (typeof browser.on === 'function') browser.on('disconnected', () => { if (conn?.browser === browser) conn = null; });
+  return browser;
+}
+/** Release the shared Chrome connection (end of a weekly run / CLI). Never closes the operator's Chrome. */
+export async function releaseOwnerConnection() {
+  const b = conn?.browser; conn = null;
+  if (b) await b.close().catch(() => {}); // connectOverCDP: close() only disconnects
+}
 
 export class OwnerSessionError extends Error {
   constructor(code, detail = null) { super(detail ? `${code}: ${detail}` : code); this.code = code; this.detail = detail; }
@@ -110,75 +148,112 @@ export function ownerInitScript({ entries, companyId, origin }) {
  * Throws OwnerSessionError(code) — codes: owner_chrome_unreachable, owner_not_signed_in, owner_token_expiring,
  * owner_token_unreadable, owner_tenant_not_accessible.
  */
-export async function borrowOwnerSession({ tenant, chromium, endpoint = null, now = () => Date.now(), log = () => {}, waitMs = 8000, minRemainingMs = MIN_REMAINING_MS, maxWaitMs = 0, useCache = true } = {}) {
+export async function borrowOwnerSession({ tenant, chromium, endpoint = null, now = () => Date.now(), log = () => {}, waitMs = 8000, minRemainingMs = MIN_REMAINING_MS, maxWaitMs = 0, useCache = true, source = ownerSource(), profileDir = OWNER_PROFILE_DIR } = {}) {
   const T = getTenant(tenant);
-  if (useCache && cache && cache.expiresAt - now() >= minRemainingMs) {
-    if (!cache.companies.some((c) => c.id === T.companyId)) throw new OwnerSessionError('owner_tenant_not_accessible', `the Chrome account cannot open company ${T.companyId}`);
+  const who = source === 'profile' ? "the Studio profile's account" : 'the Chrome account';
+  if (useCache && cache && cache.source === source && cache.expiresAt - now() >= minRemainingMs) {
+    if (!cache.companies.some((c) => c.id === T.companyId)) throw new OwnerSessionError('owner_tenant_not_accessible', `${who} cannot open company ${T.companyId}`);
     return sessionFrom(cache, T, now, { reused: true });
   }
-  const ws = endpoint ?? chromeEndpoint();
-  let browser;
-  try { browser = await chromium.connectOverCDP(ws, { timeout: 20000 }); }
-  catch (e) { throw new OwnerSessionError('owner_chrome_unreachable', `Chrome is not running with remote debugging on (chrome://inspect/#remote-debugging): ${String(e?.message || e).split('\n')[0].slice(0, 160)}`); }
-  let entries = null, user = null; const aborted = [];
-  try {
-    const ctx = browser.contexts()[0];
-    if (!ctx) throw new OwnerSessionError('owner_chrome_unreachable', 'no default browser context');
-    // A background tab in its own window: the operator's current window/tab keep focus.
-    const cdp = await browser.newBrowserCDPSession();
-    const opened = ctx.waitForEvent('page', { timeout: 15000 });
-    await cdp.send('Target.createTarget', { url: 'about:blank', background: true, newWindow: true });
-    const page = await opened;
-    try {
-      await page.route('**/*', (route) => {
-        const r = route.request();
-        const c = classifyRequest({ method: r.method(), url: r.url(), postData: r.postData(), headers: r.headers() });
-        if (c.decision === 'allow' || c.decision === 'allow_logged') return route.continue();
-        // Aborted requests never leave the browser (the home page fires read-only searches the guard can't
-        // prove are reads); they are only counted. The borrow needs the page's sign-in, not its content.
-        if (aborted.length < 50) aborted.push(`${r.method()} ${(() => { try { const u = new URL(r.url()); return u.hostname + u.pathname; } catch { return '?'; } })()} (${c.reason})`);
-        return route.abort('blockedbyclient');
-      });
-      page.on('response', async (res) => {
-        try {
-          const u = new URL(res.url());
-          if (res.request().method() !== 'GET' || !/\/users\/?$/.test(u.pathname) || !u.searchParams.has('uuid') || !res.ok()) return;
-          user = companiesFromUserPayload(await res.json());
-        } catch { /* passive */ }
-      });
-      // /home names no company: the operator's own selected company in their Chrome is not changed.
-      // The app refreshes its tokens (in the operator's own Chrome, with their own refresh token) only once they
-      // have expired; when they are valid but too short-lived for a capture, wait for expiry (up to maxWaitMs)
-      // and reload, rather than ever touching the refresh token ourselves.
-      const deadline = now() + maxWaitMs;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        await page.goto(`${APP_ORIGIN}/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForTimeout(waitMs);
-        const all = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('CognitoIdentityServiceProvider.')).map((k) => [k, localStorage.getItem(k)])));
-        entries = selectBorrowedEntries(all);
-        const st = inspectBorrowed(entries, { now: now(), minRemainingMs });
-        if (st.ok || st.problem !== 'owner_token_expiring') break;
-        const until = st.expiresAt + 15000 - now();
-        if (now() + until > deadline) break;
-        log(`[owner-session] tokens expire in ${Math.round((st.expiresAt - now()) / 60000)} min; waiting for the app to refresh them in the operator's own Chrome`);
-        await page.waitForTimeout(Math.max(1000, until));
-      }
-    } finally { await page.close().catch(() => {}); }
-  } finally { await browser.close().catch(() => {}); } // connectOverCDP: close() only disconnects
+  // The source page is only ever used to let the app load (and, when its tokens have expired, refresh them with its
+  // own refresh token, inside that source). Captures never run in it: they get a throwaway browser carrying only the
+  // short-lived tokens, so nothing a walkthrough does (switching to employee view, a sign-out, a failed refresh) can
+  // reach the source's stored sign-in.
+  const src = source === 'profile' ? await openProfilePage(chromium, profileDir) : await openChromeTab(chromium, endpoint, now);
+  let r;
+  try { r = await readSessionFromPage(src.page, { now, log, waitMs, minRemainingMs, maxWaitMs }); }
+  catch (e) { src.failed?.(); throw e; }
+  finally { await src.close(); }
+  const { entries, user, landed, aborted } = r;
+  const signIn = source === 'profile' ? ': run node tools/drift/owner-profile.mjs --sign-in' : '';
   const st = inspectBorrowed(entries || {}, { now: now(), minRemainingMs });
-  if (!st.ok) throw new OwnerSessionError(st.problem);
+  if (!st.ok) throw new OwnerSessionError(st.problem, `${source === 'profile' ? 'Studio profile' : 'borrow tab'} ended on ${landed ?? 'unknown page'}; ${Object.keys(entries || {}).length} sign-in keys${st.problem === 'owner_not_signed_in' ? signIn : ''}`);
   const companies = user?.companies ?? null;
-  if (!companies) throw new OwnerSessionError('owner_not_signed_in', 'the app did not load the signed-in user');
-  if (!companies.some((c) => c.id === T.companyId)) throw new OwnerSessionError('owner_tenant_not_accessible', `the Chrome account cannot open company ${T.companyId}`);
-  log(`[owner-session] borrowed ${accountLabel(st.username)} for ${T.key} (${companies.length} companies visible, ${Math.round((st.expiresAt - now()) / 60000)} min left)`);
-  const fresh = { entries: Object.freeze({ ...entries }), expiresAt: st.expiresAt, username: st.username, companies, aborted: aborted.length };
+  if (!companies) throw new OwnerSessionError('owner_not_signed_in', `the app did not load the signed-in user (${source === 'profile' ? 'Studio profile' : 'borrow tab'} ended on ${landed ?? 'unknown page'}; ${Object.keys(entries || {}).length} sign-in keys)${signIn}`);
+  if (!companies.some((c) => c.id === T.companyId)) throw new OwnerSessionError('owner_tenant_not_accessible', `${who} cannot open company ${T.companyId}`);
+  log(`[owner-session] borrowed ${accountLabel(st.username)} from ${source === 'profile' ? 'the Studio profile' : 'Chrome'} for ${T.key} (${companies.length} companies visible, ${Math.round((st.expiresAt - now()) / 60000)} min left)`);
+  const fresh = { source, entries: Object.freeze({ ...entries }), expiresAt: st.expiresAt, username: st.username, companies, aborted: aborted.length };
   if (useCache) cache = fresh;
   return sessionFrom(fresh, T, now, { reused: false });
 }
 
+/** A background tab in its own window of the operator's Chrome (one shared connection per process). */
+async function openChromeTab(chromium, endpoint, now) {
+  const browser = await ownerConnection(chromium, endpoint, now);
+  const dropIfBroken = () => { if (!(typeof browser.isConnected !== 'function' || browser.isConnected())) conn = null; };
+  try {
+    const ctx = browser.contexts()[0];
+    if (!ctx) throw new OwnerSessionError('owner_chrome_unreachable', 'no default browser context');
+    const cdp = await browser.newBrowserCDPSession();
+    const opened = ctx.waitForEvent('page', { timeout: 15000 });
+    await cdp.send('Target.createTarget', { url: 'about:blank', background: true, newWindow: true });
+    const page = await opened;
+    return { page, close: () => page.close().catch(() => {}), failed: dropIfBroken };
+  } catch (e) { dropIfBroken(); throw e; }
+}
+
+/** The dedicated Studio profile, headless. Waits (bounded) while another Studio process has it open. */
+async function openProfilePage(chromium, profileDir, { busyWaitMs = 120000 } = {}) {
+  if (!fs.existsSync(profileDir)) throw new OwnerSessionError('owner_profile_missing', `no Studio profile at ${profileDir}: run node tools/drift/owner-profile.mjs --sign-in`);
+  const until = Date.now() + busyWaitMs;
+  for (;;) {
+    try {
+      const ctx = await chromium.launchPersistentContext(profileDir, { headless: true, viewport: { width: 1600, height: 900 }, serviceWorkers: 'block' });
+      const page = ctx.pages()[0] || await ctx.newPage();
+      return { page, close: () => ctx.close().catch(() => {}) };
+    } catch (e) {
+      const m = String(e?.message || e);
+      const busy = /ProcessSingleton|SingletonLock|profile.*in use|already running/i.test(m);
+      if (busy && Date.now() < until) { await new Promise((r) => setTimeout(r, 3000)); continue; }
+      if (busy) throw new OwnerSessionError('owner_profile_busy', 'the Studio profile stayed open in another window (close the sign-in window)');
+      throw new OwnerSessionError('owner_profile_unavailable', m.split('\n')[0].slice(0, 200));
+    }
+  }
+}
+
+/** Guarded (writes aborted, only counted), load /home, read the signed-in user and the short-lived tokens. */
+async function readSessionFromPage(page, { now, log, waitMs, minRemainingMs, maxWaitMs }) {
+  let entries = null, user = null, landed = null; const aborted = [];
+  await page.route('**/*', (route) => {
+    const r = route.request();
+    const c = classifyRequest({ method: r.method(), url: r.url(), postData: r.postData(), headers: r.headers() });
+    if (c.decision === 'allow' || c.decision === 'allow_logged') return route.continue();
+    // Aborted requests never leave the browser (the home page fires read-only searches the guard can't
+    // prove are reads); they are only counted. The borrow needs the page's sign-in, not its content.
+    if (aborted.length < 50) aborted.push(`${r.method()} ${(() => { try { const u = new URL(r.url()); return u.hostname + u.pathname; } catch { return '?'; } })()} (${c.reason})`);
+    return route.abort('blockedbyclient');
+  });
+  page.on('response', async (res) => {
+    try {
+      const u = new URL(res.url());
+      if (res.request().method() !== 'GET' || !/\/users\/?$/.test(u.pathname) || !u.searchParams.has('uuid') || !res.ok()) return;
+      user = companiesFromUserPayload(await res.json());
+    } catch { /* passive */ }
+  });
+  // /home names no company: the source's own selected company is not changed. The app refreshes its tokens (with
+  // the source's own refresh token, inside the source) only once they have expired; when they are valid but too
+  // short-lived for a capture, wait for expiry (up to maxWaitMs) and reload, never touching the refresh token.
+  const deadline = now() + maxWaitMs;
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await page.goto(`${APP_ORIGIN}/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(waitMs);
+      const all = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('CognitoIdentityServiceProvider.')).map((k) => [k, localStorage.getItem(k)])));
+      entries = selectBorrowedEntries(all);
+      const st = inspectBorrowed(entries, { now: now(), minRemainingMs });
+      if (st.ok || st.problem !== 'owner_token_expiring') break;
+      const until = st.expiresAt + 15000 - now();
+      if (now() + until > deadline) break;
+      log(`[owner-session] tokens expire in ${Math.round((st.expiresAt - now()) / 60000)} min; waiting for the app to refresh them in its own session`);
+      await page.waitForTimeout(Math.max(1000, until));
+    }
+  } finally { try { landed = new URL(page.url()).pathname; } catch { /* closed */ } }
+  return { entries, user, landed, aborted };
+}
+
 function sessionFrom(c, T, now, { reused }) {
   const session = {
-    status: 'owner_session', source: 'chrome', account: accountLabel(c.username), expiresAt: new Date(c.expiresAt).toISOString(),
+    status: 'owner_session', source: c.source === 'profile' ? 'studio-profile' : 'chrome', account: accountLabel(c.username), expiresAt: new Date(c.expiresAt).toISOString(),
     minutesLeft: Math.round((c.expiresAt - now()) / 60000), reusedBorrow: reused,
     companyCount: c.companies.length, companyIds: [T.companyId], tenantAccessible: true, borrowTabAbortedRequests: c.aborted,
   };
@@ -197,4 +272,50 @@ export async function launchOwnerContext({ chromium, session, ctxOpts, headless 
     ctx.on('close', () => { browser.close().catch(() => {}); });
     return ctx;
   } catch (e) { await browser.close().catch(() => {}); throw e; }
+}
+
+
+// ---------------------------------------------------------------- dedicated Studio profile
+export const OWNER_PROFILE_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', '.browser-profile-owner');
+/** 'profile' (dedicated Studio profile) or 'chrome' (borrow from the everyday Chrome). */
+export function ownerSource(env = process.env) {
+  const v = String(env.DRIFT_OWNER_SOURCE || '').trim().toLowerCase();
+  return v === 'chrome' ? 'chrome' : v === 'profile' ? 'profile' : (fs.existsSync(path.join(OWNER_PROFILE_DIR, 'studio-sign-in.json')) ? 'profile' : 'chrome');
+}
+
+/**
+ * Open the dedicated profile headless, guarded (no app writes leave it), load /home and read who is signed in.
+ * -> {companies, username} ; throws owner_profile_missing | owner_profile_busy | owner_not_signed_in.
+ */
+export async function inspectOwnerProfile({ chromium, profileDir = OWNER_PROFILE_DIR, waitMs = 8000, headless = true }) {
+  if (!fs.existsSync(profileDir)) throw new OwnerSessionError('owner_profile_missing', `no Studio profile at ${profileDir}: run node tools/drift/owner-profile.mjs --sign-in`);
+  let ctx;
+  try { ctx = await chromium.launchPersistentContext(profileDir, { headless, viewport: { width: 1600, height: 900 }, serviceWorkers: 'block' }); }
+  catch (e) {
+    const m = String(e?.message || e);
+    if (/ProcessSingleton|SingletonLock|profile.*in use|already running/i.test(m)) throw new OwnerSessionError('owner_profile_busy', 'the Studio profile is open in another window (close the sign-in window)');
+    throw new OwnerSessionError('owner_profile_unavailable', m.split('\n')[0].slice(0, 200));
+  }
+  let user = null, landed = null;
+  try {
+    await ctx.route('**/*', (route) => {
+      const r = route.request();
+      const c = classifyRequest({ method: r.method(), url: r.url(), postData: r.postData(), headers: r.headers() });
+      return (c.decision === 'allow' || c.decision === 'allow_logged') ? route.continue() : route.abort('blockedbyclient');
+    });
+    const page = ctx.pages()[0] || await ctx.newPage();
+    page.on('response', async (res) => {
+      try {
+        const u = new URL(res.url());
+        if (res.request().method() !== 'GET' || !/\/users\/?$/.test(u.pathname) || !u.searchParams.has('uuid') || !res.ok()) return;
+        user = companiesFromUserPayload(await res.json());
+      } catch { /* passive */ }
+    });
+    await page.goto(`${APP_ORIGIN}/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    for (let i = 0; i < Math.max(1, Math.round(waitMs / 1000)) && !user; i++) await page.waitForTimeout(1000);
+    try { landed = new URL(page.url()).pathname; } catch { /* closed */ }
+    const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => /\.LastAuthUser$/.test(k)).map((k) => localStorage.getItem(k))).catch(() => []);
+    if (!user?.companies) throw new OwnerSessionError('owner_not_signed_in', `the Studio profile is not signed in to Hadrius (page: ${landed ?? 'unknown'}): run node tools/drift/owner-profile.mjs --sign-in`);
+    return { companies: user.companies, username: keys[0] || null };
+  } finally { await ctx.close().catch(() => {}); }
 }

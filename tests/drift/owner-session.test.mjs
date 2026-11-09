@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { selectBorrowedEntries, inspectBorrowed, jwtExpiryMs, chromeEndpoint, borrowOwnerSession, accountLabel, ownerInitScript, MIN_REMAINING_MS, clearOwnerSessionCache } from '../../tools/drift/owner-session.mjs';
+import { selectBorrowedEntries, inspectBorrowed, jwtExpiryMs, chromeEndpoint, borrowOwnerSession, accountLabel, ownerInitScript, MIN_REMAINING_MS, clearOwnerSessionCache, releaseOwnerConnection, CONNECT_COOLDOWN_MS, ownerSource, launchOwnerContext } from '../../tools/drift/owner-session.mjs';
 import { captureRun } from '../../tools/drift/capture.mjs';
 import { weeklyArgs } from '../../tools/drift/weekly-runner.mjs';
 
+// These tests exercise the Chrome-borrow source unless they say otherwise (a real Studio profile on this machine
+// would otherwise become the default source).
+process.env.DRIFT_OWNER_SOURCE = 'chrome';
 const APP = 'https://app.hadrius.com';
 const jwt = (exp) => `h.${Buffer.from(JSON.stringify({ exp: Math.floor(exp / 1000) })).toString('base64url')}.sig`;
 const PFX = 'CognitoIdentityServiceProvider.abc123client';
@@ -66,7 +69,7 @@ function fakeOwnerChrome({ entries, companies = [1048, 1150], aborts = [] }) {
   return { events, chromium: { connectOverCDP: async (ws) => { events.push(['connect', ws]); return browser; } } };
 }
 
-test('borrowOwnerSession: background tab, guarded, closed and disconnected; session object never serialises tokens', async () => {
+test('borrowOwnerSession: background tab, guarded and closed; the connection is kept until released; no token serialised', async () => {
   clearOwnerSessionCache();
   const fc = fakeOwnerChrome({ entries: entriesFor(Date.now() + 3600e3), aborts: [{ method: 'POST', url: 'https://api.hadrius.com/api/company/1048/comms-review/messages/v3/search/' }, { method: 'PATCH', url: 'https://api.hadrius.com/api/x/1/' }] });
   const s = await borrowOwnerSession({ tenant: 'sandbox', chromium: fc.chromium, endpoint: 'ws://127.0.0.1:9/devtools/browser/x', waitMs: 0 });
@@ -74,11 +77,36 @@ test('borrowOwnerSession: background tab, guarded, closed and disconnected; sess
   assert.equal(s.borrowTabAbortedRequests, 2);
   assert.deepEqual(fc.events.filter((e) => e[0] === 'net').map((e) => e[2]), ['abort', 'abort'], 'app writes/unproven reads never leave the borrow tab');
   assert.deepEqual(fc.events.find((e) => e[0] === 'cdp')[2], { url: 'about:blank', background: true, newWindow: true });
-  assert.ok(fc.events.some((e) => e[0] === 'close_tab') && fc.events.at(-1)[0] === 'disconnect');
+  assert.ok(fc.events.some((e) => e[0] === 'close_tab') && !fc.events.some((e) => e[0] === 'disconnect'), 'tab closed, connection kept for the next borrow');
+  await releaseOwnerConnection(); assert.equal(fc.events.at(-1)[0], 'disconnect');
   assert.equal(fc.events.find((e) => e[0] === 'goto')[1], `${APP}/home`, 'no company_id: the operator\'s selected company is not changed');
   const json = JSON.stringify(s);
   assert.ok(!/eyJ|h\.[A-Za-z0-9_-]+\.sig|LONG-LIVED/.test(json), 'no token in the serialised session');
   assert.ok(s.initScriptArg && Object.keys(s.initScriptArg.entries).every((k) => !/refreshToken|deviceKey/.test(k)));
+});
+
+test('borrowOwnerSession: ONE Chrome connection (one Allow prompt) serves every borrow of a run', async () => {
+  clearOwnerSessionCache();
+  const fc = fakeOwnerChrome({ entries: entriesFor(Date.now() + 3600e3) });
+  for (const tenant of ['sandbox', 'academy', 'sandbox']) await borrowOwnerSession({ tenant, chromium: fc.chromium, endpoint: 'ws://x/devtools/browser/y', waitMs: 0, useCache: false });
+  assert.equal(fc.events.filter((e) => e[0] === 'connect').length, 1);
+  assert.equal(fc.events.filter((e) => e[0] === 'goto').length, 3, 'each borrow still reloads the app in a fresh background tab');
+  await releaseOwnerConnection();
+});
+
+test('borrowOwnerSession: a refused connection is not retried during the cooldown (no prompt per video)', async () => {
+  clearOwnerSessionCache();
+  let t = 1_000_000, attempts = 0;
+  const chromium = { connectOverCDP: async () => { attempts++; throw new Error('403 Forbidden'); } };
+  const borrow = () => borrowOwnerSession({ tenant: 'sandbox', chromium, endpoint: 'ws://x/devtools/browser/y', waitMs: 0, now: () => t });
+  await assert.rejects(borrow(), (e) => e.code === 'owner_chrome_unreachable');
+  t += 60_000;
+  await assert.rejects(borrow(), (e) => e.code === 'owner_chrome_unreachable' && /not retried/.test(e.message));
+  assert.equal(attempts, 1);
+  t += CONNECT_COOLDOWN_MS;
+  await assert.rejects(borrow(), (e) => e.code === 'owner_chrome_unreachable');
+  assert.equal(attempts, 2);
+  clearOwnerSessionCache();
 });
 
 test('borrowOwnerSession: an account that cannot open the tenant company is refused', async () => {
@@ -128,7 +156,7 @@ test('captureRun owner mode: borrowed session, no automation profile, tenant pin
   const fc = fakeLaunchChromium();
   const run = await withBridgeIdle(() => captureRun({ scriptPath: sp, outDir: join(dir, 'run'), log: () => {}, chromium: fc, session: 'owner', borrowSession: fakeBorrow, limits: LIM }));
   assert.equal(run.status, 'captured', JSON.stringify(run.findings)); assert.equal(run.tenantVerified, true);
-  assert.equal(run.profile, 'owner-chrome'); assert.equal(run.sessionMode, 'owner'); assert.equal(run.session.status, 'owner_session');
+  assert.equal(run.profile, 'owner'); assert.equal(run.sessionMode, 'owner'); assert.equal(run.session.status, 'owner_session');
   assert.ok(!readFileSync(join(dir, 'run', 'run.json'), 'utf8').includes('SECRET-TOKEN'));
   assert.ok(fc.actions.some((a) => a[0] === 'init' && a[2]?.includes('entries')), 'borrowed session injected via init script');
   assert.ok(fc.actions.filter((a) => a[0] === 'init' && a[2] === null).length >= 1, 'announcement suppression applied');
@@ -177,10 +205,79 @@ test('borrowOwnerSession: short-lived tokens are refused without waiting, or awa
   const fc = fakeOwnerChrome({ entries: soon });
   await assert.rejects(borrowOwnerSession({ tenant: 'sandbox', chromium: fc.chromium, endpoint: 'ws://x/devtools/browser/y', waitMs: 0, now, useCache: false }), (e) => e.code === 'owner_token_expiring');
   // With a wait budget: the borrow tab waits past expiry, reloads, and the app has refreshed the tokens.
+  clearOwnerSessionCache(); // a different (fake) Chrome: drop the kept connection to the first one
   const fc2 = fakeOwnerChrome({ entries: soon }); let reads = 0;
   const browser = await fc2.chromium.connectOverCDP('x'); const page = await browser.contexts()[0].waitForEvent('page');
   page.evaluate = async () => (++reads === 1 ? soon : later);
   page.waitForTimeout = async (ms) => { clock += ms; };
   const s = await borrowOwnerSession({ tenant: 'sandbox', chromium: fc2.chromium, endpoint: 'ws://x/devtools/browser/y', waitMs: 0, now, useCache: false, maxWaitMs: 20 * 60e3 });
   assert.equal(s.status, 'owner_session'); assert.equal(reads, 2); assert.ok(s.minutesLeft >= 60);
+});
+
+// ---------- dedicated Studio profile ----------
+function fakeProfileChromium({ companies = [1048, 1150], signedIn = true, entries = entriesFor(Date.now() + 3600e3), busyTimes = 0 }) {
+  const events = []; let busy = busyTimes;
+  const mkCtx = (dir) => {
+    let respHandler = null;
+    const page = {
+      route: async () => events.push(['guard']),
+      on: (ev, h) => { if (ev === 'response') respHandler = h; },
+      goto: async (u) => { events.push(['goto', u]); if (signedIn) await respHandler({ url: () => 'https://api.hadrius.com/api/users/?uuid=u', request: () => ({ method: () => 'GET' }), ok: () => true, json: async () => ({ id: 1, company: { id: companies[0], children: companies.slice(1).map((id) => ({ id })) } }) }); },
+      waitForTimeout: async () => {}, url: () => (signedIn ? `${APP}/home` : `${APP}/auth/sign-in`),
+      evaluate: async () => (signedIn ? { ...entries } : {}),
+    };
+    return { pages: () => [page], newPage: async () => page, close: async () => events.push(['close_profile', dir]) };
+  };
+  const captureCtx = { addInitScript: async (fn, arg) => events.push(['init', arg]), on: () => {}, close: async () => events.push(['close_capture']) };
+  return { events, chromium: {
+    launchPersistentContext: async (dir, opts) => { if (busy-- > 0) throw new Error('Failed to create a ProcessSingleton for your profile directory'); events.push(['launchPersistent', dir, !!opts.headless]); return mkCtx(dir); },
+    launch: async () => { events.push(['launch_throwaway']); return { newContext: async () => captureCtx, close: async () => {} }; },
+    connectOverCDP: async () => { throw new Error('the profile source must never connect to Chrome'); } } };
+}
+
+test('ownerSource: explicit env wins; otherwise a verified Studio profile makes "profile" the default', () => {
+  assert.equal(ownerSource({ DRIFT_OWNER_SOURCE: 'chrome' }), 'chrome');
+  assert.equal(ownerSource({ DRIFT_OWNER_SOURCE: 'profile' }), 'profile');
+});
+
+test('Studio profile: borrowed like Chrome (guarded, short-lived tokens only); captures never run inside the profile', async () => {
+  clearOwnerSessionCache();
+  const dir = mkdtempSync(join(tmpdir(), 'owner-profile-'));
+  const fc = fakeProfileChromium({});
+  const s = await borrowOwnerSession({ tenant: 'sandbox', chromium: fc.chromium, source: 'profile', profileDir: dir, waitMs: 0 });
+  assert.equal(s.status, 'owner_session'); assert.equal(s.source, 'studio-profile'); assert.deepEqual(s.companyIds, [1048]);
+  assert.deepEqual(fc.events.slice(0, 2), [['launchPersistent', dir, true], ['guard']]);
+  assert.ok(fc.events.some((e) => e[0] === 'close_profile'), 'profile closed right after the borrow');
+  const json = JSON.stringify(s);
+  assert.equal(json.includes(dir) || json.includes('LONG-LIVED-REFRESH') || json.includes('idToken'), false);
+  // second video reuses the borrow
+  const s2 = await borrowOwnerSession({ tenant: 'academy', chromium: fc.chromium, source: 'profile', profileDir: dir, waitMs: 0 });
+  assert.equal(s2.reusedBorrow, true); assert.equal(fc.events.filter((e) => e[0] === 'launchPersistent').length, 1);
+  // capture: a throwaway browser; the refresh token and device keys never leave the profile
+  const ctx = await launchOwnerContext({ chromium: fc.chromium, session: s, ctxOpts: {} });
+  assert.ok(fc.events.some((e) => e[0] === 'launch_throwaway'));
+  assert.equal(fc.events.filter((e) => e[0] === 'launchPersistent').length, 1, 'capture did not open the profile');
+  const init = fc.events.find((e) => e[0] === 'init')[1];
+  assert.equal(init.companyId, 1048);
+  assert.ok(Object.keys(init.entries).some((k) => k.endsWith('.accessToken')));
+  assert.ok(!Object.keys(init.entries).some((k) => /refreshToken|deviceKey|deviceGroupKey|randomPasswordKey/.test(k)));
+  await ctx.close();
+  clearOwnerSessionCache();
+});
+
+test('Studio profile: waits while another Studio process has it open', async () => {
+  clearOwnerSessionCache();
+  const dir = mkdtempSync(join(tmpdir(), 'owner-profile-'));
+  const fc = fakeProfileChromium({ busyTimes: 1 });
+  const s = await borrowOwnerSession({ tenant: 'academy', chromium: fc.chromium, source: 'profile', profileDir: dir, waitMs: 0, useCache: false });
+  assert.equal(s.status, 'owner_session');
+});
+
+test('Studio profile: signed out / missing / wrong account fail closed and name the sign-in command', async () => {
+  clearOwnerSessionCache();
+  const dir = mkdtempSync(join(tmpdir(), 'owner-profile-'));
+  const borrow = (chromium, profileDir = dir) => borrowOwnerSession({ tenant: 'sandbox', chromium, source: 'profile', profileDir, waitMs: 0, useCache: false });
+  await assert.rejects(borrow(fakeProfileChromium({ signedIn: false }).chromium), (e) => e.code === 'owner_not_signed_in' && /owner-profile\.mjs --sign-in/.test(e.message) && /auth\/sign-in/.test(e.message));
+  await assert.rejects(borrow(fakeProfileChromium({}).chromium, join(dir, 'missing')), (e) => e.code === 'owner_profile_missing');
+  await assert.rejects(borrow(fakeProfileChromium({ companies: [1150] }).chromium), (e) => e.code === 'owner_tenant_not_accessible');
 });

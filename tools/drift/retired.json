@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "note": "Videos retired from drift checks for good (duplicates / superseded walkthroughs). tenants.mjs --allowlist lists them under `retired` and never under a tenant, so no weekly run, PR check or submit replays or flags them. Unlike exclusions.json (temporary, module-wide), entries here are permanent and per video.",
+  "videos": [
+    {
+      "name": "Creating-Marketing-Submission-Questionnaire",
+      "replacedBy": "Creating-Marketing-Submission-Questionnaires",
+      "reason": "Older duplicate (Sept 25, classic sidebar, no Pylon article) of the Nov 6 re-recording that is linked from Pylon.",
+      "retiredAt": "2026-11-08",
+      "retiredBy": "stephen.skalamera"
+    }
+  ]
+}

@@ -48,7 +48,10 @@ const READ_PATH_RE=/(^|[/_-])(search|list|query|filter|count|lookup|batch-get|ge
 // - POST /api/company/<id>/comms-review/search/email/(messages|conversations)/ -> comms_review/src/email/search/
 //   views_email_search.py post_search_email_messages / post_search_email_conversations (@non_mutating, @no_audit_trail,
 //   validated_api read_only=True). The sibling .../messages/exports/ and .../messages/saved/ are writes and do not match.
-export const KNOWN_READ_POSTS=Object.freeze([/^\/api\/company\/\d+\/library\/audience\/compute\/?$/,
+// - POST /api/company/<id>/disclosures/audience/compute/ -> disclosures/views_audience.py post_compute_disclosure_audience
+//   (@no_audit_trail, @non_mutating, validated_api read_only=True; hadrius_backend main 743bef3a70, 2026-11-08): the assign
+//   wizard / reviewer picker audience preview.
+export const KNOWN_READ_POSTS=Object.freeze([/^\/api\/company\/\d+\/library\/audience\/compute\/?$/,/^\/api\/company\/\d+\/disclosures\/audience\/compute\/?$/,
   /^\/api\/company\/\d+\/comms-review\/search\/email\/(messages|conversations)\/?$/]);
 // Sign-in only: users/views.py post_sign_in_lookup reads for a registered address (writes a TriedEmail row only for
 // unknown addresses), so it passes only while signing in, never during a replay.
@@ -155,6 +158,8 @@ export function resolveTarget(target,candidates,{requireHref=null,pageUrl=null}=
   const notes=[];const vis=candidates.map((c,i)=>({c,i})).filter(({c})=>c.visible!==false);
   const roleOk=({c})=>(!target.role||c.role===target.role)&&(!target.tag||c.tag===target.tag);
   const done=(method,list)=>{
+    // Same-named controls while a modal is open: the one behind the modal could not have been clicked.
+    if(list.length>1){const front=list.filter(x=>!x.c.hiddenBehindModal);if(front.length===1&&list.some(x=>x.c.hiddenBehindModal)){notes.push(`behind_modal_excluded:${list.length-1}`);list=front;}}
     if(list.length>1)return {status:'ambiguous',method,index:null,candidate:null,matches:list.map(x=>x.i),notes};
     const {c,i}=list[0];
     if(method==='role_name_normalized')notes.push(`name_changed: recorded=${JSON.stringify(target.name)} today=${JSON.stringify(c.name)}`);
@@ -236,14 +241,52 @@ export function classifyStepMutation(step,today=null){
 // the network layer (strict allowlist above), and once a rehearsal has run an aborted write stops the replay
 // gracefully instead of failing the video. Never rehearsed: saves/submits (form submit buttons, buttons inside a form
 // or dialog), switches/sliders, uploads, Enter, unnamed targets, and any name with a word outside REHEARSE_WORDS.
-export const REHEARSE_WORDS=Object.freeze(['add','new','create','edit']);
+// 'assign'/'rename' outside a form/dialog open a picker or inline field ("Assign disclosures", "Rename"); the Assign
+// inside the dialog is the save and stays a stop (inForm/inDialog rule below).
+export const REHEARSE_WORDS=Object.freeze(['add','new','create','edit','assign','rename']);
 const REHEARSE_ROLES=Object.freeze(['option','checkbox','radio']);
 const TYPE_ROLES=Object.freeze(['textbox','searchbox','combobox']);
-/** step + today's element (resolved BY NAME) -> {kind:'type'|'select'|'open', reason} | null */
-export function rehearsalFor(step,today){
+// Pages verified to keep everything local until an explicit save (each entry cites a guarded live probe: every
+// non-GET aborted and logged, the editor driven, then idle, and the library checked). On these pages every step is
+// walked through except the save buttons, uploads and destructive names; the network guard still aborts any write,
+// which stops the replay gracefully, so a page that later starts autosaving loses slides, never writes.
+export const DRAFT_ONLY_PAGES=Object.freeze([
+  {key:'template_editor_new',path:/^\/account\/settings\/templates\/new\/?$/,saves:/(^|[^a-z])(publish|save|delete|remove|discard|upload)([^a-z]|$)/i,
+   evidence:'probe 2026-11-09 (Academy 1150, owner): /account/settings/templates/new?title=...&type=DISCLOSURE; Add question + typing + 20 s idle sent 0 Hadrius writes; header shows Draft + "Save as draft" + "Publish"; library unchanged after leaving'},
+]);
+// Buttons verified to only open the next page although they sit in a dialog (where a same-named button is usually the
+// save). Same evidence standard as DRAFT_ONLY_PAGES.
+export const VERIFIED_DIALOG_OPENERS=Object.freeze([
+  {key:'new_template_dialog',path:/^\/(account\/settings\/)?templates\/?$/,name:/^create template$/i,
+   evidence:'probe 2026-11-09: "Create a new template" dialog > Create template navigated to /account/settings/templates/new?title=... with 0 Hadrius writes'},
+]);
+const pagePathOf=(u)=>{try{return new URL(u).pathname;}catch{return null;}};
+export function draftPageFor(pageUrl){const p=pagePathOf(pageUrl);return p?DRAFT_ONLY_PAGES.find(d=>d.path.test(p))??null:null;}
+export function unnamedCssTargetOk(step,res,delta,pageUrl){
+  const t=step?.target??{};if(!draftPageFor(pageUrl))return false;
+  if([t.name,t.text,t.ariaLabel,t.placeholder].some(v=>String(v??'').trim()))return false;
+  if(res?.method!=='css'||res.matches?.length!==1||!res.candidate)return false;
+  if(t.role&&res.candidate.role!==t.role)return false;
+  if(!delta||Math.abs(delta.dw)>4||Math.abs(delta.dh)>4||Math.abs(delta.dx)>24||Math.abs(delta.dy)>24)return false;
+  return true;
+}
+/** step + today's element (resolved BY NAME) [+ the page it is on] -> {kind:'type'|'select'|'open'|'key', reason} | null */
+export function rehearsalFor(step,today,{pageUrl=null}={}){
   if(!today)return null;
   const m=classifyStepMutation(step,today);if(!m.mutating)return null;
   const t=step?.target??{};
+  const names=[t.name,t.text,t.ariaLabel,today.name,today.ariaLabel].filter(Boolean).map(String);
+  const draft=draftPageFor(pageUrl);
+  if(draft){
+    if(today.fileInput||step.action==='upload'||names.some(n=>draft.saves.test(n)))return null;
+    if(step.action==='type')return step.value==null?null:{kind:'type',reason:`draft_page:${draft.key}`};
+    if(step.action==='press')return /^(Enter|NumpadEnter)$/.test(String(step.key??step.value??''))?null:{kind:'key',reason:`draft_page:${draft.key}`};
+    if(step.action==='click')return {kind:'open',reason:`draft_page:${draft.key}`};
+    return null;
+  }
+  const p=pagePathOf(pageUrl);
+  const opener=p&&step.action==='click'?VERIFIED_DIALOG_OPENERS.find(o=>o.path.test(p)&&names.length&&names.every(n=>o.name.test(n.trim()))):null;
+  if(opener&&!today.fileInput)return {kind:'open',reason:`verified_opener:${opener.key}`};
   if(today.fileInput||today.submits)return null;
   if(step.action==='type'){if(step.value==null||!TYPE_ROLES.includes(today.role))return null;
     if(['name','text','ariaLabel'].some(f=>mutatingWords(t[f]).length)||mutatingWords(today.name).length)return null; // e.g. a field named "Delete reason"
@@ -303,7 +346,10 @@ const CANDIDATES_FN=`({sel, css}) => {
       recordHint: (() => { const holder = el.closest('[data-id],[data-row-key],[data-record-id],tr,[role="row"],[role="menu"]');
         if (!holder) return null; const id = holder.getAttribute('data-id') || holder.getAttribute('data-row-key') || holder.getAttribute('data-record-id');
         const label = holder.getAttribute('role') === 'menu' ? null : clean(holder.innerText || '').slice(0, 80); return id || label ? { id: id || null, label: label || null } : null; })(),
-      submits, inForm: !!form, inDialog: !!el.closest('[role="dialog"],[role="alertdialog"],[aria-modal="true"],dialog'), fileInput: (t === 'input' && ty === 'file') || !!el.querySelector?.('input[type="file"]'),
+      submits, inForm: !!form, inDialog: !!el.closest('[role="dialog"],[role="alertdialog"],[aria-modal="true"],dialog'),
+      // An open modal (Radix hideOthers / native showModal) marks everything behind it aria-hidden or inert.
+      hiddenBehindModal: !!el.closest('[aria-hidden="true"],[inert]') && !!document.querySelector('[role="dialog"][data-state="open"],[role="alertdialog"][data-state="open"],[aria-modal="true"],dialog[open]'),
+      fileInput: (t === 'input' && ty === 'file') || !!el.querySelector?.('input[type="file"]'),
       statusCounter: counterOf(el, counterLabels),
       visible: r.width > 3 && r.height > 3 && cs.visibility !== 'hidden' && cs.display !== 'none' && r.right > 0 && r.left < innerWidth,
       bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } }; });
@@ -417,7 +463,7 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
   profileDir=owner?null:profileDir??(T?tenantProfileDir(T.key,REPO):DEFAULT_PROFILE);expectedCompany=String(T?.companyId??expectedCompany??'');
   ensureSession=ensureSession??(T?.key==='academy'?ensureAcademySession:(o)=>ensureTenantSession({tenant:T?.key,...o}));
   const plan=mutationPlan(script);
-  const run={schema:2,script:script.name,scriptPath,recordingId:script.recording?.id??null,profile:owner?'owner-chrome':profileDir,sessionMode,startedAt:new Date().toISOString(),viewport:VIEWPORT,
+  const run={schema:2,script:script.name,scriptPath,recordingId:script.recording?.id??null,profile:owner?'owner':profileDir,sessionMode,startedAt:new Date().toISOString(),viewport:VIEWPORT,
     ...(T&&T.key!=='academy'?{tenantKey:T.key,expectedCompany}:{}),
     session:null,signedIn:null,manualSignIn:false,tenantVerified:false,status:'running',findings:[],mutationPlan:plan,mutationStop:null,steps:[],aborted:null,
     ...(rehearse?{rehearsal:{enabled:true,performed:[],writeBlocked:null,resumedAt:[]}}:{})};
@@ -581,7 +627,11 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
         // A reviewed fixture spec may authorise this step on the run's own '[Studio QA]' records (network guard still applies).
         const fd=fixture?fixture.stepDecision(step,{mutating:isMut}):null;if(fd&&(fd.perform||fd.status))rec.fixtureDecision=fd;
         // Rehearsal needs today's element found by NAME (a CSS-only or unresolved target is never acted on).
-        const rh=rehearse&&isMut&&!fd?.perform&&res?.status==='resolved'&&res.method!=='css'?rehearsalFor(step,today):null;
+        // On a verified draft-only page an element that never had a name (e.g. a rich-text question box) may be acted on
+        // by position: recorded name empty, ONE same-role CSS match, same size, within 24 px of the recorded spot.
+        const cssOk=res?.status==='resolved'&&res.method==='css'&&unnamedCssTargetOk(step,res,rec.target?.delta,page.url());
+        if(cssOk)rec.target.notes.push('unnamed_css_on_draft_page');
+        const rh=rehearse&&isMut&&!fd?.perform&&res?.status==='resolved'&&(res.method!=='css'||cssOk)?rehearsalFor(step,today,{pageUrl:page.url()}):null;
         if(isMut&&!fd?.perform&&!rh){stopped=rec.index;const ms={index:rec.index,action:step.action,reason:fd?.reason??(m.mutating?m.reason:rec.mutation.static.reason),targetName:step.target?.name??null};
           if(!run.mutationStop)run.mutationStop=ms;else (run.laterStops??=[]).push(ms); // a resumed replay can stop again
           rec.mutationGuard={status:fd?.status??'needs_fixture',performed:false,reason:ms.reason,
@@ -601,7 +651,7 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
         if(res.status!=='resolved'){rec.clicked=false;run.findings.push({step:rec.index,kind:`target_${res.status}`,matches:res.matches.length,notes:res.notes});
           if(closedCounterTarget(step.target,page.url())||(closedFilterVerified&&step.target?.role==='link'))failReadPrerequisite(rec,'closed_filter_or_donor_target_not_resolved');return;}
         // A CSS-only match means the recorded name is gone: never act on an element we cannot name.
-        if(res.method==='css'){rec.clicked=false;rec.target.notClickedReason='css_only_match';run.findings.push({step:rec.index,kind:'target_renamed',today:res.candidate.name,recorded:step.target.name});
+        if(res.method==='css'&&!cssOk){rec.clicked=false;rec.target.notClickedReason='css_only_match';run.findings.push({step:rec.index,kind:'target_renamed',today:res.candidate.name,recorded:step.target.name});
           if(closedFilterVerified&&step.target?.role==='link')failReadPrerequisite(rec,'closed_donor_has_only_css_match');return;}
         const h=await page.evaluateHandle((i)=>window.__driftCandidates?.[i]??null,res.index);
         // Same naming as CANDIDATES_FN (form fields: label[for] / wrapping label / placeholder).
@@ -714,4 +764,5 @@ export async function main(args=process.argv.slice(2)){
   console.log(JSON.stringify({status:run.status,session:run.session,signedIn:run.signedIn,tenantVerified:run.tenantVerified,aborted:run.aborted,mutationStop:run.mutationStop,rehearsal:run.rehearsal??null,findings:run.findings,steps:run.steps.map(s=>({index:s.index,screenshot:s.screenshot,url:s.todayUrl,target:s.target?.status,guard:s.mutationGuard?.status,rehearsed:s.rehearsal?.kind??null,error:s.error}))},null,2));
   return run;
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)main().catch(e=>{console.error(e.message);process.exitCode=1;});
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)main().catch(e=>{console.error(e.message);process.exitCode=1;})
+  .finally(()=>import('./owner-session.mjs').then(m=>m.releaseOwnerConnection()).catch(()=>{})); // the shared Chrome connection, if any

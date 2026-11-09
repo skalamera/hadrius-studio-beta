@@ -205,7 +205,7 @@ export async function runVideo(name,{outDir,deps,dryRun=false,profileDir=null,lo
     const ten=detectScriptTenant(script);job.tenant={key:ten.tenant,status:ten.status,companyIds:ten.companyIds,reason:ten.reason,...(ten.tenant?{name:getTenant(ten.tenant).name}:{})};
     if(ten.status!=='ok'){job.status=`tenant_${ten.status}`;job.summary=`skipped: ${ten.reason}`;errors.push({stage:'tenant',error:ten.reason});return job;}
     const ownerSession=deps.captureSession==='owner';
-    const videoProfile=ownerSession?null:profileDir??tenantProfileDir(ten.tenant,REPO);job.profile=ownerSession?'owner-chrome':videoProfile;job.captureSession=ownerSession?'owner':'automation';
+    const videoProfile=ownerSession?null:profileDir??tenantProfileDir(ten.tenant,REPO);job.profile=ownerSession?'owner':videoProfile;job.captureSession=ownerSession?'owner':'automation';
     if(dryRun){job.status='dry_run';job.summary=`would recapture ${script.steps.length} steps; guard would stop at ${job.mutationPlan.find(p=>p.mutating)?`step ${job.mutationPlan.find(p=>p.mutating).index} (${job.mutationPlan.find(p=>p.mutating).reason})`:'no step'}`;return job;}
     const recordingsDir=join(deps.recordingsRoot,script.recording?.id??'_missing_');
     const runDir=join(dir,'capture');job.evidence.runDir=runDir;
@@ -366,7 +366,7 @@ export async function runWeekly({rehearse=true,session=null,names,outDir=join(SC
   if(!['automation','owner'].includes(captureSession))throw new Error(`unknown_session:${captureSession}`);
   deps={...deps,captureSession};
   const excl=exclusions!==undefined?exclusions:(deps.exclusions??null);
-  const summary={schema:1,startedAt:prev?.startedAt??new Date().toISOString(),outDir:out,dryRun,names,captureSession,profile:captureSession==='owner'?'owner-chrome':profileDir??'per-tenant',bridgeAtStart:prev?.bridgeAtStart??(dryRun?null:await deps.bridgeStatus?.()??null),
+  const summary={schema:1,startedAt:prev?.startedAt??new Date().toISOString(),outDir:out,dryRun,names,captureSession,profile:captureSession==='owner'?'owner':profileDir??'per-tenant',bridgeAtStart:prev?.bridgeAtStart??(dryRun?null:await deps.bridgeStatus?.()??null),
     exclusions:hasRules(excl)?{rules:(excl.rules??parseExclusions(excl).rules).map(r=>({id:r.id,module:r.module,topicModule:r.topicModule??null,reason:r.reason??null})),reason:excl.reason??null,addedAt:excl.addedAt??null,addedBy:excl.addedBy??null}:null,videos:[],
     ...(prev?{resumes:[...(prev.resumes??[]),{at:new Date().toISOString(),alreadyDone:0}]}:{})};
   const save=()=>writeFileSync(join(out,'summary.json'),JSON.stringify(summary,null,2)+'\n');
@@ -456,9 +456,12 @@ export async function main(args=process.argv.slice(2)){
   const allow=arg(args,'--allowlist');
   const names=parseNames({names:arg(args,'--names'),allowlistText:allow?readFileSync(resolve(allow),'utf8'):null});
   const resumeDir=arg(args,'--resume');
-  const s=await runWeekly({names,outDir:resumeDir??arg(args,'--out')??join(SCRATCH,`weekly-${stamp()}`),resume:!!resumeDir,dryRun:args.includes('--dry-run'),judge:!args.includes('--no-judge'),reviewSettings,session,
+  let s;
+  try{s=await runWeekly({names,outDir:resumeDir??arg(args,'--out')??join(SCRATCH,`weekly-${stamp()}`),resume:!!resumeDir,dryRun:args.includes('--dry-run'),judge:!args.includes('--no-judge'),reviewSettings,session,
     timeoutMs:arg(args,'--timeout-min')?Number(arg(args,'--timeout-min'))*60_000:DEFAULT_TIMEOUT_MS,maxModelCalls:cap!=null?Number(cap):null,rehearse:!args.includes('--no-rehearse'),
-    autoRepair:args.includes('--no-auto-repair')?false:undefined,repairSettings:{...(arg(args,'--codex-bin')?{binary:arg(args,'--codex-bin')}:{}),...(arg(args,'--repair-model')?{model:arg(args,'--repair-model')}:{}),...(arg(args,'--repair-effort')?{effort:arg(args,'--repair-effort')}:{})}});
+    autoRepair:args.includes('--no-auto-repair')?false:undefined,repairSettings:{...(arg(args,'--codex-bin')?{binary:arg(args,'--codex-bin')}:{}),...(arg(args,'--repair-model')?{model:arg(args,'--repair-model')}:{}),...(arg(args,'--repair-effort')?{effort:arg(args,'--repair-effort')}:{})}});}
+  // One Chrome debugging connection served every borrow of this run (one Allow prompt); release it so the run exits.
+  finally{if(session==='owner')await (await import('./owner-session.mjs')).releaseOwnerConnection().catch(()=>{});}
   console.log(JSON.stringify({outDir:s.outDir,counts:s.counts,tenantCounts:s.tenantCounts,reviewUsage:s.reviewUsage??null,reviewProvider:s.reviewProvider??null,reviewPending:s.reviewPending,automation:s.automation??null,videos:s.videos.map(v=>({name:v.name,tenant:v.tenant,status:v.status,verdict:v.verdict,summary:v.summary,candidate:v.candidatePath}))},null,2));
   return s;
 }

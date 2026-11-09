@@ -44,10 +44,22 @@ test('detectScriptTenant: 1150 / 1048 / unknown / conflict / unregistered, from 
 });
 test('buildAllowlist: per-tenant lists + counts; internal records excluded', () => {
   const a=buildAllowlist([S([`${APP}/a?company_id=1150`],{name:'A'}),S([`${APP}/a?company_id=1048`],{name:'B'}),S([`${APP}/a`],{name:'C'}),
-    S([`${APP}/a?company_id=1150`,`${APP}/a?company_id=1048`],{name:'D'}),S([`${APP}/a?company_id=1150`],{name:'_studio-x'})],{now:new Date(0)});
+    S([`${APP}/a?company_id=1150`,`${APP}/a?company_id=1048`],{name:'D'}),S([`${APP}/a?company_id=1150`],{name:'_studio-x'})],{now:new Date(0),retired:[]});
   assert.deepEqual([a.academy.map(x=>x.name),a.sandbox.map(x=>x.name),a.unknown.map(x=>x.name),a.conflict.map(x=>x.name)],[['A'],['B'],['C'],['D']]);
-  assert.deepEqual(a.counts,{academy:1,sandbox:1,unknown:1,conflict:1,unregistered:0});
+  assert.deepEqual(a.counts,{academy:1,sandbox:1,unknown:1,conflict:1,unregistered:0,retired:0});
   assert.equal(a.academy[0].company_id,'1150');assert.equal(a.sandbox[0].company_id,'1048');
+});
+test('buildAllowlist: a retired video (retired.json) is listed under retired and never under its tenant', () => {
+  const a=buildAllowlist([S([`${APP}/a?company_id=1150`],{name:'Old-dup'}),S([`${APP}/a?company_id=1150`],{name:'New'})],
+    {now:new Date(0),retired:[{name:'Old-dup',reason:'duplicate',replacedBy:'New'}]});
+  assert.deepEqual(a.academy.map(x=>x.name),['New']);
+  assert.deepEqual(a.retired.map(x=>[x.name,x.replacedBy]),[['Old-dup','New']]);assert.equal(a.counts.retired,1);
+});
+test('allowlist.json: retired videos are never in a tenant list', () => {
+  const o=JSON.parse(readFileSync(new URL('../../tools/drift/allowlist.json',import.meta.url),'utf8'));
+  const retired=new Set((o.retired||[]).map(x=>x.name));
+  assert.ok(retired.has('Creating-Marketing-Submission-Questionnaire'));
+  assert.ok(![...o.academy,...o.sandbox].some(x=>retired.has(x.name)));
 });
 test('allowlist.json: per-tenant object; academy = every company-1150 walkthrough, sandbox all 1048, no internal records', () => {
   const o=JSON.parse(readFileSync(new URL('../../tools/drift/allowlist.json',import.meta.url),'utf8'));

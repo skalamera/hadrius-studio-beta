@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {deflateSync} from 'node:zlib';
 import {
   classifyRequest, resolveTarget, rectDelta, preflight, companyIdOf, signedInFromProbe, normalizeName, isProjectDetailHref, dynamicTextKind,
-  classifyStepMutation, mutatingWord, mutatingWords, rehearsalFor, KNOWN_READ_POSTS, mutationPlan, DEFAULT_PROFILE, isDriftProfile, captureRun, createRequestGuard, fixtureEvidence, recordRefsFromUrl,
+  classifyStepMutation, mutatingWord, mutatingWords, rehearsalFor, unnamedCssTargetOk, KNOWN_READ_POSTS, mutationPlan, DEFAULT_PROFILE, isDriftProfile, captureRun, createRequestGuard, fixtureEvidence, recordRefsFromUrl,
 } from '../../tools/drift/capture.mjs';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {join,basename} from 'node:path';
@@ -81,6 +81,10 @@ test('request guard: read-named REST POST is aborted unless verified; unknown ap
   assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects/search'}).reason,'unverified_read_named_post');
   assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects/list'}).decision,'abort');
   assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/v1/projects'}).decision,'abort');
+  // Disclosure audience preview (backend @non_mutating, read_only=True) passes; its sibling write paths do not.
+  assert.notEqual(classifyRequest({method:'POST',url:'https://api.hadrius.com/api/company/1150/disclosures/audience/compute/'}).decision,'abort');
+  assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/api/company/1150/disclosures/audience/'}).decision,'abort');
+  assert.equal(classifyRequest({method:'POST',url:'https://api.hadrius.com/api/company/1150/disclosures/audience/compute/extra/'}).decision,'abort');
   assert.equal(classifyRequest({method:'POST',url:'https://o123.ingest.sentry.io/api/1/envelope/'}).decision,'block');
   // Blocked third-party POSTs never abort even when a word matches: they are not Hadrius data.
   assert.equal(classifyRequest({method:'POST',url:'https://api.segment.io/v1/update'}).decision,'block');
@@ -414,12 +418,64 @@ test('guard tolerant mode: an abort is still aborted and logged but counted inst
   assert.equal(g.failure(),null);assert.equal(g.tolerated(),1);assert.equal(g.requests[0].tolerated,true);
   g.setTolerant(false);g.decide({method:'PATCH',url:'https://hadriusapi.com/api/policies/6/'});assert.match(g.failure(),/policies\/6/);
 });
+test('resolveTarget: a same-named control hidden behind an open modal is excluded; otherwise still ambiguous', () => {
+  const b=(o)=>({role:'button',tag:'button',name:'Create template',visible:true,cssMatch:false,...o});
+  const r=resolveTarget({role:'button',tag:'button',name:'Create template'},[b({hiddenBehindModal:true}),b({inDialog:true})]);
+  assert.equal(r.status,'resolved'); assert.equal(r.index,1); assert.ok(r.notes.includes('behind_modal_excluded:1'));
+  assert.equal(resolveTarget({role:'button',tag:'button',name:'Create template'},[b({}),b({inDialog:true})]).status,'ambiguous','no modal evidence');
+  assert.equal(resolveTarget({role:'button',tag:'button',name:'Create template'},[b({hiddenBehindModal:true}),b({}),b({})]).status,'ambiguous','two in front');
+});
+
+test('unnamedCssTargetOk: only on a draft-only page, never-named target, one same-role match, same size, close', () => {
+  const ed=`${APP}/account/settings/templates/new?title=T`;
+  const step={action:'type',value:'Q',target:{name:'',role:'textbox',text:''}};
+  const res={method:'css',matches:[166],candidate:{role:'textbox',name:''}};
+  const d={dx:0,dy:-11,dw:0,dh:0};
+  assert.equal(unnamedCssTargetOk(step,res,d,ed),true);
+  assert.equal(unnamedCssTargetOk(step,res,d,`${APP}/account/settings/templates/812`),false,'not a draft page');
+  assert.equal(unnamedCssTargetOk({...step,target:{...step.target,name:'Title'}},res,d,ed),false,'a renamed target stays a stop');
+  assert.equal(unnamedCssTargetOk(step,{...res,matches:[1,2]},d,ed),false);
+  assert.equal(unnamedCssTargetOk(step,{...res,candidate:{role:'button'}},d,ed),false);
+  assert.equal(unnamedCssTargetOk(step,res,{...d,dy:40},ed),false);
+  assert.equal(unnamedCssTargetOk(step,res,{...d,dw:30},ed),false);
+  assert.equal(unnamedCssTargetOk(step,res,null,ed),false);
+});
+
+test('rehearsalFor: verified draft-only template editor and new-template dialog opener', () => {
+  const step=(action,target,extra={})=>({index:1,action,url:`${APP}/x`,target,...extra});
+  const el=(o)=>({role:'button',tag:'button',name:'x',inForm:false,inDialog:false,submits:false,...o});
+  const ed={pageUrl:`${APP}/account/settings/templates/new?title=T&type=DISCLOSURE`};
+  // dialog opener: only on the template library, only that exact name
+  for(const u of [`${APP}/templates?module=DISCLOSURE`,`${APP}/account/settings/templates?module=CERTIFICATION`])
+    assert.equal(rehearsalFor(step('click',{name:'Create template'}),el({name:'Create template',inDialog:true}),{pageUrl:u})?.reason,'verified_opener:new_template_dialog',u);
+  assert.equal(rehearsalFor(step('click',{name:'Create template'}),el({name:'Create template',inDialog:true}),{pageUrl:`${APP}/settings/roles`}),null,'other pages keep the dialog rule');
+  assert.equal(rehearsalFor(step('click',{name:'Create rule'}),el({name:'Create rule',inDialog:true}),{pageUrl:`${APP}/templates`}),null);
+  assert.equal(rehearsalFor(step('click',{name:'Create template'}),el({name:'Create template',inDialog:true})),null,'no page url = old rule');
+  // editor: toggles, pickers, typing, Add question are walked through
+  assert.equal(rehearsalFor(step('click',{name:'Required Users must fill in this question',role:'switch'}),el({role:'switch',name:'Required Users must fill in this question'}),ed).kind,'open');
+  assert.equal(rehearsalFor(step('click',{name:'Add reviewer step'}),el({name:'Add reviewer step'}),ed).kind,'open');
+  assert.equal(rehearsalFor(step('type',{name:'',role:'textbox'},{value:'Are you engaged in an OBA?'}),el({role:'textbox',tag:'div',name:''}),ed).kind,'type');
+  assert.equal(rehearsalFor(step('click',{name:''}),el({name:''}),ed).kind,'open','unnamed control inside the draft editor');
+  // ...but never the saves, uploads, destructive names or Enter
+  for(const n of ['Publish','Publish template','Save as draft','Save','Delete question','Remove'])
+    assert.equal(rehearsalFor(step('click',{name:n}),el({name:n}),ed),null,n);
+  assert.equal(rehearsalFor(step('click',{name:'Choose a file'}),el({name:'Choose a file',fileInput:true}),ed),null);
+  assert.equal(rehearsalFor(step('upload',{name:'File'}),el({name:'File'}),ed),null);
+  assert.equal(rehearsalFor(step('press',{name:'x'},{key:'Enter'}),el({}),ed),null);
+  assert.equal(rehearsalFor(step('type',{name:'Title'},{value:null}),el({role:'textbox',name:'Title'}),ed),null);
+  // an existing template's editor is NOT verified
+  assert.equal(rehearsalFor(step('click',{name:'Required',role:'switch'}),el({role:'switch',name:'Required'}),{pageUrl:`${APP}/account/settings/templates/812`}),null);
+});
+
 test('rehearsalFor: opens and fills forms, never the save', () => {
   const step=(action,target,extra={})=>({index:1,action,url:`${APP}/x`,target,...extra});
   const el=(o)=>({role:'button',tag:'button',name:'x',inForm:false,inDialog:false,submits:false,...o});
   assert.deepEqual(rehearsalFor(step('click',{name:'Create provider'}),el({role:'link',name:'Create provider',href:`${APP}/im/providers/new`})),{kind:'open',reason:'name_matches:create'});
   assert.equal(rehearsalFor(step('click',{name:'+ New document'}),el({name:'+ New document'})).kind,'open');
   assert.equal(rehearsalFor(step('click',{name:'Edit'}),el({name:'Edit'})).kind,'open');
+  assert.equal(rehearsalFor(step('click',{name:'Assign disclosures'}),el({name:'Assign disclosures'})).kind,'open','page button opens the assign dialog');
+  assert.equal(rehearsalFor(step('click',{name:'Assign'}),el({name:'Assign',inDialog:true})),null,'Assign inside the dialog is the save');
+  assert.equal(rehearsalFor(step('click',{name:'Assign and send'}),el({name:'Assign and send'})),null,'mixed name stays a stop');
   // The same words inside a form or dialog are the save.
   assert.equal(rehearsalFor(step('click',{name:'Create Provider'}),el({name:'Create Provider',inForm:true})),null);
   assert.equal(rehearsalFor(step('click',{name:'Create permissions profile'}),el({name:'Create permissions profile',inDialog:true})),null);
