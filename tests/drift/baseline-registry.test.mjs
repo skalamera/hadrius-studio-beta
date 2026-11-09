@@ -157,6 +157,19 @@ test('old enrollment can never authorize different current video, assembly, scri
   });
 });
 
+test('promotion of a published update (supersede) enrolls the changed original as a NEW baseline; the old row stays', async t => {
+  const f = setup(t); const first = await getOrEnrollBaseline(f.options);
+  fs.appendFileSync(f.originalPath, 'published version');
+  await expectHold(() => getOrEnrollBaseline({...f.options, supersede: {}}), 'baseline_original_mismatch'); // a job id is required
+  const next = await getOrEnrollBaseline({...f.options, supersede: {jobId: '0f976789-ce06-4021-9695-22eab08e4b64'}});
+  assert.equal(next.enrolled, true); assert.notEqual(next.directory, first.directory); assert.equal(f.enrollments, 2);
+  const rows = read(join(f.stateRoot, 'index.json')).baselines.filter(r => r.name === f.name);
+  assert.equal(rows.length, 2);
+  // Later lookups (no supersede) pick the new baseline; the old one is kept for Undo.
+  assert.equal((await getOrEnrollBaseline(f.options)).directory, next.directory);
+  assert.ok(fs.existsSync(first.directory));
+});
+
 test('missing sources, mismatched assembly/script and unsupported non-FX are operational holds, not re-record verdicts', async t => {
   for (const kind of ['missing', 'narration', 'mapping', 'non-fx']) await t.test(kind, async t => {
     const f = setup(t);

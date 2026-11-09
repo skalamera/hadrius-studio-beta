@@ -13,10 +13,13 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { openJournal, publishCandidate, rollbackPublish, PublishError, md5File, sha256File } from './publish.mjs';
 import { loadExclusions, exclusionFor } from './exclusions.mjs';
+import { expectedLiveMd5 } from './live-version.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, '..', '..');
-export const DEFAULT_STATE_ROOT = path.join(os.homedir(), '.hermes', 'cache', 'scratch', 'drift-exec');
+// Durable (gitignored): journals hold the Undo/rollback records and crash-resume state. They must outlive the
+// scratch dir's 24 h idle pruning, which silently removed the first published jobs' Undo records.
+export const DEFAULT_STATE_ROOT = process.env.DRIFT_EXEC_STATE_ROOT || path.join(REPO, '.drift-cache', 'exec');
 export const TIMEOUTS = Object.freeze({ rebaselineMs: 30 * 60_000, renderMs: 75 * 60_000, lockStaleMs: 4 * 3600_000 });
 
 export class ExecError extends Error { constructor(code, detail = null) { super(`${code}${detail ? `: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}` : ''}`); this.code = code; this.detail = detail; } }
@@ -375,7 +378,8 @@ export async function executeJob(job, deps) {
       const ctx = { jobId: job.id, name: inputs.name, title: targets.title || inputs.script.title || inputs.name, driveFileId: targets.driveFileId, pylonArticleId: targets.pylonArticleId || null,
         candidatePath: ver.candidate, candidateSha256: ver.sha256, candidateScript, identifiedBase: inputs.script,
         candidateRecordingsDir: candRec,
-        baselineMd5: rbManifest.original?.sha256 && fs.existsSync(inputs.originalVideo) && sha256File(inputs.originalVideo) === rbManifest.original.sha256 ? md5File(inputs.originalVideo) : null };
+        baselineMd5: rbManifest.original?.sha256 && fs.existsSync(inputs.originalVideo) && sha256File(inputs.originalVideo) === rbManifest.original.sha256
+          ? expectedLiveMd5({ repo: deps.repo || REPO, name: inputs.name, originalSha256: rbManifest.original.sha256, originalPath: inputs.originalVideo })?.md5 || null : null };
       if (!ctx.baselineMd5) fail('baseline_video_missing', 'out/<name>/<name>.mp4 must be the rebaseline\'s original (it proves Drive still holds the baseline)');
       const pub = await publishCandidate(ctx, { ...deps.publishDeps, log: deps.log }, journal);
 
@@ -387,6 +391,19 @@ export async function executeJob(job, deps) {
       journal.set('finished', { status: 'published', at: new Date().toISOString(), links });
       try { await deps.jobs.progress({ id: job.id, status: 'published', note: 'Published by the drift executor', links, by: deps.whoami }); }
       catch (e) { deps.log(`[drift-exec] published ${job.id} but could not record it on the service (retried next poll): ${e?.message || e}`); }
+      // Make what was just published the video's baseline, so its next drift update is built on what viewers have.
+      // Never changes the published outcome: a failure only means that video's next update is held until fixed.
+      if (inputs.automaticResult?.verification && deps.promote !== false) {
+        try {
+          const promote = deps.promote || (await import('./promote.mjs')).promoteAfterPublish;
+          const p = await promote({ name: inputs.name, jobId: job.id, published: ver.candidate, automaticResult: inputs.automaticResult, stateDir: jobDir, repo: deps.repo || REPO, log: deps.log });
+          journal.set('promotion', { status: 'promoted', baselineDir: p.baselineDir, at: new Date().toISOString() });
+          await note(deps, current, `📌 This published version is now the baseline for future drift checks (re-render reproduced the published file exactly; full ${p.controlSlides}-slide control passed).`);
+        } catch (e) {
+          journal.set('promotion', { status: 'failed', reason: e?.code || 'error', detail: String(e?.message || e).slice(0, 500), at: new Date().toISOString() });
+          await note(deps, current, `⚠️ Published fine, but this version could not be made the new baseline (\`${e?.code || 'error'}\`). The next automatic update for this video will be held until that is fixed; nothing else is affected.`);
+        }
+      }
       return { status: 'published', links, journal: journal.file };
     } catch (e) {
       const reason = e?.code || 'error';
@@ -441,6 +458,14 @@ export async function rollbackJob(jobId, deps) {
   try {
     const journal = openJournal(st.journal);
     const res = await rollbackPublish(journal, { ...deps.publishDeps, log: deps.log }, { reason: `manual by ${deps.whoami}` });
+    // The published version was promoted to the baseline: put the previous baseline's files back too.
+    if (res.ok && deps.revertPromotion !== false) {
+      try {
+        const revert = deps.revertPromotion || (await import('./promote.mjs')).revertPromotion;
+        const name = openJournal(st.journal).get('library')?.name;
+        if (name) res.promotion = revert({ name, stateDir: path.join(deps.stateRoot, jobId), log: deps.log });
+      } catch (e) { res.promotion = { reverted: false, reason: String(e?.message || e).slice(0, 300) }; }
+    }
     let job = null; try { job = (await deps.jobs.get(jobId)).job; } catch { /* note best-effort */ }
     if (job) await note(deps, job, res.ok
       ? `↩️ Update rolled back by ${deps.whoami}: Drive file restored to its previous revision (same id), Pylon article body restored, shared script restored.`

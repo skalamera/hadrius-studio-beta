@@ -385,7 +385,7 @@ async function validateDirectory({directory, expected, io, repo, verifyBaseline,
 export async function getOrEnrollBaseline({name, repo = REPO, stateRoot, runRoot,
   ensureBaseline = defaultEnrollBaseline, verifyBaseline = defaultVerifyBaseline, io = fs,
   getRenderIdentity = currentRenderIdentity, run = runProcess, log = () => {},
-  lockTimeoutMs = 30_000, pollMs = 50, isAlive = processAlive} = {}) {
+  lockTimeoutMs = 30_000, pollMs = 50, isAlive = processAlive, supersede = null} = {}) {
   let release;
   try {
     check(typeof name === 'string' && NAME.test(name) && !['.', '..'].includes(name), 'invalid_script_name');
@@ -417,7 +417,9 @@ export async function getOrEnrollBaseline({name, repo = REPO, stateRoot, runRoot
         else throw e; // Missing indexed artifacts, corruption, or loader failure must not trigger a fresh enrollment.
       }
     }
-    if (!chosen && lastMismatch) throw lastMismatch;
+    // Changed sources are a hold, except for the ONE caller that changed them on purpose: promotion of a published
+    // drift update (tools/drift/promote.mjs), which then proves the new baseline with a full original-image control.
+    if (!chosen && lastMismatch && !(supersede && typeof supersede.jobId === 'string')) throw lastMismatch;
     const pendingRoot = join(root, '.pending'), pendingPath = join(pendingRoot, `${name}-${identitySha256}.json`);
     if (exists(io, pendingRoot)) check(io.lstatSync(pendingRoot).isDirectory() && io.realpathSync(pendingRoot) === pendingRoot, 'baseline_pending_unsafe');
     let resumed = false, enrolled = false;

@@ -988,6 +988,23 @@ Nothing publishes by itself. The only path to Drive/Pylon/the shared library is:
    (claim / mark re-recorded), never as an approvable `auto_update`.
 6. Publish preflight (Drive md5 = baseline, Pylon has no pending draft/review, shared script unchanged since detection)
    and rollback stay as described under "Executing approved jobs".
+7. **Published updates become the next baseline** (`promote.mjs` + `renderer/promote_baseline.py`). Right after a
+   preview-bound publish the executor promotes the published version, so the video's NEXT drift update is built on
+   what viewers have (without this, point 2 refuses every later update for that video). Steps: re-render the
+   published update with the real renderer and require the exact published sha256; stage the renderer's full-quality
+   equivalent as the new original (frames + audio equal to the published file, PSNR/SSIM above the enrollment
+   re-encode floor: the published file itself is a cell splice that no `_build` can reproduce); require the local
+   shared script to be this job's published version with the same captures; move the previous `out/<name>/`
+   original/assembly/`_build` to `.drift-cache/exec/<job>/promotion/backup`, install, write `out/<name>/drive-live.json`
+   (Drive md5 of the published file, bound to the new original's sha256: `live-version.mjs`, used by point 2 and the
+   publish preflight); enroll a NEW registry baseline (`supersede: {jobId}`, the only exception to the
+   changed-sources hold) and run a full original-image control on every slide. Any failure restores the previous
+   files and is posted in the thread ("Published fine, but ... next update held"); the published outcome never
+   changes. Undo (`rollbackJob`) also reverts the promotion. Visual-only updates only (narration: fails closed).
+   Catch-up for updates published before this existed:
+   `node --env-file=.env tools/drift/promote.mjs --name <n> --job <jobId> --result <.drift-cache/automation/results/.../<n>-recertified-*>`
+   (read-only Drive md5 check first). Executor journals live in `.drift-cache/exec/` (durable; was scratch, which
+   pruned the first jobs' Undo records).
 
 ## Capture identity: owner session vs automation accounts (`owner-session.mjs`)
 

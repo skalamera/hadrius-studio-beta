@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readPyJson } from './executor.mjs';
 import { sha256File, md5File } from './publish.mjs';
+import { expectedLiveMd5 } from './live-version.mjs';
 
 /**
  * -> {ok:true, driveMd5, baselineMd5} | {ok:false, reason, detail?}
@@ -30,7 +31,7 @@ export async function previewBaseIsLive(payload, { repo, drive, readScript }) {
   let f;
   try { f = await drive.getFile(fileId); } catch (e) { return { ok: false, reason: 'drive_unreadable', detail: String(e?.message || e).slice(0, 200) }; }
   if (!f || f.id !== fileId || f.trashed) return { ok: false, reason: 'drive_file_missing_or_trashed' };
-  const baselineMd5 = md5File(original);
+  const baselineMd5 = expectedLiveMd5({ repo, name, originalSha256: want, originalPath: original })?.md5 || md5File(original);
   if (f.md5Checksum !== baselineMd5) return { ok: false, reason: 'live_video_differs_from_preview_base', detail: { drive: f.md5Checksum, baseline: baselineMd5, driveModified: f.modifiedTime ?? null } };
   return { ok: true, driveMd5: f.md5Checksum, baselineMd5 };
 }

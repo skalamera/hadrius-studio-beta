@@ -234,8 +234,7 @@ test('poll executes approved jobs one at a time and stops when busy', async () =
   assert.ok(md5);
 });
 
-test('pre-certified automaticResult publishes directly without re-rendering or requiring out/<name>/_build', async () => {
-  const w = world();
+function precertified(w) {
   fs.rmSync(path.join(w.repo, 'out', w.name, '_build'), { recursive: true });
   const resultDir = path.join(w.root, 'auto-result');
   fs.mkdirSync(path.join(resultDir, 'repair'), { recursive: true });
@@ -267,11 +266,35 @@ test('pre-certified automaticResult publishes directly without re-rendering or r
   w.job.details.preview = { path: candPath, sha256: sha(candBytes) };
   delete w.deps.unsafeSkipPreviewBindingForTests; // the real, preview-bound path
 
+  return { candPath, verPath, resultDir };
+}
+
+test('pre-certified automaticResult publishes directly without re-rendering or requiring out/<name>/_build', async () => {
+  const w = world();
+  const promotions = [];
+  w.deps.promote = async (a) => { promotions.push(a); return { status: 'promoted', baselineDir: '/b/new', controlSlides: 3 }; };
+  const { candPath, verPath } = precertified(w);
   const r = await executeJob(w.job, w.deps);
   assert.equal(r.status, 'published', JSON.stringify(r));
   assert.equal(w.renders.length, 0);
   assert.equal(w.drive.head().content.toString(), 'precertified-candidate-mp4');
   assert.ok(w.svc.notes.some((n) => /Pre-certified candidate verified/.test(n)));
+  // The published version becomes the baseline for the next check (promotion hook gets exactly the published file).
+  assert.equal(promotions.length, 1);
+  assert.equal(promotions[0].name, w.name); assert.equal(promotions[0].jobId, w.job.id); assert.equal(promotions[0].published, candPath);
+  assert.equal(promotions[0].automaticResult.verification, verPath);
+  assert.ok(w.svc.notes.some((n) => /now the baseline for future drift checks/.test(n) && /3-slide control/.test(n)));
+});
+
+test('promotion failure after publishing never changes the published outcome; the thread says the next update is held', async () => {
+  const w = world();
+  w.deps.promote = async () => { const e = new Error('control failed'); e.code = 'promotion_control_failed'; throw e; };
+  precertified(w);
+  const r = await executeJob(w.job, w.deps);
+  assert.equal(r.status, 'published', JSON.stringify(r));
+  assert.equal(w.drive.head().content.toString(), 'precertified-candidate-mp4');
+  assert.ok(w.svc.notes.some((n) => /Published fine, but this version could not be made the new baseline/.test(n) && /promotion_control_failed/.test(n)));
+  assert.ok(!w.svc.notes.some((n) => /Rollback|rolled back/i.test(n)));
 });
 
 test('preview-bound approval: an approved job without a certified preview is refused before anything renders or publishes', async () => {
