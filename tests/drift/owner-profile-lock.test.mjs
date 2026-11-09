@@ -202,3 +202,47 @@ test('lock: a held lock never keeps Node alive (a process that forgets to releas
     assert.equal(out.trim(), 'function'); assert.equal(exited, true, 'process kept alive by the held lock');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---------- council 20261109-05e08f54 ----------
+const within = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what}: still pending after ${ms} ms`)), ms))]);
+
+test('CRIT-36: the same profile reached through a differently-cased path is busy, not a second lock', async (t) => {
+  const dir = tempProfile();
+  const alias = path.join(path.dirname(dir), path.basename(dir).toUpperCase());
+  try {
+    const [a, b] = [fs.statSync(dir, { bigint: true }), (() => { try { return fs.statSync(alias, { bigint: true }); } catch { return null; } })()];
+    if (!b || a.dev !== b.dev || a.ino !== b.ino) return t.skip('case-sensitive filesystem: the alias is not the same directory');
+    assert.notEqual(alias, dir, 'precondition: a different spelling');
+    const u = await lockOwnerProfile(dir);
+    assert.equal(typeof u, 'function');
+    try { assert.equal(await lockOwnerProfile(alias), null, 'the case-variant path acquired the same profile a second time'); }
+    finally { await u(); }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('CRIT-34: a half-open probe connection cannot stall the awaited release', { timeout: 30000 }, async () => {
+  const dir = tempProfile();
+  const u = await lockOwnerProfile(dir);
+  const port = S.profileLockPort(dir);
+  // Reads the banner but never closes its own writable half.
+  const peer = net.connect({ host: '127.0.0.1', port, allowHalfOpen: true });
+  try {
+    const banner = await within(new Promise((resolve) => { let d = ''; peer.on('data', (x) => { d += x; }); peer.on('end', () => resolve(d)); peer.on('error', () => resolve(d)); }), 5000, 'banner');
+    assert.match(banner, /^studio-profile-lock \d+ /);
+    await within(u(), 3000, 'release');
+    const again = await lockOwnerProfile(dir); assert.equal(typeof again, 'function', 'free after release'); await again();
+  } finally { peer.destroy(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('CRIT-35: a listener trickling bytes cannot hold identification past the 2 s answer deadline', { timeout: 30000 }, async () => {
+  const dir = tempProfile();
+  const port = S.profileLockPort(dir);
+  const conns = new Set();
+  const other = net.createServer((c) => { conns.add(c); c.on('error', () => {}); const iv = setInterval(() => c.write('x'), 300); c.on('close', () => { clearInterval(iv); conns.delete(c); }); });
+  await new Promise((r) => other.listen(port, '127.0.0.1', r));
+  try {
+    const t0 = Date.now();
+    await within(assert.rejects(lockOwnerProfile(dir), (e) => e.code === 'owner_profile_lock_port_conflict'), 6000, 'lockOwnerProfile');
+    assert.ok(Date.now() - t0 < 3500, `conflict reported after ${Date.now() - t0} ms`);
+  } finally { for (const c of conns) c.destroy(); await new Promise((r) => other.close(r)); fs.rmSync(dir, { recursive: true, force: true }); }
+});

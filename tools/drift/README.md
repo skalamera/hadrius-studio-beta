@@ -1037,12 +1037,15 @@ most record-dependent slides unverifiable. `--session owner` (weekly/capture CLI
   tokens copied out, profile closed. Captures NEVER run inside it: the first version did, and a walkthrough step left it
   signed out mid-run (every later video `owner_not_signed_in`). Concurrent use is serialised by Studio's own lock,
   taken by every Studio launch of the profile (borrows, `owner-profile.mjs --sign-in` and `--check`): a localhost TCP
-  port derived from the profile path (`profileLockPort`: 49152 + sha256(realpath) mod 16000), bound on `127.0.0.1`.
+  port derived from the profile directory's identity (`profileLockPort`: 49152 + sha256(dev:ino) mod 16000, so a
+  differently-cased or normalized spelling of the same directory maps to the same port), bound on `127.0.0.1`.
   bind() is atomic and the OS releases the port when the holder dies, so there is no stale lock and no reclaim step
   (rounds 1-2 used a pid file; every reclaim scheme raced: council 20261109-b467b987, CRIT-25/26/27). The lock server
-  answers each connection with `studio-profile-lock <pid> <profileDir>`: that answer for this profile = busy (also from
+  answers each connection with `studio-profile-lock <pid> <dev:ino> <profileDir>` and closes it itself (a peer holding
+  its half open can't stall release; open sockets are destroyed on release): that answer for this profile = busy (also from
   a second borrow in the same process); a reset connection (a holder closing) = busy; anything else, no answer, or
-  another profile's lock = `owner_profile_lock_port_conflict` at once (no 2-minute wait). macOS lets a `127.0.0.1` bind
+  another profile's lock = `owner_profile_lock_port_conflict` at once (no 2-minute wait; the answer has a 2 s wall-clock
+  deadline that trickled bytes can't extend). macOS lets a `127.0.0.1` bind
   succeed over another program's wildcard listener on the same port, so the port is probed before binding. Release is
   `server.close()` on our own socket (idempotent; can't touch anyone else's lock); the server is unref'd, so a held
   lock never keeps Node alive. Leftover `studio-profile.lock*` files from older versions are ignored and deleted once

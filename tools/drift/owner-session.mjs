@@ -236,23 +236,28 @@ const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e)
 // server.close() on our own socket and cannot affect anyone else's lock.
 const LOCK_BANNER = 'studio-profile-lock';
 const LOCK_PORT_BASE = 49152, LOCK_PORT_SPAN = 16000;
-/** Deterministic lock port for a profile directory (49152 + sha256(realpath) mod 16000). */
+// The lock is keyed on the directory's identity, not its spelling (council 20261109-05e08f54, CRIT-36): APFS is case-
+// and normalization-insensitive and fs.realpathSync keeps the caller's spelling, so '…/Hadrius-Studio/…' and
+// '…/hadrius-studio/…' are one profile that must map to one port.
+const profileKey = (profileDir) => { const st = fs.statSync(profileDir, { bigint: true }); return `${st.dev}:${st.ino}`; };
+/** Deterministic lock port for a profile directory (49152 + sha256(dev:ino) mod 16000). */
 export function profileLockPort(profileDir) {
-  const real = fs.realpathSync(profileDir);
-  return LOCK_PORT_BASE + (parseInt(crypto.createHash('sha256').update(real).digest('hex').slice(0, 8), 16) % LOCK_PORT_SPAN);
+  return LOCK_PORT_BASE + (parseInt(crypto.createHash('sha256').update(profileKey(profileDir)).digest('hex').slice(0, 8), 16) % LOCK_PORT_SPAN);
 }
-/** Who is on the port: {kind:'none'} (nothing listening) | {kind:'studio', pid, dir} | {kind:'other', detail}
+/** Who is on the port: {kind:'none'} (nothing listening) | {kind:'studio', pid, key, dir} | {kind:'other', detail}
  *  | {kind:'flux'} (connection reset: a Studio holder closing its lock while we connected). */
 function identifyOnce(port, timeoutMs) {
   return new Promise((resolve) => {
     let data = '', done = false;
-    const finish = (r) => { if (!done) { done = true; sock.destroy(); resolve(r); } };
+    const finish = (r) => { if (!done) { done = true; clearTimeout(deadline); sock.destroy(); resolve(r); } };
     const sock = net.connect({ port, host: '127.0.0.1' });
-    sock.setTimeout(timeoutMs, () => finish({ kind: 'other', detail: `no answer within ${timeoutMs} ms` }));
+    // A wall-clock deadline for the whole answer, not socket inactivity (which every trickled byte would reset):
+    // council 20261109-05e08f54, CRIT-35.
+    const deadline = setTimeout(() => finish({ kind: 'other', detail: `no complete answer within ${timeoutMs} ms` }), timeoutMs);
     sock.on('data', (d) => { data += d; if (data.length > 4096) finish({ kind: 'other', detail: 'unexpected answer' }); });
     sock.on('end', () => {
-      const m = /^studio-profile-lock (\d+) (.+)\n?$/.exec(data);
-      finish(m ? { kind: 'studio', pid: Number(m[1]), dir: m[2] } : { kind: 'other', detail: data ? `answered ${JSON.stringify(data.slice(0, 60))}` : 'closed without answering' });
+      const m = /^studio-profile-lock (\d+) (\d+:\d+) (.+)\n?$/.exec(data);
+      finish(m ? { kind: 'studio', pid: Number(m[1]), key: m[2], dir: m[3] } : { kind: 'other', detail: data ? `answered ${JSON.stringify(data.slice(0, 60))}` : 'closed without answering' });
     });
     sock.on('error', (e) => finish(e.code === 'ECONNREFUSED' ? { kind: 'none' }
       : ['ECONNRESET', 'EPIPE'].includes(e.code) ? { kind: 'flux', detail: e.code } : { kind: 'other', detail: e.code || String(e.message) }));
@@ -279,10 +284,10 @@ const LEGACY_LOCK_RE = /^studio-profile\.lock(\..*)?$/; // round-1/2 lock file a
  */
 export async function lockOwnerProfile(profileDir) {
   try { const pid = Number(String(fs.readlinkSync(path.join(profileDir, 'SingletonLock'))).split('-').pop()); if (pid && pid !== process.pid && pidAlive(pid)) return null; } catch { /* none */ }
-  const real = fs.realpathSync(profileDir);
-  const port = profileLockPort(real);
+  const real = fs.realpathSync.native(profileDir); // on-disk spelling, for messages only
+  const key = profileKey(profileDir), port = profileLockPort(profileDir);
   const holder = (who) => {
-    if ((who.kind === 'studio' && who.dir === real) || who.kind === 'flux') return null; // busy
+    if ((who.kind === 'studio' && who.key === key) || who.kind === 'flux') return null; // busy
     if (who.kind === 'studio') throw portConflict(port, `Studio lock for another profile, ${who.dir}`);
     throw portConflict(port, who.detail);
   };
@@ -291,7 +296,13 @@ export async function lockOwnerProfile(profileDir) {
   // Studio processes rests on the bind below, not on this probe.
   const before = await identifyLockPort(port);
   if (before.kind !== 'none') return holder(before);
-  const server = net.createServer((c) => { c.on('error', () => {}); c.unref(); c.end(`${LOCK_BANNER} ${process.pid} ${real}\n`); });
+  // Each probe gets the banner and is then closed by US: server.close() waits for every accepted socket, so a peer that
+  // keeps its half of a connection open must not be able to stall release (council 20261109-05e08f54, CRIT-34).
+  const sockets = new Set();
+  const server = net.createServer((c) => {
+    sockets.add(c); c.on('close', () => sockets.delete(c)); c.on('error', () => {}); c.unref();
+    c.end(`${LOCK_BANNER} ${process.pid} ${key} ${real}\n`, () => c.destroy());
+  });
   for (let attempt = 0; ; attempt++) {
     const err = await new Promise((resolve) => {
       server.once('error', resolve);
@@ -308,7 +319,7 @@ export async function lockOwnerProfile(profileDir) {
   for (const n of (() => { try { return fs.readdirSync(profileDir); } catch { return []; } })()) // older versions' lock files
     if (LEGACY_LOCK_RE.test(n)) { try { fs.unlinkSync(path.join(profileDir, n)); } catch { /* best effort */ } }
   let closing = null;
-  return () => (closing ??= new Promise((r) => server.close(() => r())));
+  return () => (closing ??= new Promise((r) => { server.close(() => r()); for (const c of sockets) c.destroy(); }));
 }
 
 /** Guarded (writes aborted, only counted), load /home, read the signed-in user and the short-lived tokens. */
