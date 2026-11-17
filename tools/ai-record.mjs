@@ -96,8 +96,83 @@ export function companySwitcherReason(elements, el, companyId, action = 'click',
   return null;
 }
 
+/**
+ * Why "done" is refused, or null. A take ends on a slide of its finished state, so it must not stop with a
+ * dialog still open: a confirm button, a file picker or a form left unsubmitted means the final action never
+ * happened. The turn loop refuses it once per attempt; a dialog that IS the result can be closed, or "done"
+ * sent again.
+ * `elements`: the page's visible interactive elements ({name, inDialog}).
+ */
+export function openDialogDoneReason(elements) {
+  const inDialog = (elements || []).filter((e) => e?.inDialog);
+  if (!inDialog.length) return null;
+  const names = [...new Set(inDialog.map((e) => String(e.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)).filter(Boolean))].slice(0, 6);
+  return `refused — a dialog is still open${names.length ? ` (its controls: ${names.map((n) => `"${n}"`).join(', ')})` : ''}. `
+    + 'If the workflow\'s final action is in it (a confirm, save, upload or submit button), do it now; if the dialog itself shows the finished result, close it. '
+    + 'Reply "done" once the completed result is on the page.';
+}
+
+/** The app view (admin or employee) a lesson starts in: employee pages (/employee/...) only render in the
+ *  employee view, and admin pages redirect to the employee dashboard from it. /employees/... is admin. */
+export function viewForRoute(route) {
+  return /^\/employee(\/|\?|$)/.test(String(route || '')) ? 'EMPLOYEE' : 'ADMIN';
+}
+
+/**
+ * The view a saved lesson is re-recorded in, and where it starts: the view most of its pages were in, since a
+ * lesson can start on a page of the other view (an admin page the employee view redirects away from, or the
+ * employee dashboard before admin work). When the start page belongs to the other view, the take starts on the
+ * lesson's first page of its own view instead.
+ */
+export function viewForLesson(steps, startRoute) {
+  const routes = (steps || []).map((s) => { try { return new URL(s.url).pathname; } catch { return s.route || null; } }).filter(Boolean);
+  const employee = routes.filter((r) => viewForRoute(r) === 'EMPLOYEE').length;
+  const view = routes.length && employee * 2 > routes.length ? 'EMPLOYEE' : 'ADMIN';
+  if (viewForRoute(startRoute) === view) return { view, startRoute };
+  return { view, startRoute: routes.find((r) => viewForRoute(r) === view && r !== '/employee/dashboard') || startRoute };
+}
+
+/**
+ * The localStorage writes that put the app in the `want` view: [[key, value]]. The app keeps an admin's chosen
+ * view per browser under "<user uuid>_role", JSON-encoded ("\"ADMIN\"" / "\"EMPLOYEE\""); only entries holding
+ * one of those two views are touched, and each is written back in the encoding it was found in.
+ */
+export function roleViewWrites(entries, want) {
+  const out = [];
+  for (const [key, raw] of entries || []) {
+    if (!/_role$/.test(key)) continue;
+    let view = raw, json = false;
+    try { const parsed = JSON.parse(raw); if (typeof parsed === 'string') { view = parsed; json = true; } } catch { /* stored raw */ }
+    if (view !== 'ADMIN' && view !== 'EMPLOYEE') continue;
+    if (view !== want) out.push([key, json ? JSON.stringify(want) : want]);
+  }
+  return out;
+}
+
 /** Persistent profile for one parallel AI slot (1-based). Created on first use; keeps its own sign-in. */
 export function slotProfileDir(slot) { return path.join(REPO_ROOT, `.browser-profile-ai-${slot}`); }
+
+/**
+ * Calls `onToast()` once for every toast the app shows (pantheon `[data-toast-id]`, sonner, Radix), on every page
+ * of the context. A confirmation ("1 correction saved") is gone within 4-7 seconds, often before the model has
+ * answered, so the recorder keeps a frame of each one for the take's closing slide.
+ */
+export async function installToastWatcher(ctx, onToast) {
+  await ctx.exposeBinding('__kbToastShown', () => { onToast(); });
+  await ctx.addInitScript(() => {
+    const SEL = '[data-toast-id],[data-sonner-toast],[data-radix-toast-viewport] > li';
+    const seen = new WeakSet();
+    const check = () => {
+      for (const el of document.querySelectorAll(SEL)) {
+        if (seen.has(el)) continue;
+        seen.add(el);
+        try { window.__kbToastShown?.(); } catch (_) { /* binding gone with the page */ }
+      }
+    };
+    const start = () => { check(); new MutationObserver(check).observe(document.documentElement, { childList: true, subtree: true }); };
+    if (document.documentElement) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
+  });
+}
 // Replaces the CLI's default coding-assistant system prompt for the per-turn decision call: the
 // model has no tools here and must answer in JSON, not try to "look" at anything itself.
 const DECISION_SYSTEM_PROMPT = 'You drive a real web browser by choosing exactly ONE action per turn from a list of visible elements the user message gives you. You have no tools and cannot inspect anything yourself — decide only from the message. Reply with exactly one JSON object as specified in the message and nothing else: no prose, no markdown fence.';
@@ -737,6 +812,7 @@ Rules:
 - Finish an open dialog before anything else: fill its fields, then click ITS primary button ("Save", "Create", "Submit"…). Never navigate away, open a menu, or click outside while a dialog holds text you typed — that discards it and you will only have to redo the whole sequence.
 - On list pages the real trigger is often INSIDE an item: if the button you expect isn't on the page, open the relevant row (role=row) or item first and look again. The "starting trigger" hint is a hint, not a guarantee of where it lives.
 - Wizards and forms often GATE later sections behind a required choice at the top (a "Select …" / "Search for …" field, a field marked *, a disabled "Next"). Satisfy that first: type into the search field, wait for the options to appear, click one — only then move on. Clicking section/step tabs does nothing until the gate is satisfied. Use realistic sample data (e.g. pick the first real option offered) — this is a staging demo.
+- When you pick a person (an owner, reviewer, approver, assignee or employee), choose one of the demo firm's people (an @antoninuscapital.com address, e.g. Optimus Prime or Atticus Finch) when one is offered, not a Hadrius staff member (an @hadrius.com address): assigning staff can email a real colleague, and the video shows whoever you pick.
 - Perform the workflow exactly ONCE. As soon as the final action has succeeded (a success message, a redirect, the new record visible in a list, or the form is gone), reply "done" — do not create a second record or start over.
 - "done" means the workflow's FINAL action (e.g. "Save test", "Submit", "Send") has succeeded and you saw the completion signal described in the source-code path. Stopping partway — because of blocked clicks, few turns left, or uncertainty — is NOT done: reply "fail" with the reason instead, so nothing half-finished gets saved as a walkthrough.
 - EXCEPTION — exports and other background jobs: once you've triggered an export/download that processes asynchronously (a "Preparing…"/"Export started" toast, a spinner or disabled Export button, a job that lands in an Exports/Export history list rather than downloading immediately), that step is already done. Do NOT click "wait" hoping it finishes, and do not try to download the finished file — it can take minutes and isn't the point of the walkthrough. If the toast or page offers a one-click way to see where it will land (e.g. "Open export", a link to Settings/Communications/Marketing > Exports), take that single navigation so the recording shows the destination — even mid-"Preparing"/"Processing" — then stop there. If this was the workflow's last step, reply "done" immediately once the export has been requested and (if a one-click link to it existed) you've followed it; never sit in a wait loop for a background job.
@@ -980,6 +1056,9 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       onLog(`✗ ${tenantBreach}`);
       ctx.close().catch(() => {});
     });
+    // Each toast the app shows gets a frame (see toastFrame below), for the take's closing slide.
+    let onToastShown = () => {};
+    await installToastWatcher(ctx, () => onToastShown());
     // Always record with the app sidebar expanded. Its collapsed state persists in localStorage
     // ("sidebar_minimized", packages/ui expanded_state_provider.tsx), and an icon-only sidebar hides
     // every subtab label (Risks, Controls, ...), so the agent concluded those pages didn't exist.
@@ -1023,6 +1102,22 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await ensureSignedIn(firstUse);
 
+    // The app keeps an admin's chosen view (admin or employee) per browser, so one take that switched to the
+    // employee view left every later take in this slot's profile there: admin pages redirected to the employee
+    // dashboard and People oversight lessons failed as "missing permissions". Each take starts in the view its
+    // lesson starts in. The app writes the key once it has loaded the user, hence the wait.
+    const view = item.view || viewForRoute(item.start_route);
+    const viewWrites = await page.waitForFunction(() => Object.keys(localStorage).some((k) => /_role$/.test(k)), null, { timeout: 8000 })
+      .then(() => page.evaluate(() => Object.entries(localStorage)))
+      .then((entries) => roleViewWrites(entries, view))
+      .catch(() => []);
+    if (viewWrites.length) {
+      await page.evaluate((writes) => { for (const [k, v] of writes) localStorage.setItem(k, v); }, viewWrites);
+      onLog(`  (this browser was left in the ${view === 'ADMIN' ? 'employee' : 'admin'} view by an earlier take; starting in the ${view.toLowerCase()} view)`);
+      await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await ensureSignedIn(false);
+    }
+
     let steps = [], history = [], finished = false, failReason = null, lastUrl = page.url();
     let guidance = plan; // source-derived plan (pre-generated by the bridge, or built below), shown to the model every turn
     let consults = 0;
@@ -1034,35 +1129,47 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
     fs.mkdirSync(recordingDir, { recursive: true });
 
-    const captureSlide = async (step) => {
+    // A clean screenshot of the page: the HUD and cursor are hidden while it is taken. One at a time, so a toast's
+    // frame taken alongside a step's slide cannot put the HUD back mid-screenshot.
+    const shoot = async () => {
+      const showHud = (display) => page.evaluate((d) => {
+        const hud = document.getElementById('__hadrius_hud__');
+        const overlay = document.getElementById('__hadrius_spotlight_overlay__');
+        if (hud) hud.style.display = d;
+        if (overlay) overlay.style.display = d;
+      }, display).catch(() => {});
+      await showHud('none');
+      try { return await page.screenshot({ timeout: 5000 }); } finally { await showHud(''); }
+    };
+    let shooting = Promise.resolve();
+    const grabFrame = () => { const run = shooting.then(shoot, shoot); shooting = run.catch(() => {}); return run; };
+
+    // `frame`: a screenshot taken earlier (see settledFrame) instead of one taken now.
+    const captureSlide = async (step, frame = null) => {
       try {
         const captureId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
         const filename = `step_${captureId}.png`;
-        const filePath = path.join(recordingDir, filename);
-
-        // Hide HUD and cursor briefly while taking the clean screenshot of the page
-        await page.evaluate(() => {
-          const hud = document.getElementById('__hadrius_hud__');
-          const overlay = document.getElementById('__hadrius_spotlight_overlay__');
-          if (hud) hud.style.display = 'none';
-          if (overlay) overlay.style.display = 'none';
-        }).catch(() => {});
-
-        await page.screenshot({ path: filePath, timeout: 5000 });
-
-        // Restore HUD and cursor
-        await page.evaluate(() => {
-          const hud = document.getElementById('__hadrius_hud__');
-          const overlay = document.getElementById('__hadrius_spotlight_overlay__');
-          if (hud) hud.style.display = '';
-          if (overlay) overlay.style.display = '';
-        }).catch(() => {});
-
+        fs.writeFileSync(path.join(recordingDir, filename), frame || await grabFrame());
         step.captureId = captureId;
         step.media = { pre: filename };
       } catch (e) {
         onLog(`  (slide capture warning: ${e.message})`);
       }
+    };
+    // The page right after the last action settled, for the closing slide (endFrame). It is taken before the
+    // model is asked, because by the time it has answered "done" a success toast ("1 correction saved") is gone.
+    let settledFrame = null;
+    // The latest toast, for the closing slide: kept with the number of actions taken when it showed, and used only
+    // when no action came after it. Taken once it has slid in (360ms).
+    let toastFrame = null;
+    let toastGrab = Promise.resolve(); // the frame of the toast that showed last, while it is being taken
+    onToastShown = () => {
+      if (!endFrame) return;
+      const actions = steps.filter((s) => s.action !== 'navigate').length;
+      toastGrab = new Promise((resolve) => setTimeout(resolve, 450))
+        .then(() => grabFrame())
+        .then((buf) => { if (buf) toastFrame = { buf, url: page.url(), actions }; })
+        .catch(() => {});
     };
 
     const pushStep = async (snap, fields) => {
@@ -1094,12 +1201,14 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     // gives up on can be retried once with better guidance from the source code.
     const runAttempt = async () => {
     steps = []; history = []; finished = false; failReason = null; lastUrl = page.url(); consults = 0; progress = reshootProgress();
+    toastFrame = null;
     // Elements proven dead this attempt: a plain click AND a keyboard activation both changed
     // nothing. Without this the guard alternated refuse -> keyboard retry -> refuse forever — a
     // Radix radio the model was fixated on ate 12 turns of a 45-turn run that way.
     const blockedSigs = new Set();
     let prevSnap = null;
     let limitWaits = 0; // 30-second waits spent on a Claude usage limit during this attempt
+    let doneRefused = false; // "done" with a dialog open is refused once per attempt (openDialogDoneReason)
 
     // Capture Step 0 initial navigate slide
     const initialStep = {
@@ -1116,6 +1225,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     steps.push(initialStep);
     for (let turn = 0; turn < maxSteps; turn++) {
       throwIfCancelled();
+      settledFrame = null;
       const pauseStatus = await handleTakeOverPause(page, onLog);
       if (pauseStatus === 'finish') { finished = true; break; }
       if (pauseStatus === 'skip') {
@@ -1151,6 +1261,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       const currentPlanStep = Math.min(turn + 1, totalPlanSteps);
       await ensureVisualHud(page, { title: item.title, stepNum: currentPlanStep, totalSteps: totalPlanSteps });
       const snap = await page.evaluate(SNAPSHOT_FN);
+      if (endFrame && turn > 0) {
+        const buf = await grabFrame().catch(() => null);
+        settledFrame = buf ? { buf, url: snap.url, title: snap.title } : null;
+      }
       // Ground the previous action's history entry in what actually changed on the page.
       const last = history[history.length - 1];
       if (prevSnap && last && !last.error && last.action !== 'wait' && !last.outcome) last.outcome = describeOutcome(prevSnap, snap);
@@ -1216,6 +1330,18 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         rsMark = { reshootOf: rsStep ? gate.from : -1 };
       }
 
+      // The take ends on its finished state (endFrame): "done" with a dialog still open usually means the final
+      // confirm, save or upload never happened. A re-shoot ends where its lesson did, and a rehearsal never
+      // presses the final button, so neither is held to this.
+      if (decision.action === 'done' && !reshooting() && !rehearsal && !doneRefused) {
+        const open = openDialogDoneReason(snap.elements);
+        if (open) {
+          doneRefused = true;
+          history.push({ action: 'done', error: open });
+          onLog(`  ! ${open.slice(0, 180)}`);
+          continue;
+        }
+      }
       if (decision.action === 'done') { finished = true; break; }
       if (decision.action === 'fail') { failReason = decision.reason || 'model could not complete the workflow'; break; }
 
@@ -1565,12 +1691,19 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
 
     // Each step's slide shows the page BEFORE its action, so the result of the last action is on no
     // slide. With `endFrame` the take closes on one more slide of the finished state (a "view" step,
-    // marked endFrame so the caller can tell it from a recorded action).
+    // marked endFrame so the caller can tell it from a recorded action): the page as the model saw it when
+    // it answered "done", taken before its answer so a success toast is still on it.
     if (endFrame) {
       await clearSpotlight(page).catch(() => {});
-      await page.waitForTimeout(1500).catch(() => {});
-      const endStep = { index: steps.length, action: 'view', target: null, url: page.url(), route: pathOf(page.url()), title: '', ts: Date.now(), capture: true, endFrame: true };
-      await captureSlide(endStep);
+      // A toast that showed after the final action is the clearest confirmation there is; otherwise the page as the
+      // model saw it when it answered "done".
+      await toastGrab;
+      const actionsNow = steps.filter((s) => s.action !== 'navigate').length;
+      const closing = toastFrame && toastFrame.actions === actionsNow ? toastFrame : settledFrame;
+      if (!closing) await page.waitForTimeout(1500).catch(() => {});
+      const endUrl = closing?.url || page.url();
+      const endStep = { index: steps.length, action: 'view', target: null, url: endUrl, route: pathOf(endUrl), title: '', ts: Date.now(), capture: true, endFrame: true };
+      await captureSlide(endStep, closing?.buf || null);
       if (endStep.media?.pre) steps.push(endStep);
     }
 

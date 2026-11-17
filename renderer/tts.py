@@ -10,7 +10,7 @@ an unchanged one never calls the TTS provider again.
 CLI (used by the bridge):  python renderer/tts.py "<text>"  ->  prints {"path": ..., "provider": ...}
 """
 from __future__ import annotations
-import asyncio, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.request
+import asyncio, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,7 +37,7 @@ def env_from_dotenv(name):
 VOICESTUDIO_URL = env_from_dotenv('VOICESTUDIO_URL') or 'http://127.0.0.1:3900'
 VOICESTUDIO_VOICE = env_from_dotenv('VOICESTUDIO_VOICE_ID') or '4bfebca6'
 ELEVEN_KEY = env_from_dotenv('ELEVENLABS_API_KEY')
-ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'ZoiZ8fuDWInAcwPXaVeq'  # "Josh", the team default
+ELEVEN_VOICE = env_from_dotenv('ELEVENLABS_VOICE_ID') or 'vTckqxNLVCsRq5sZsOrw'  # "Elena", the team default: every published video
 MAC_VOICE = env_from_dotenv('MAC_TTS_VOICE') or 'Samantha'
 
 # NARRATION_VOICE=<provider>:<voice> is the render bar's voice pick (the bridge sets it per render):
@@ -177,6 +177,23 @@ def normalize_pronunciation(text: str) -> str:
     return text
 
 
+# Attempts per provider for a failure that passes on its own (see transient_tts_error).
+TRANSIENT_TRIES = 3
+
+
+def transient_tts_error(e):
+    """A failure worth retrying on the same provider: a timeout, a dropped connection, a busy or erroring server."""
+    code = getattr(e, 'code', None)
+    if isinstance(code, int): return code in (408, 409, 425, 429) or code >= 500
+    return isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError)) or (isinstance(e, OSError) and e.errno in (54, 60, 61, 65))
+
+
+def strict_narration():
+    """NARRATION_STRICT=1: only the picked voice may speak. Published videos keep one narrator, so a line the
+    picked voice cannot say fails the render instead of falling back to another voice."""
+    return (env_from_dotenv('NARRATION_STRICT') or '').strip().lower() in ('1', 'true', 'yes')
+
+
 class Narrator:
     """One per render. Provider order: ElevenLabs, then VoiceStudio, then edge-tts.
 
@@ -243,9 +260,20 @@ class Narrator:
         return live or chain[-1:]
 
     def speak(self, text):
-        """Path to an mp3 of `text`, generating it only if this provider has never said it before."""
+        """Path to an mp3 of `text`, generating it only if this provider has never said it before.
+
+        A passing failure (a timeout, a dropped connection, a busy or erroring server) is retried on the same
+        provider before the next one is tried: one network blip used to put a line in another voice mid-video.
+        With NARRATION_STRICT=1 (the published-video path) only the picked provider may speak: a line it cannot
+        say fails the render instead of being said in another voice."""
         text = normalize_pronunciation(text)
         chain = self.providers()
+        strict = strict_narration()
+        if strict:
+            if PICKED_PROVIDER and chain[0][0] != PICKED_PROVIDER:
+                raise RuntimeError(f'strict narration: the picked voice ({PICKED_PROVIDER}) is not available: '
+                                   + (self.skipped.get(PICKED_PROVIDER) or 'not in the provider chain'))
+            chain = chain[:1]
         # A cached line from the preferred provider always wins. A fallback provider's cached copy is
         # deliberately NOT reused here — otherwise one quota blip would lock a line into the fallback
         # voice forever even after the preferred provider is back.
@@ -264,27 +292,34 @@ class Narrator:
                 self.cache_hits += 1
                 return dest, tag
             part = dest.with_suffix('.part')
-            try:
-                synth(text, part)
-                if not part.exists() or part.stat().st_size == 0:
-                    raise RuntimeError('provider returned no audio')
-                part.replace(dest)  # atomic — an interrupted render never leaves a half-written hit
-                self.generated += 1
-                if i > 0: self.used_fallback = True
-                return dest, tag
-            except Exception as e:
-                detail = getattr(e, 'read', lambda: b'')()
-                detail = (': ' + detail[:160].decode(errors='replace')) if detail else ''
-                permanent = getattr(e, 'code', None) in (401, 402, 403, 429)
-                if permanent:
-                    self.dead.add(tag)
-                    self.skipped[tag] = f'{tag} failed earlier in this render: {e}{detail}'
-                print(f"  ⚠ {tag} TTS failed ({e}{detail}){' — skipping it for the rest of this render' if permanent else ''}, trying next provider", file=sys.stderr)
-                errors.append(f'{tag}: {e}{detail}')
-                part.unlink(missing_ok=True)
+            for attempt in range(TRANSIENT_TRIES):
+                try:
+                    synth(text, part)
+                    if not part.exists() or part.stat().st_size == 0:
+                        raise RuntimeError('provider returned no audio')
+                    part.replace(dest)  # atomic — an interrupted render never leaves a half-written hit
+                    self.generated += 1
+                    if i > 0: self.used_fallback = True
+                    return dest, tag
+                except Exception as e:
+                    part.unlink(missing_ok=True)
+                    detail = getattr(e, 'read', lambda: b'')()
+                    detail = (': ' + detail[:160].decode(errors='replace')) if detail else ''
+                    if transient_tts_error(e) and attempt < TRANSIENT_TRIES - 1:
+                        print(f"  ⚠ {tag} TTS failed ({e}{detail}), retrying the same voice", file=sys.stderr)
+                        time.sleep(3 * (attempt + 1))
+                        continue
+                    permanent = getattr(e, 'code', None) in (401, 402, 403, 429)
+                    if permanent:
+                        self.dead.add(tag)
+                        self.skipped[tag] = f'{tag} failed earlier in this render: {e}{detail}'
+                    print(f"  ⚠ {tag} TTS failed ({e}{detail}){' — skipping it for the rest of this render' if permanent else ''}"
+                          f"{', and this render must keep its voice' if strict else ', trying next provider'}", file=sys.stderr)
+                    errors.append(f'{tag}: {e}{detail}')
+                    break
         tried = {t for t, _, _ in chain}
         reasons = [r for t, r in self.skipped.items() if t not in tried] + errors
-        raise RuntimeError('every TTS provider failed: ' + ' | '.join(reasons))
+        raise RuntimeError(('strict narration: the picked voice failed: ' if strict else 'every TTS provider failed: ') + ' | '.join(reasons))
 
     def describe(self):
         provider = {'el': f'ElevenLabs (voice {ELEVEN_VOICE}, {ELEVEN_MODEL})', 'vs': f'VoiceStudio ({self.vs_voice})',

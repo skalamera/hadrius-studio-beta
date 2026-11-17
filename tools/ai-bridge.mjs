@@ -11,7 +11,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding, CLAUDE_NOT_CONNECTED_MSG, CLAUDE_MISSING_MSG, isClaudeAuthError, claudeConnectionError } from './coverage-scan.mjs';
+import { ALLOWED_MODULES, canonicalModule, inferModuleFromScript, claudeEnv, extractJson, GROUNDING_CONTRACT, assessGrounding, CLAUDE_NOT_CONNECTED_MSG, CLAUDE_MISSING_MSG, isClaudeAuthError, claudeConnectionError, runCodex, runAgy } from './coverage-scan.mjs';
+import { claudeThenCodex } from './model-fallback.mjs';
 import { pylonGetArticle, pylonUpdateArticleBody, pylonUploadAttachment, pylonCreateArticle, pylonCollectionForModule, pylonListArticles, pylonArticleUrl, PYLON_MODULE_COLLECTION_MAP, PYLON_KNOWLEDGE_BASE_ID, PYLON_COLLECTION_ID, PYLON_OTHER_COLLECTION_ID, checkPylon } from './pylon.mjs';
 import { runPrWatch, FRONTEND_REPO } from './pr-watch.mjs';
 import { googleDriveAuthorizedFetch, googleDriveConfigured, googleDriveUploadVideo, checkGoogleDrive, googleDriveProcessingStatus, googleDriveUploadRecording, googleDriveDownloadRecording, googleDriveUploadDeck, googleDriveListDeckFiles, googleDriveFetchFile, googleDriveDeleteDeck, SLIDE_DECKS_FOLDER_ID } from './gdrive.mjs';
@@ -839,7 +840,10 @@ async function runRepairJob(key, job, slot) {
     + '\nPlan against the CURRENT code. Where an old step\'s control is gone, find what replaced it; keep the rest of the workflow the same.';
   const previous = (old.steps || []).map((s, i) => `${i + 1}. ${s.action} ${s.target?.name || s.target?.text || s.value || s.route || ''}${s.narration ? ` — "${s.narration}"` : ''}`).join('\n');
 
-  const { runAiRecord, planFromCodebase, slotProfileDir } = await loadAiRecord();
+  const { runAiRecord, planFromCodebase, slotProfileDir, viewForLesson } = await loadAiRecord();
+  // Re-record in the view (admin or employee) most of the lesson's pages were in, from a start page in that view:
+  // the app keeps the view per browser, and the wrong one redirects every page of the lesson away.
+  Object.assign(item, (({ view, startRoute }) => ({ view, start_route: startRoute }))(viewForLesson(old.steps, item.start_route)));
   let plan;
   if (reshoot) {
     // Re-shoot: follow the saved recording's own steps instead of re-planning the workflow, so the
@@ -855,10 +859,11 @@ async function runRepairJob(key, job, slot) {
   }
   signal.throwIfAborted();
   log('Re-recording in Hadrius Academy in prod…');
-  const { script: fresh } = await runAiRecord(item, { onLog: log, signal, profileDir: slotProfileDir(slot), plan, endFrame: !!reshoot });
+  const { script: fresh } = await runAiRecord(item, { onLog: log, signal, profileDir: slotProfileDir(slot), plan, endFrame: true });
   signal.throwIfAborted();
-  // A re-shoot ends on one more slide of the finished state. It is a slide to show a closing line on,
-  // not a step: keep it out of narration writing and pairing.
+  // Every take ends on one more slide of the finished state, so the result of the last action is on screen
+  // (each step's slide shows the page BEFORE its action). A re-shoot keeps it out of narration writing and
+  // pairing: it is a slide for the lesson's own closing line. A fresh re-record narrates it as the closing beat.
   const endStep = reshoot && fresh.steps.at(-1)?.endFrame ? fresh.steps.pop() : null;
 
   fresh.name = old.name;
@@ -1018,6 +1023,7 @@ function pumpAiQueue() {
           onLog: (m) => aiLog(key, m), signal, profileDir: slotProfileDir(slot),
           plan: plans[key]?.plan || null, // prepared in the background when the workflow appeared
           onPlan: (p) => setPlan(key, p, job.item?.title), // keep revisions / consult answers for next time
+          endFrame: true, // close on the finished state, not on the last click
         });
         // Cancel may have landed during the final turn — never publish a run the user stopped.
         signal.throwIfAborted();
@@ -1259,7 +1265,20 @@ function driftPrTriggerTick() {
   else console.log(`[drift-weekly] PR early check started for ${batch.names.join(', ')} -> ${r.run.outDir}`);
 }
 
+/** The bridge's own prompts (narration, translations, auto-heal, plans): Claude first, with Codex as the fallback
+ *  (tools/model-fallback.mjs). Codex gets the same read-only codebase MCP the Claude call has. */
 async function runClaudeCli(prompt) {
+  const provider = String(process.env.KBS_AI_PROVIDER || 'claude').toLowerCase();
+  if (provider === 'agy' || provider === 'gemini') return runAgy(prompt, { timeout: 300000 });
+  if (provider === 'codex') return runCodex(prompt, { timeout: 300000 });
+  return claudeThenCodex.run(() => runClaudeOnlyCli(prompt), () => runCodex(prompt, { timeout: 300000 }), {
+    onFallback: (why) => console.warn(`[model] Claude failed (${why.replace(/\s+/g, ' ').slice(0, 200)}); answering with Codex`),
+    third: () => runAgy(prompt, { timeout: 300000 }),
+    onThirdFallback: (why) => console.warn(`[model] Codex failed (${why.replace(/\s+/g, ' ').slice(0, 200)}); answering with Agy`),
+  });
+}
+
+async function runClaudeOnlyCli(prompt) {
   await ensureClaudeConnected();
   return new Promise((resolve, reject) => {
     // The hadrius-codebase MCP server (added by setup.sh via `claude mcp add`) lets the model
@@ -1454,6 +1473,7 @@ Return ONLY a JSON object, no markdown fence, no other text:
 function narrationStepLines(steps) {
   return steps.map((s, i) => {
     const t = s.target || {};
+    if (s.endFrame) return `${i + 1}. [result] shows the finished state after the last action (nothing is clicked; the closing line goes here)`;
     if (s.action === 'navigate') return `${i + 1}. [navigate] arrives on route ${s.route || s.value}`;
     if (s.action === 'press') return `${i + 1}. [press ${s.key}]`;
     if (s.action === 'type') return `${i + 1}. [type] enters "${s.value}" into ${t.label || t.placeholder || t.name || 'a field'}${t.heading ? ` (section: ${t.heading})` : ''}`;
@@ -1892,10 +1912,11 @@ async function voiceStudioProfiles() {
     return new Map((d.voices || []).filter((x) => x.type === 'profile').map((x) => [String(x.name).toLowerCase(), x.voice_id]));
   } catch { return null; }
 }
-// The team's standard narration voice: every user's picker starts here, and any render that arrives
-// without a pick (Auto-record batches, re-renders of older scripts) uses it too.
-const DEFAULT_NARRATION_VOICE = 'el:ZoiZ8fuDWInAcwPXaVeq'; // Josh
-/** Josh when this machine can use ElevenLabs; otherwise VoiceStudio, then the first usable voice. */
+// The team's standard narration voice: every published video is narrated by Elena. Every user's picker
+// starts here, and any render that arrives without a pick (Auto-record batches, re-renders of older
+// scripts) uses it too.
+const DEFAULT_NARRATION_VOICE = 'el:vTckqxNLVCsRq5sZsOrw'; // Elena
+/** Elena when this machine can use ElevenLabs; otherwise VoiceStudio, then the first usable voice. */
 function defaultNarrationVoice(voices) {
   const ok = (v) => voices.find((x) => x.value === v && x.available);
   return (ok(DEFAULT_NARRATION_VOICE) || voices.find((x) => x.vsName === 'The Upbeat' && x.available) || voices.find((x) => x.available) || voices[0]).value;

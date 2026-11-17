@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { claudeThenCodex } from './model-fallback.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE_FILE = path.join(REPO_ROOT, '.coverage-scan-cache.json');
@@ -259,9 +260,10 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
 }
 
 /**
- * Shared model entry point for the Studio scan and AI recorder. Defaults to Claude for existing callers;
- * `KBS_AI_PROVIDER=codex` selects the signed-in OpenAI Codex CLI. The Codex path is read-only, ephemeral,
- * and exposes only the read-only codebase MCP for planning. `opts.onMeta` reports the actual model and usage.
+ * Shared model entry point for the Studio scan, the AI recorder and the weekly drift run: Claude first, with the
+ * signed-in OpenAI Codex CLI as the fallback (tools/model-fallback.mjs). `KBS_AI_PROVIDER=codex` uses Codex only.
+ * The Codex path is read-only, ephemeral, and exposes only the read-only codebase MCP for planning.
+ * `opts.onMeta` reports the model that actually answered, and its usage.
  */
 const aiProvider = () => String(process.env.KBS_AI_PROVIDER || 'claude').toLowerCase();
 export const codexModel = (kind = 'plan') => process.env[`KBS_CODEX_${kind.toUpperCase()}_MODEL`] || process.env.KBS_CODEX_MODEL || 'gpt-6.1-sol';
@@ -324,9 +326,55 @@ function runCodexCli(prompt, { timeout = 600000, noTools = false, systemPrompt =
   });
 }
 
-export async function runClaude(prompt, opts = {}) {
-  return aiProvider() === 'codex' ? runCodexCli(prompt, opts) : runClaudeCli(prompt, opts);
+export const agyModel = () => process.env.KBS_AGY_MODEL || 'gemini-4-hydrogen-medium';
+export const agyEffort = () => process.env.KBS_AGY_EFFORT || 'medium';
+
+/** Run a prompt through the Antigravity CLI (`agy`) in non-interactive print mode. */
+function runAgyCli(prompt, { timeout = 600000, systemPrompt = null, jsonSchema = null, signal, onMeta } = {}) {
+  return new Promise((resolve, reject) => {
+    const cli = process.env.KBS_AGY_CLI || path.join(process.env.HOME || '', '.gemini', 'bin', 'agy');
+    const selectedModel = agyModel();
+    const effort = agyEffort();
+    let fullPrompt = systemPrompt ? [systemPrompt, prompt].join(String.fromCharCode(10, 10)) : prompt;
+    if (jsonSchema) {
+      const schemaStr = typeof jsonSchema === 'string' ? jsonSchema : JSON.stringify(jsonSchema);
+      fullPrompt += `${String.fromCharCode(10, 10)}Return ONLY valid JSON matching this schema:${String.fromCharCode(10)}${schemaStr}`;
+    }
+    const args = ['-p', fullPrompt, '--model', selectedModel, '--effort', effort, '--output-format', 'text', '--disable-slash-commands'];
+    const env = { ...process.env };
+    for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']) delete env[k];
+    const child = execFile(cli, args, { maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env }, (err, stdout, stderr) => {
+      clearWatchdog();
+      if (err?.name === 'AbortError') return reject(new Error('cancelled'));
+      const answer = String(stdout || '').trim();
+      const errorText = String(stderr || err?.message || 'CLI failed').split(String.fromCharCode(10)).join(' ').split(String.fromCharCode(13)).join(' ');
+      if (err) return reject(new Error(`agy: ${errorText.slice(0, 500)}`));
+      if (!answer) return reject(new Error(`agy returned no final message${stderr ? `: ${errorText.slice(0, 300)}` : ''}`));
+      onMeta?.({ model: selectedModel, turns: 1, costUsd: null, usage: null });
+      resolve(answer);
+    });
+    const clearWatchdog = killProcessGroupSoon(child, timeout, signal);
+    child.stdin?.end();
+  });
 }
+
+export async function runClaude(prompt, opts = {}) {
+  const provider = aiProvider();
+  if (provider === 'agy' || provider === 'gemini') return runAgyCli(prompt, opts);
+  if (provider === 'codex') return runCodexCli(prompt, opts);
+  return claudeThenCodex.run(() => runClaudeCli(prompt, opts), () => runCodexCli(prompt, opts), {
+    signal: opts.signal,
+    onFallback: (why) => console.warn(`[model] Claude failed (${why.replace(/\s+/g, ' ').slice(0, 200)}); answering with Codex`),
+    third: () => runAgyCli(prompt, opts),
+    onThirdFallback: (why) => console.warn(`[model] Codex failed (${why.replace(/\s+/g, ' ').slice(0, 200)}); answering with Agy (${agyModel()})`),
+  });
+}
+
+/** The Codex CLI on its own: the fallback for the bridge's own Claude calls (narration, translations, auto-heal). */
+export function runCodex(prompt, opts = {}) { return runCodexCli(prompt, opts); }
+
+/** The Antigravity CLI (`agy`) on its own: second fallback after Codex (or primary when KBS_AI_PROVIDER=agy). */
+export function runAgy(prompt, opts = {}) { return runAgyCli(prompt, opts); }
 
 /** Index of the bracket that closes the JSON object/array opening at s[start], or -1 if it never closes or a
  *  closer doesn't match. Brackets inside strings don't count. */
