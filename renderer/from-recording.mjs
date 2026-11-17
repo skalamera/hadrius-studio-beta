@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertRecordingIntegrity } from '../tools/recording-integrity.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..');
@@ -20,6 +21,7 @@ if (!recordingId) { console.error('this script has no recording.id — render it
 const recDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
 if (!fs.existsSync(recDir)) { console.error(`no captured slides at ${recDir} — render.sh should have fallen back to replay.mjs; something called from-recording.mjs directly`); process.exit(2); }
 
+assertRecordingIntegrity(script, recDir);
 fs.mkdirSync(path.join(outDir, 'slides'), { recursive: true });
 
 // Width/height live in the IHDR chunk, always first: 8-byte signature, 4-byte length, 4-byte "IHDR".

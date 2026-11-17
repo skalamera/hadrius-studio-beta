@@ -26,6 +26,7 @@ import { prepareSubmissions, dedupeAgainst, humanSummary, blocksToText } from '.
 import { previewBaseIsLive } from './drift/live-check.mjs';
 import { createWeeklyRunner, createEarlyCheckQueue, readAllowlist, makeExcluder } from './drift/weekly-runner.mjs';
 import { EXTRA_RENDER_MODULES, explicitModule, resolveModuleSync } from './drift/modules.mjs';
+import { assertRecordingIntegrity } from './recording-integrity.mjs';
 import { normalizeLanguage, translationStatus, translationProblems, translationRequest, buildTranslationPrompt, parseTranslationReply, applyTranslation, buildLocalizedScript, localizedName, driveTitleFor, renderModeFor, allowsPylon, carryOverTranslations } from './translation.mjs';
 
 const PORT = process.env.KBS_BRIDGE_PORT || 8787;
@@ -3905,12 +3906,24 @@ const server = http.createServer(async (req, res) => {
           if (savedVoice) script.voice = savedVoice; else delete script.voice;
         }
 
-        // Check if a valid render already exists for fast-path Pylon article creation
+        // Validate before saving or taking any publish/cache shortcut. Fetch only genuine
+        // recording assets; missing frames must never be synthesized from prior renders.
+        const recordingId = String(script.recording?.id || '').replace(/[^\w-]+/g, '');
+        if (!recordingId) throw new Error('script has no live recording id — make a new recording before rendering');
+        const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
+        fs.mkdirSync(recordingDir, { recursive: true });
+        try { await fetchRecordingFromDrive(script); }
+        catch (e) { console.warn(`[recordings] Drive download for "${name}" failed: ${String(e?.message || e)}`); }
+        const captureDigest = assertRecordingIntegrity(script, recordingDir);
+        const keyWithCaptures = s => crypto.createHash('sha256').update(`${renderKeyForScript(s)}:${captureDigest}`).digest('hex');
+
+        // An article-only publish may reuse only a render of this exact script and captures.
         let hasValidExistingRender = false;
         if (fs.existsSync(reportPath)) {
           try {
             const r = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-            if (Array.isArray(r.slides) && r.slides.length > 0) {
+            const priorKey = JSON.parse(fs.readFileSync(path.join(outDir, 'render-key.json'), 'utf8')).key;
+            if (Array.isArray(r.slides) && r.slides.length > 0 && priorKey === keyWithCaptures(script)) {
               hasValidExistingRender = true;
             }
           } catch (_) {}
@@ -4003,33 +4016,6 @@ const server = http.createServer(async (req, res) => {
           fs.mkdirSync(path.join(REPO_ROOT, 'scripts'), { recursive: true });
           fs.writeFileSync(scriptPath, JSON.stringify(script, null, 2));
         }
-        // Studio Lite renders exclusively from screenshots captured during the user's live session.
-        // Never launch a browser, authenticate, replay steps, or manufacture application state here.
-        const recordingId = String(script.recording?.id || '').replace(/[^\w-]+/g, '');
-        if (!recordingId) throw new Error('script has no live recording id — make a new recording before rendering');
-        const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
-        fs.mkdirSync(recordingDir, { recursive: true });
-        // Someone else's recording: its screenshots are in Drive, not on this machine.
-        try {
-          const got = await fetchRecordingFromDrive(script);
-          if (got) console.log(`[recordings] downloaded ${got} screenshot(s) for "${name}" from Drive`);
-        } catch (e) { console.warn(`[recordings] Drive download for "${name}" failed: ${String(e?.message || e)}`); }
-
-        // If slides are missing from recordingDir, check if they exist in out/<name>/slides
-        const priorOutSlides = path.join(REPO_ROOT, 'out', name, 'slides');
-        if (fs.existsSync(priorOutSlides)) {
-          const files = fs.readdirSync(priorOutSlides);
-          for (let i = 0; i < script.steps.length; i++) {
-            const step = script.steps[i];
-            const slideFile = step.media?.pre ? path.basename(step.media.pre) : null;
-            if (slideFile && !fs.existsSync(path.join(recordingDir, slideFile))) {
-              const candidateSlide = `slide_${String(i + 1).padStart(2, '0')}.png`;
-              if (files.includes(candidateSlide)) {
-                try { fs.copyFileSync(path.join(priorOutSlides, candidateSlide), path.join(recordingDir, slideFile)); } catch (_) {}
-              }
-            }
-          }
-        }
 
         const renderable = script.steps.filter((step) => step.capture !== false && step.media?.pre);
         if (!renderable.length) throw new Error('the recording has no captured slides');
@@ -4049,38 +4035,12 @@ const server = http.createServer(async (req, res) => {
         const renderOutDir = path.join(REPO_ROOT, 'out', renderName);
         const publishOpts = { language, baseName: name };
 
-        // Auto-heal missing slides: if any slide capture was missed (e.g. rapid clicks or page transition),
-        // reuse the nearest captured slide so the video and narration render smoothly without failing.
-        let lastAvailableSlide = null;
-        for (const step of script.steps) {
-          if (step.capture === false || !step.media?.pre) continue;
-          const slideFile = path.basename(step.media.pre);
-          const slidePath = path.join(recordingDir, slideFile);
-          if (fs.existsSync(slidePath)) {
-            lastAvailableSlide = slidePath;
-          } else if (lastAvailableSlide) {
-            try { fs.copyFileSync(lastAvailableSlide, slidePath); } catch (_) {}
-          }
-        }
-        if (lastAvailableSlide) {
-          for (const step of script.steps) {
-            if (step.capture === false || !step.media?.pre) continue;
-            const slideFile = path.basename(step.media.pre);
-            const slidePath = path.join(recordingDir, slideFile);
-            if (!fs.existsSync(slidePath)) {
-              try { fs.copyFileSync(lastAvailableSlide, slidePath); } catch (_) {}
-            }
-          }
-        }
-
-        const stillMissing = renderable.filter((step) => !fs.existsSync(path.join(recordingDir, path.basename(step.media.pre))));
-        if (stillMissing.length === renderable.length) throw new Error('No captured slides were saved for this recording — make a new recording before rendering.');
 
         const prelude = [`Using ${renderable.length} slides captured during the live recording — no replay.`];
         if (translated) prelude.push(`Rendering the ${language === 'es' ? 'Spanish' : language} version into out/${renderName} (no Pylon article).`);
         if (renderSaveWarning) prelude.unshift(renderSaveWarning);
         const renderMode = mode || 'video';
-        const renderKey = renderKeyForScript(renderScript);
+        const renderKey = keyWithCaptures(renderScript);
 
         // Unchanged since the last render (typically the automatic editor preview)? The MP4 on disk
         // is already exactly what this render would produce — reuse it and go straight to publishing.

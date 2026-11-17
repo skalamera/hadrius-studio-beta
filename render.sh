@@ -8,6 +8,7 @@ N=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['name'])" "$
 RID=$(python3 -c "import json,sys; print((json.load(open(sys.argv[1])).get('recording') or {}).get('id',''))" "$S")
 [ -n "$RID" ] || { echo "script has no live recording id" >&2; exit 2; }
 [ -d "out/_recordings/$RID" ] || { echo "captured slides not found for recording $RID" >&2; exit 2; }
+node tools/recording-integrity.mjs "$S"
 rm -rf "out/$N"
 node renderer/from-recording.mjs "$S" "out/$N"
 PYTHON=.venv/bin/python
