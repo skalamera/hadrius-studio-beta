@@ -89,7 +89,9 @@ test('CRIT-17: a resumed owner run (no --session) releases the CDP connection an
     fs.writeFileSync(path.join(run, 'summary.json'), JSON.stringify({ schema: 1, startedAt: new Date().toISOString(), outDir: run, dryRun: false, names: [name], captureSession: 'owner', videos: [] }));
     const env = { PATH: process.env.PATH, HOME: home, TMPDIR: os.tmpdir(), DRIFT_OWNER_SOURCE: 'chrome',
       PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright') };
-    child = spawn(process.execPath, [path.join(REPO, 'tools/drift/weekly.mjs'), '--once', '--names', name, '--resume', run, '--no-judge', '--no-auto-repair', '--timeout-min', '3'],
+    // --session-wait-min 0: the stand-in Chrome has no Hadrius sign-in, so the run stops at once (resumable) instead of
+    // waiting for one; the exit still has to release the connection.
+    child = spawn(process.execPath, [path.join(REPO, 'tools/drift/weekly.mjs'), '--once', '--names', name, '--resume', run, '--no-judge', '--no-auto-repair', '--timeout-min', '3', '--session-wait-min', '0'],
       { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let err = ''; child.stderr.on('data', (d) => { err += d; });
     const exited = await new Promise((r) => { const t = setTimeout(() => r(false), 120000); child.on('exit', () => { clearTimeout(t); r(true); }); });
@@ -97,5 +99,8 @@ test('CRIT-17: a resumed owner run (no --session) releases the CDP connection an
     const summary = JSON.parse(fs.readFileSync(path.join(run, 'summary.json'), 'utf8'));
     assert.equal(summary.captureSession, 'owner', 'resume kept owner mode from summary.json');
     assert.match(err, /owner session warm-up/, 'the run did open the Chrome connection (warm-up borrow attempted)');
+    // A sign-in that is not there stops the run for a resume (exit 75); the video is not marked failed.
+    assert.equal(child.exitCode, 75, err.slice(-800));
+    assert.equal(summary.stopped?.reason, 'session_lost'); assert.deepEqual(summary.videos, []);
   } finally { if (child && child.exitCode === null) child.kill('SIGKILL'); await op.stop(); fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(path.dirname(run), { recursive: true, force: true }); }
 });

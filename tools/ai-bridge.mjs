@@ -26,6 +26,7 @@ import { prepareSubmissions, dedupeAgainst, humanSummary, blocksToText } from '.
 import { previewBaseIsLive } from './drift/live-check.mjs';
 import { createWeeklyRunner, createEarlyCheckQueue, readAllowlist, makeExcluder } from './drift/weekly-runner.mjs';
 import { EXTRA_RENDER_MODULES, explicitModule, resolveModuleSync } from './drift/modules.mjs';
+import { reshootPlan, reshootStepKey, reshootMerge, reshootExact } from './reshoot-plan.mjs';
 import { assertRecordingIntegrity } from './recording-integrity.mjs';
 import { normalizeLanguage, translationStatus, translationProblems, translationRequest, buildTranslationPrompt, parseTranslationReply, applyTranslation, buildLocalizedScript, localizedName, driveTitleFor, renderModeFor, allowsPylon, carryOverTranslations } from './translation.mjs';
 
@@ -808,8 +809,8 @@ function startRouteOf(script) {
 const stepKey = (s) => `${s?.action || ''}|${String(s?.target?.name || s?.target?.text || s?.target?.label || s?.target?.placeholder || s?.value || '').trim().toLowerCase()}`;
 
 /** Longest-common-subsequence pairing of old and new steps by action + control: [[oldIdx, newIdx]]. */
-function alignSteps(oldSteps, newSteps) {
-  const a = oldSteps.map(stepKey), b = newSteps.map(stepKey);
+function alignSteps(oldSteps, newSteps, keyOf = stepKey) {
+  const a = oldSteps.map(keyOf), b = newSteps.map(keyOf);
   const same = (i, j) => a[i] === b[j] && !a[i].endsWith('|'); // a step with no control never "matches"
   const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) {
@@ -826,7 +827,7 @@ function alignSteps(oldSteps, newSteps) {
 async function runRepairJob(key, job, slot) {
   const { signal } = job.controller;
   const log = (m) => aiLog(key, m);
-  const { name } = job.item;
+  const { name, reshoot } = job.item;
   const old = (await libraryGetByName(name))?.script;
   if (!old) throw new Error(`"${name}" isn't in the shared library`);
   const flags = (await loadDriftFlags()).scripts[name]?.flags || [];
@@ -839,18 +840,53 @@ async function runRepairJob(key, job, slot) {
   const previous = (old.steps || []).map((s, i) => `${i + 1}. ${s.action} ${s.target?.name || s.target?.text || s.value || s.route || ''}${s.narration ? ` — "${s.narration}"` : ''}`).join('\n');
 
   const { runAiRecord, planFromCodebase, slotProfileDir } = await loadAiRecord();
-  log('Planning from the current frontend code…');
-  const plan = await planFromCodebase(item, { signal, failure, previous });
-  if (plan.exists === false) throw new Error(`the planner says this workflow no longer exists as recorded: ${plan.summary || 'no detail'}`);
+  let plan;
+  if (reshoot) {
+    // Re-shoot: follow the saved recording's own steps instead of re-planning the workflow, so the
+    // take shows the same lesson on today's UI and the existing narration lines up again. The
+    // recorder still asks the source code for a revised plan if it gets stuck on a step.
+    plan = reshootPlan(old);
+    if (!plan.steps.length) throw new Error('nothing to re-shoot: the saved recording has no named click or typing steps');
+    log(`Re-shooting the saved recording's own steps (${plan.steps.length} actions, no re-planning)…`);
+  } else {
+    log('Planning from the current frontend code…');
+    plan = await planFromCodebase(item, { signal, failure, previous });
+    if (plan.exists === false) throw new Error(`the planner says this workflow no longer exists as recorded: ${plan.summary || 'no detail'}`);
+  }
   signal.throwIfAborted();
   log('Re-recording in Hadrius Academy in prod…');
-  const { script: fresh } = await runAiRecord(item, { onLog: log, signal, profileDir: slotProfileDir(slot), plan });
+  const { script: fresh } = await runAiRecord(item, { onLog: log, signal, profileDir: slotProfileDir(slot), plan, endFrame: !!reshoot });
   signal.throwIfAborted();
+  // A re-shoot ends on one more slide of the finished state. It is a slide to show a closing line on,
+  // not a step: keep it out of narration writing and pairing.
+  const endStep = reshoot && fresh.steps.at(-1)?.endFrame ? fresh.steps.pop() : null;
 
   fresh.name = old.name;
-  await narrateRecordedSteps(fresh, log);
-  const pairs = alignSteps(old.steps || [], fresh.steps);
-  for (const [i, j] of pairs) {
+  // A re-shoot that comes out as the same lesson uses none of the freshly written narration: every line on it
+  // is the lesson's own. So it is merged first, and narration is written only for a take that differs, whose
+  // added steps need words for whoever reviews it.
+  if (!reshoot) await narrateRecordedSteps(fresh, log);
+  const pairs = alignSteps(old.steps || [], fresh.steps, reshoot ? reshootStepKey : stepKey);
+  let merged = null;
+  if (reshoot) {
+    // Keep the take as recorded, next to its slides, so the merge below can be redone later without
+    // recording the lesson again.
+    const keepRaw = () => {
+      try {
+        fs.writeFileSync(path.join(REPO_ROOT, 'out', '_recordings', fresh.recording.id, 'reshoot-raw.json'),
+          JSON.stringify({ name, at: new Date().toISOString(), savedRecordingId: old.recording?.id || null, steps: fresh.steps, endStep, exactPairs: pairs }, null, 1));
+      } catch (e) { log(`  (could not keep the raw take: ${String(e?.message || e).slice(0, 120)})`); }
+    };
+    keepRaw();
+    merged = reshootMerge(old.steps || [], fresh.steps, pairs, endStep);
+    if (!reshootExact(merged)) {
+      // The take is finished and its actions cannot be undone, so a failure to write narration (a Claude
+      // usage limit, an outage) must not lose it.
+      try { await narrateRecordedSteps(fresh, log); keepRaw(); merged = reshootMerge(old.steps || [], fresh.steps, pairs, endStep); }
+      catch (e) { log(`  (narration for the added steps was not written: ${String(e?.message || e).slice(0, 160)})`); }
+    }
+    fresh.steps = merged.steps;
+  } else for (const [i, j] of pairs) {
     if (old.steps[i].narration) fresh.steps[j].narration = old.steps[i].narration;
     if (old.steps[i].caption) fresh.steps[j].caption = old.steps[i].caption;
   }
@@ -860,37 +896,71 @@ async function runRepairJob(key, job, slot) {
   const { module } = await resolveScriptModule(name, { ...old, steps: fresh.steps, environment: fresh.environment });
   const updated = {
     ...old,
-    ...(module ? { module } : {}),
+    // A re-shoot is the same lesson on new slides: its module (title-card badge, Drive folder, Pylon
+    // collection) stays whatever the saved lesson had, set or not.
+    ...(module && !reshoot ? { module } : {}),
     steps: fresh.steps,
-    // The Record tab's checklist: the plan this re-record actually followed, not the old one.
-    workflowPlan: plan.steps.map((st) => st.instruction),
+    // The Record tab's checklist: the plan this re-record actually followed, not the old one. A
+    // re-shoot followed the saved steps, so the lesson's own checklist still holds.
+    ...(reshoot ? {} : { workflowPlan: plan.steps.map((st) => st.instruction) }),
     recording: fresh.recording,
     environment: fresh.environment,
     updatedAt: now,
-    repairedFrom: { recordingId: old.recording?.id || null, at: now, prs: flags.map((f) => f.pr) },
+    repairedFrom: { recordingId: old.recording?.id || null, at: now, prs: flags.map((f) => f.pr), ...(reshoot ? { reshoot: true } : {}) },
   };
-  await saveScript(updated);
+  // A re-shoot is only the lesson again when it repeated every action, added none, and left no line without
+  // a slide or saying a label the slide no longer shows. Anything else is kept beside its slides for a person
+  // to look at (below), and the library keeps the lesson it had.
+  const exact = !merged || reshootExact(merged);
+  if (exact) await saveScript(updated);
 
-  const doc = await loadDriftFlags();
+  const doc = exact ? await loadDriftFlags() : { scripts: {} };
   if (doc.scripts[name]) {
     delete doc.scripts[name];
     (doc.dismissed ||= []).push({ name, pr: null, by: `${WHOAMI} (AI re-record)`, at: now });
     doc.dismissed = doc.dismissed.slice(-200);
     await saveDriftFlags(doc);
   }
-  const kept = pairs.filter(([i]) => old.steps[i].narration).length;
+  const kept = merged ? merged.kept : pairs.filter(([i]) => old.steps[i].narration).length;
   const pairedNew = new Set(pairs.map(([, j]) => j));
   job.result = {
     scriptName: name, title: item.title, module: module || null,
-    steps: fresh.steps.length, oldSteps: (old.steps || []).length, kept, rewritten: fresh.steps.length - kept,
+    steps: fresh.steps.length, oldSteps: (old.steps || []).length, kept, rewritten: fresh.steps.length - kept - (merged?.beats || 0),
     // 1-based numbers of the steps whose narration was newly written, for the review hint.
-    newSteps: fresh.steps.map((_, j) => j + 1).filter((n) => !pairedNew.has(n - 1)),
+    newSteps: merged ? fresh.steps.map((s, j) => (s.narration && !old.steps.some((o) => o.narration === s.narration) ? j + 1 : 0)).filter(Boolean)
+      : fresh.steps.map((_, j) => j + 1).filter((n) => !pairedNew.has(n - 1)),
+    // A re-shoot reports how closely it repeated the saved lesson: saved actions it skipped, actions it
+    // added, narrated moments re-seated on a slide, and lines that found no slide.
+    // `guessed`: [saved step, slide] pairs (1-based) matched without a shared label, to look at first.
+    ...(merged ? { reshoot: { planned: merged.planned, missed: merged.missed.map((i) => i + 1), extra: merged.extra.length, beats: merged.beats, lostLines: merged.lost.map((i) => i + 1), usedEndFrame: merged.usedEndFrame,
+      guessed: merged.approx.map(([i, k]) => [i + 1, k + 1]), dropped: merged.dropped,
+      // `declared`: actions the recorder itself tied to a saved step. `relabeled` / `retyped`: controls that
+      // read differently today and fields given another value (1-based step and slide); `stale`: the saved
+      // steps whose line says the old label or value. `saved`: whether the take replaced the lesson.
+      declared: merged.declared, stale: merged.stale.map((i) => i + 1), saved: exact,
+      relabeled: merged.relabeled.map((r) => ({ ...r, saved: r.saved + 1, slide: r.slide + 1 })), retyped: merged.retyped.map((r) => ({ ...r, saved: r.saved + 1, slide: r.slide + 1 })) } } : {}),
     prs: flags.map((f) => ({ pr: f.pr, title: f.prTitle, url: f.prUrl })),
     screenshotsToDrive: googleDriveConfigured(),
     hasPylonArticle: !!old.pylonArticleId, hasDriveVideo: !!old.driveVideoId || !!old.driveVideoUrl,
   };
+  if (!exact) {
+    // Kept next to its slides, as the script it would have been saved as.
+    const takePath = path.join(REPO_ROOT, 'out', '_recordings', fresh.recording.id, 'reshoot-take.script.json');
+    fs.writeFileSync(takePath, JSON.stringify(updated, null, 1));
+    job.result.takePath = takePath;
+    const why = [
+      merged.missed.length && `${merged.missed.length} of its ${merged.planned} actions were not repeated`,
+      merged.extra.length && `${merged.extra.length} action(s) were added`,
+      merged.lost.length && `${merged.lost.length} narration line(s) found no slide`,
+      merged.approx.length && `${merged.approx.length} step(s) were matched on a guess`,
+      merged.stale.length && `${merged.stale.length} narration line(s) say a label or a value the slide no longer shows`,
+    ].filter(Boolean).join('; ');
+    throw new Error(`the re-shoot did not come out as the same lesson (${why}), so the library still has the lesson as it was. The take is kept for review: ${takePath}`);
+  }
   job.state = 'done';
-  log(`Saved "${name}": ${fresh.steps.length} steps (was ${(old.steps || []).length}); kept narration on ${kept}, wrote ${fresh.steps.length - kept} new. Load it to review, then Render to update the video.`);
+  log(merged
+    ? `Saved "${name}": ${fresh.steps.length} slides (the lesson had ${(old.steps || []).length} steps); ${kept + merged.beats} of its narration lines are back on screen${merged.lost.length ? `, ${merged.lost.length} found no slide` : ''}; ${merged.missed.length} of its ${merged.planned} actions were not repeated, ${merged.extra.length} added. Load it to review, then Render to update the video.`
+    : `Saved "${name}": ${fresh.steps.length} steps (was ${(old.steps || []).length}); kept narration on ${kept}, wrote ${fresh.steps.length - kept} new. Load it to review, then Render to update the video.`);
 }
 
 function pumpAiQueue() {
@@ -3668,13 +3738,13 @@ const server = http.createServer(async (req, res) => {
   if (u.pathname === '/drift/repair') {
     try {
       if (req.method === 'POST') {
-        const { name } = await readJsonBody(req);
+        const { name, reshoot } = await readJsonBody(req);
         if (!name) throw new Error('missing name');
         const key = `repair:${name}`;
         const existing = aiJobs.get(key);
         if (!existing || !aiBusy(existing)) {
           await requireClaudeAuth();
-          aiJobs.set(key, { kind: 'repair', state: 'queued', startedAt: null, finishedAt: null, log: [`Queued AI re-record of "${name}"…`], error: null, result: null, item: { name }, controller: new AbortController() });
+          aiJobs.set(key, { kind: 'repair', state: 'queued', startedAt: null, finishedAt: null, log: [`Queued AI ${reshoot ? 're-shoot' : 're-record'} of "${name}"…`], error: null, result: null, item: { name, reshoot: !!reshoot }, controller: new AbortController() });
           aiQueue.push(key);
           pumpAiQueue();
         }

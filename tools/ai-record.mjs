@@ -19,8 +19,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runClaude, extractJson, decisionModel, planModel, codebaseReachable } from './coverage-scan.mjs';
 import { attachFile } from './upload-fixtures.mjs';
+import { reshootProgress, reshootGate, reshootNote } from './reshoot-plan.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// What either model CLI says when its signed-in account has run into a usage or spend limit.
+export const MODEL_LIMIT = /spend limit|usage limit|weekly limit|[0-9]+-hour limit|limit resets|usage-credits|rate limit|rate_limit|insufficient_quota|quota exceeded|too many requests/i;
+export const CLAUDE_LIMIT = MODEL_LIMIT; // backwards-compatible alias for older callers
 const DEFAULT_PROFILE_DIR = process.env.KBS_PROFILE_DIR || path.join(REPO_ROOT, '.browser-profile');
 export const STAGING_BASE = (process.env.KBS_STAGING_BASE || 'https://app.hadrius.com').replace(/\/$/, '');
 // Recordings run in the "Hadrius Academy" company (1150) in production — the tenant set aside for
@@ -30,6 +34,67 @@ export const RECORD_COMPANY_ID = process.env.KBS_COMPANY_ID || '1150';
 const MAX_STEPS = 60; // a 6-step wizard with a couple of detours needs ~40; leave headroom so the model doesn't bail early
 const VIEWPORT = { width: 1600, height: 900 };
 const LOGIN_WAIT_MS = 10 * 60 * 1000; // how long to hold a window open for a manual Hadrius sign-in
+
+/**
+ * Tenant fence. The recorder signs in as a staff account that can open every company, and it clicks
+ * for real, so the start URL's ?company_id alone does not keep a run inside the recording company:
+ * one click on the company switcher would. Returns the other company's id when a request to a
+ * Hadrius host names a company that is not `companyId` (in /company/<id>/ or ?company_id=), else null.
+ */
+export function otherCompanyOf(url, companyId) {
+  let u; try { u = new URL(url); } catch { return null; }
+  if (!['hadrius.com', 'hadriusapi.com'].some((d) => u.hostname === d || u.hostname.endsWith('.' + d))) return null;
+  const ids = u.searchParams.getAll('company_id').filter((v) => /^\d+$/.test(v));
+  const m = u.pathname.match(/\/compan(?:y|ies)\/(\d+)(?=\/|$)/);
+  if (m) ids.push(m[1]);
+  return ids.find((id) => id !== String(companyId)) ?? null;
+}
+
+/**
+ * Puts the tenant fence on a browser context.
+ *  - A request that names another company (otherCompanyOf) is aborted before it leaves the browser, so
+ *    nothing is read from or written to that company.
+ *  - `onBreach(message)` is called once, for the first such request; the caller ends the run.
+ * The plain request listener stays as a second net for requests routing does not get to see.
+ */
+export async function installTenantFence(ctx, companyId, onBreach) {
+  let tripped = false;
+  const check = (url, method) => {
+    const other = otherCompanyOf(url, companyId);
+    if (!other || tripped) return;
+    tripped = true;
+    onBreach(`tenant fence: the browser requested company ${other} (${method} ${pathOf(url).slice(0, 80)}) while recording in company ${companyId}; the run was stopped`);
+  };
+  await ctx.route((url) => otherCompanyOf(url.href, companyId) != null, (route) => {
+    const req = route.request();
+    route.abort('blockedbyclient').catch(() => {});
+    check(req.url(), req.method());
+  });
+  ctx.on('request', (req) => check(req.url(), req.method()));
+}
+
+/**
+ * Why an action is refused as a use of the company switcher, or null when it is not one. The recording stays
+ * in the company it started in, and this refuses the switch before the click; the tenant fence is what stops
+ * a switch made any other way, and it ends the whole take.
+ *  - The switcher's own button reads "<company name> <company number>" for a staff sign-in.
+ *  - While its list is open (a "Search companies..." field is on the page) every action is refused except
+ *    pressing Escape, which closes it.
+ * `elements`: the page's interactive elements ({name, role, tag}); `el`: the one chosen (none for a key press).
+ */
+export function companySwitcherReason(elements, el, companyId, action = 'click', key = '') {
+  const text = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const stay = `The company switcher is off limits: this recording must stay in company ${companyId}.`;
+  if ((elements || []).some((e) => /^search companies/i.test(text(e?.name)) || /^search companies/i.test(text(e?.placeholder)))) {
+    return action === 'press' && /^escape$/i.test(text(key)) ? null : `refused — the company switcher's list is open. ${stay} Press Escape to close it, then carry on with a control of the page itself.`;
+  }
+  if (action === 'press' || !el) return null;
+  const name = text(el.name);
+  if (name.endsWith(` ${companyId}`) && name.length > String(companyId).length + 1 && ['button', 'combobox'].includes(text(el.role || el.tag).toLowerCase())) {
+    return `refused — "${name}" is the company switcher. ${stay} Where a step names an item after another company, use the item on this page that carries this company's name, or go on to the next step.`;
+  }
+  return null;
+}
 
 /** Persistent profile for one parallel AI slot (1-based). Created on first use; keeps its own sign-in. */
 export function slotProfileDir(slot) { return path.join(REPO_ROOT, `.browser-profile-ai-${slot}`); }
@@ -621,17 +686,27 @@ function buildTurnPrompt(item, snap, history, turnsLeft, guidance = null) {
   const histLines = history.length
     ? history.slice(-10).map((h, i) => `${i + 1}. ${h.action}${h.name ? ` "${h.name}"` : ''}${h.text ? ` = "${h.text}"` : ''}${h.error ? ` — FAILED: ${h.error}` : ` — ok${h.outcome ? ` → ${h.outcome}` : ''}`}`).join('\n')
     : '(none yet)';
+  // The path the model follows. For a re-shoot it is the saved lesson's own steps, numbered, with a line saying
+  // how far the take has got; every action then says which numbered step it performs (see reshootGate).
+  const planBlock = !guidance ? '' : guidance.reshoot
+    ? `
+THE LESSON'S OWN RECORDED STEPS (labels are as they read when the lesson was recorded; a control may read differently today, so verify each against the page):
+${renderPlan(guidance)}
+${guidance.progressNote || ''}
+Add "step" to your JSON on every click, type, press, upload and hover: the number of the plan step that action performs, or 0 for an action that is not one of the numbered steps (allowed only when today's interface needs it to reach the next numbered step — keep those to the bare minimum). Perform the numbered steps strictly in order, each exactly once. When a numbered step says to hover, use "hover" with that step's number. If a numbered step cannot be performed on today's interface, say so in "reason" and go on to the next one.
+`
+    : `
+UI PATH FROM THE APP'S SOURCE CODE (exact labels are reliable; verify each against the page before clicking):
+${renderPlan(guidance)}
+`;
 
-  return `You are operating a real web browser to perform ONE user workflow in the Hadrius compliance app, on its staging environment. Every action you choose is executed for real and recorded as a demo walkthrough — perform the workflow the way a real user would, including any final Save/Submit/Send step that completes it.
+  const prompt = `You are operating a real web browser to perform ONE user workflow in the Hadrius compliance app, on its staging environment. Every action you choose is executed for real and recorded as a demo walkthrough — perform the workflow the way a real user would, including any final Save/Submit/Send step that completes it.
 
 WORKFLOW TO PERFORM
 Title: ${item.title}
 Description: ${item.description || '(none given)'}${item.rehearsal ? `\n\n${REHEARSAL_NOTE}` : ''}
 Starting trigger (if known): ${item.trigger || '(not specified — find the natural entry point)'}
-${guidance ? `
-UI PATH FROM THE APP'S SOURCE CODE (exact labels are reliable; verify each against the page before clicking):
-${renderPlan(guidance)}
-` : ''}
+${planBlock}
 ACTIONS SO FAR (most recent last)
 ${histLines}
 
@@ -667,7 +742,13 @@ Rules:
 - EXCEPTION — exports and other background jobs: once you've triggered an export/download that processes asynchronously (a "Preparing…"/"Export started" toast, a spinner or disabled Export button, a job that lands in an Exports/Export history list rather than downloading immediately), that step is already done. Do NOT click "wait" hoping it finishes, and do not try to download the finished file — it can take minutes and isn't the point of the walkthrough. If the toast or page offers a one-click way to see where it will land (e.g. "Open export", a link to Settings/Communications/Marketing > Exports), take that single navigation so the recording shows the destination — even mid-"Preparing"/"Processing" — then stop there. If this was the workflow's last step, reply "done" immediately once the export has been requested and (if a one-click link to it existed) you've followed it; never sit in a wait loop for a background job.
 - If you have looped 3+ times without progress, use "fail" rather than continuing.
 - A control that stays DISABLED is telling you something. Hover it and read the tooltip before you decide it's a dead end — and if the tooltip names a prerequisite you cannot satisfy (a permission, a membership, a record status), "fail" with that exact reason rather than clicking it repeatedly.
-- Some errors surface only as a browser alert, which is captured for you and shown as "→ alert: …". Treat that text as the page's response to what you just did; repeating the same action will only produce the same alert.`;
+- Some errors surface only as a browser alert, which is captured for you and shown as "→ alert: …". Treat that text as the page's response to what you just did; repeating the same action will only produce the same alert.
+- Never use the company switcher (the button at the top of the sidebar that shows the company's name) and never pick another company anywhere in the app: this recording stays in the company it started in. Where the workflow names an item after another company, use the item on the page that carries this company's name.`;
+  // A re-shoot's replies carry the plan step each action performs: shown in the reply shapes themselves,
+  // because a field described only in prose is the one the model leaves out.
+  return guidance?.reshoot
+    ? prompt.replace(/^(- \{"action":"(?:click|type|press|upload|hover)".*?),"reason":"why"\}/gm, '$1,"step":<plan step number, or 0>,"reason":"why"}')
+    : prompt;
 }
 
 /**
@@ -867,7 +948,7 @@ function describeOutcome(before, after) {
  * first use, in which case the operator is asked to sign in once in the visible window.
  * Throws Error('cancelled') if `signal` aborts at any point — including mid-action or mid-model-call.
  */
-export async function runAiRecord(item, { onLog = () => {}, signal, profileDir = slotProfileDir(1), stagingBase = STAGING_BASE, plan = null, onPlan = null, companyId = RECORD_COMPANY_ID, rehearsal = false } = {}) {
+export async function runAiRecord(item, { onLog = () => {}, signal, profileDir = slotProfileDir(1), stagingBase = STAGING_BASE, plan = null, onPlan = null, companyId = RECORD_COMPANY_ID, rehearsal = false, endFrame = false } = {}) {
   if (rehearsal) item = { ...item, rehearsal: true };
   let rehearsalCommit = null; // the committing control a rehearsal located instead of pressing
   // Pin the tenant explicitly. Without ?company_id the agent lands on whatever company its own
@@ -876,7 +957,11 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
   // production data for EVERY tenant, so an unpinned run can also record a stranger's real data.
   const startUrl = stagingBase.replace(/\/$/, '') + item.start_route
     + (item.start_route.includes('?') ? '&' : '?') + `company_id=${companyId}`;
-  const throwIfCancelled = () => { if (signal?.aborted) throw new Error('cancelled'); };
+  let tenantBreach = null; // set by the tenant fence below; every later check and error reports it
+  // A re-shoot repeats a saved lesson's own actions, and some lessons have more of them than MAX_STEPS:
+  // give those one turn per action plus room for waits and a wrong turn or two.
+  const maxSteps = plan?.reshoot && Array.isArray(plan.steps) ? Math.max(MAX_STEPS, Math.ceil(plan.steps.length * 1.4) + 10) : MAX_STEPS;
+  const throwIfCancelled = () => { if (tenantBreach) throw new Error(tenantBreach); if (signal?.aborted) throw new Error('cancelled'); };
   const firstUse = !fs.existsSync(profileDir);
   fs.mkdirSync(profileDir, { recursive: true });
 
@@ -886,6 +971,15 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     throwIfCancelled();
     onLog(`Launching browser (${path.basename(profileDir)})…`);
     ctx = await chromium.launchPersistentContext(profileDir, { headless: false, viewport: VIEWPORT });
+    // Tenant fence (see installTenantFence): a request that names another company is blocked before it
+    // leaves the browser, and the first one closes the browser, so the run ends before the model can
+    // choose another action there. Switching company loads that company's pages first, which is what
+    // trips this.
+    await installTenantFence(ctx, companyId, (message) => {
+      tenantBreach = message;
+      onLog(`✗ ${tenantBreach}`);
+      ctx.close().catch(() => {});
+    });
     // Always record with the app sidebar expanded. Its collapsed state persists in localStorage
     // ("sidebar_minimized", packages/ui expanded_state_provider.tsx), and an icon-only sidebar hides
     // every subtab label (Risks, Controls, ...), so the agent concluded those pages didn't exist.
@@ -932,6 +1026,9 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     let steps = [], history = [], finished = false, failReason = null, lastUrl = page.url();
     let guidance = plan; // source-derived plan (pre-generated by the bridge, or built below), shown to the model every turn
     let consults = 0;
+    // Re-shoot only: how far the take has got through the lesson's numbered steps (see reshootGate).
+    let progress = reshootProgress();
+    const reshooting = () => (guidance && typeof guidance === 'object' && guidance.reshoot && Array.isArray(guidance.steps) ? guidance : null);
 
     const recordingId = crypto.randomUUID();
     const recordingDir = path.join(REPO_ROOT, 'out', '_recordings', recordingId);
@@ -996,12 +1093,13 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     // One attempt = a fresh run of the decision loop from the start page. Wrapped so a run the model
     // gives up on can be retried once with better guidance from the source code.
     const runAttempt = async () => {
-    steps = []; history = []; finished = false; failReason = null; lastUrl = page.url(); consults = 0;
+    steps = []; history = []; finished = false; failReason = null; lastUrl = page.url(); consults = 0; progress = reshootProgress();
     // Elements proven dead this attempt: a plain click AND a keyboard activation both changed
     // nothing. Without this the guard alternated refuse -> keyboard retry -> refuse forever — a
     // Radix radio the model was fixated on ate 12 turns of a 45-turn run that way.
     const blockedSigs = new Set();
     let prevSnap = null;
+    let limitWaits = 0; // 30-second waits spent on a Claude usage limit during this attempt
 
     // Capture Step 0 initial navigate slide
     const initialStep = {
@@ -1016,7 +1114,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     };
     await captureSlide(initialStep);
     steps.push(initialStep);
-    for (let turn = 0; turn < MAX_STEPS; turn++) {
+    for (let turn = 0; turn < maxSteps; turn++) {
       throwIfCancelled();
       const pauseStatus = await handleTakeOverPause(page, onLog);
       if (pauseStatus === 'finish') { finished = true; break; }
@@ -1064,14 +1162,25 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         onLog(`  ! page said: ${said.slice(0, 160)}`);
       }
       prevSnap = snap;
+      if (reshooting()) guidance.progressNote = reshootNote(guidance, progress);
       let decision = null;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const raw = await runClaude(buildTurnPrompt(item, snap, history, MAX_STEPS - turn, guidance), { maxTurns: 2, timeout: 60000, noTools: true, systemPrompt: DECISION_SYSTEM_PROMPT, model: decisionModel(), signal });
+          const raw = await runClaude(buildTurnPrompt(item, snap, history, maxSteps - turn, guidance), { maxTurns: 2, timeout: 60000, noTools: true, systemPrompt: DECISION_SYSTEM_PROMPT, model: decisionModel(), signal });
           decision = extractJson(raw);
           if (decision?.action) break;
         } catch (e) {
           if (signal?.aborted) throw new Error('cancelled');
+          // The model provider has run into a usage or spend limit. Giving up here throws away a half-made
+          // take whose Academy actions cannot be undone: wait it out, up to ten minutes over the whole take.
+          if (MODEL_LIMIT.test(String(e?.message || e)) && limitWaits < 20) {
+            limitWaits++;
+            onLog(`turn ${turn + 1}: the model usage limit is reached; waiting 30s (${limitWaits} of 20)`);
+            await page.waitForTimeout(30000);
+            throwIfCancelled();
+            attempt--;
+            continue;
+          }
           if (attempt === 0) {
             onLog(`turn ${turn + 1}: model output invalid JSON (${e.message}), retrying turn…`);
             await page.waitForTimeout(600);
@@ -1089,7 +1198,23 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       throwIfCancelled();
       const elementId = decision.elementId == null ? null : Number(decision.elementId);
       const label = `${decision.action}${elementId != null ? ' #' + elementId : ''}${decision.text ? ` "${String(decision.text).slice(0, 40)}"` : ''}`;
-      onLog(`turn ${turn + 1}: ${label} — ${decision.reason || ''}`);
+      onLog(`turn ${turn + 1}: ${label}${reshooting() && decision.step != null ? ` [step ${decision.step}]` : ''} — ${decision.reason || ''}`);
+
+      // A re-shoot follows the lesson's numbered steps. The model may not finish, or jump ahead, while a
+      // numbered step is still to do (refused once, see reshootGate), and every action it records is marked
+      // with the saved step it repeats (-1: a helper action the lesson did not have).
+      let rsStep = 0, rsMark = {};
+      if (reshooting() && !['fail', 'consult', 'wait'].includes(decision.action)) {
+        const chosen = Number.isInteger(elementId) ? snap.elements.find((e) => e.id === elementId) : null;
+        const gate = reshootGate(guidance, progress, { ...decision, name: chosen?.name });
+        if (gate.refuse) {
+          history.push({ action: decision.action, name: chosen?.name, error: gate.refuse });
+          onLog(`  ! ${gate.refuse.slice(0, 180)}`);
+          continue;
+        }
+        rsStep = gate.step || 0;
+        rsMark = { reshootOf: rsStep ? gate.from : -1 };
+      }
 
       if (decision.action === 'done') { finished = true; break; }
       if (decision.action === 'fail') { failReason = decision.reason || 'model could not complete the workflow'; break; }
@@ -1117,9 +1242,13 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
 
       if (decision.action === 'press') {
         const key = decision.key || 'Enter';
-        await pushStep(snap, { action: 'press', key, aiReason: decision.reason || undefined });
+        // With the company switcher's list open, Enter would pick the highlighted company: only Escape goes through.
+        const listOpen = companySwitcherReason(snap.elements, null, companyId, 'press', key);
+        if (listOpen) { history.push({ action: 'press', name: key, error: listOpen }); onLog(`  ! ${listOpen.slice(0, 150)}`); continue; }
+        await pushStep(snap, { action: 'press', key, aiReason: decision.reason || undefined, ...rsMark });
         try { await page.keyboard.press(key); } catch (e) { steps.pop(); history.push({ action: 'press', error: String(e.message || e) }); continue; }
         history.push({ action: 'press', name: key });
+        if (rsStep) progress.done.add(rsStep);
         await page.waitForTimeout(400);
         await noteNavigation();
         continue;
@@ -1128,6 +1257,10 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       const el = Number.isInteger(elementId) ? snap.elements.find((e) => e.id === elementId) : null;
       if (!el) { history.push({ action: decision.action, error: `elementId ${decision.elementId} is not in the list` }); continue; }
       if (!['click', 'type', 'upload', 'hover'].includes(decision.action)) { history.push({ action: decision.action, error: 'unknown action' }); continue; }
+      // The company switcher is refused before the click (see companySwitcherReason): the recording stays in
+      // the company it started in.
+      const offLimits = companySwitcherReason(snap.elements, el, companyId, decision.action);
+      if (offLimits) { history.push({ action: decision.action, name: el.name, error: offLimits }); onLog(`  ! ${offLimits.slice(0, 150)}`); continue; }
       if (decision.action === 'type' && await page.locator(`[data-kb-ai-id="${elementId}"]`).evaluate((n) => n.type === 'password').catch(() => false)) {
         failReason = 'this workflow needs a password for a third-party service; record it by hand with test credentials';
         break;
@@ -1151,7 +1284,14 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       // and is deliberately NOT recorded as a step: it isn't part of the walkthrough a viewer needs
       // to see, and replay.mjs would have nothing meaningful to do with it.
       if (decision.action === 'hover') {
+        // The exception is a re-shoot repeating a hover the lesson itself shows (a tooltip it talks about):
+        // that one is a step of its own, on the slide taken before the pointer moves.
+        let hoverStep = null;
         try {
+          if (rsStep) {
+            const fpHover = await page.evaluate(FINGERPRINT_FN, elementId).catch(() => null);
+            if (fpHover) hoverStep = await pushStep(snap, { action: 'hover', target: fpHover, aiReason: decision.reason || undefined, ...rsMark });
+          }
           await page.locator(`[data-kb-ai-id="${elementId}"]`).hover({ timeout: 4000 });
           await page.waitForTimeout(450); // tooltips are usually delayed
           const tip = await page.evaluate(() => {
@@ -1163,7 +1303,9 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
           const seen = tip || title;
           history.push({ action: 'hover', name: el.name, sig: `hover|${el.role}|${el.name}`, outcome: seen ? `tooltip: ${seen}` : 'no tooltip appeared' });
           onLog(`  hover "${el.name}" → ${seen ? seen.slice(0, 120) : 'no tooltip'}`);
+          if (hoverStep) progress.done.add(rsStep);
         } catch (e) {
+          if (hoverStep) steps.pop(); // the pointer never got there: not a step
           history.push({ action: 'hover', name: el.name, error: String(e.message || e).split('\n')[0].slice(0, 160) });
         }
         continue;
@@ -1238,7 +1380,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
         : undefined;
       // The agent's reasoning is NOT narration (it names sample users/dates); keep it for debugging
       // only. Real narration is written by the bridge after the run, with the codebase-grounded writer.
-      await pushStep(snap, { action: decision.action, target: fp, ...(text !== undefined ? { value: text } : {}), aiReason: decision.reason || undefined });
+      await pushStep(snap, { action: decision.action, target: fp, ...(text !== undefined ? { value: text } : {}), aiReason: decision.reason || undefined, ...rsMark });
 
       // Visual feedback & human takeover check (Step 6)
       const actionPauseStatus = await handleTakeOverPause(page, onLog);
@@ -1376,6 +1518,7 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
       if (hudHidden) await restoreHud();
       await clearSpotlight(page);
       history.push({ action: decision.action, name: el.name, text, sig });
+      if (rsStep) progress.done.add(rsStep);
       await page.waitForTimeout(600);
       await noteNavigation();
     }
@@ -1401,7 +1544,9 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       await runAttempt();
-      if (finished || attempt === 2 || !failReason || /^model error/.test(failReason)) break;
+      // A re-shoot that gave up is not retried here: the retry below re-plans the workflow from the source
+      // code, and a re-planned take is another lesson, not the saved one again.
+      if (finished || attempt === 2 || !failReason || /^model error/.test(failReason) || plan?.reshoot) break;
       // The model gave up with a reason: ask the source code again WITH that reason, then retry once.
       onLog(`Attempt ${attempt} gave up: ${failReason.slice(0, 160)}\nRe-checking the source with that in mind and retrying once…`);
       try { guidance = await planFromCodebase(item, { signal, failure: failReason, previous: guidance }); onPlan?.(guidance); onLog(`Revised plan:\n${renderPlan(guidance)}`); }
@@ -1411,12 +1556,23 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     }
 
     throwIfCancelled();
-    if (!finished) throw new Error(failReason || `stopped after ${MAX_STEPS} steps without finishing`);
+    if (!finished) throw new Error(failReason || `stopped after ${maxSteps} steps without finishing`);
     if (rehearsal) {
       onLog(`Rehearsal passed — ${steps.filter((x) => x.action !== 'navigate').length} action(s) performed${rehearsalCommit ? `, final control "${rehearsalCommit}" located` : ''}.`);
       return { rehearsal: { ok: true, actions: steps.filter((x) => x.action !== 'navigate').length, commitControl: rehearsalCommit } };
     }
     if (!steps.some((s) => s.action !== 'navigate')) throw new Error('the model finished without performing any recordable action');
+
+    // Each step's slide shows the page BEFORE its action, so the result of the last action is on no
+    // slide. With `endFrame` the take closes on one more slide of the finished state (a "view" step,
+    // marked endFrame so the caller can tell it from a recorded action).
+    if (endFrame) {
+      await clearSpotlight(page).catch(() => {});
+      await page.waitForTimeout(1500).catch(() => {});
+      const endStep = { index: steps.length, action: 'view', target: null, url: page.url(), route: pathOf(page.url()), title: '', ts: Date.now(), capture: true, endFrame: true };
+      await captureSlide(endStep);
+      if (endStep.media?.pre) steps.push(endStep);
+    }
 
     const now = new Date().toISOString();
     const script = {
@@ -1438,6 +1594,11 @@ export async function runAiRecord(item, { onLog = () => {}, signal, profileDir =
     };
     onLog(`Done — ${steps.length} step(s) recorded.`);
     return { script };
+  } catch (e) {
+    // The fence closed the browser, so whatever failed next (a closed-page error, a retry's
+    // navigation) is a symptom: report the breach itself.
+    if (tenantBreach && e?.message !== tenantBreach) throw new Error(tenantBreach);
+    throw e;
   } finally {
     signal?.removeEventListener('abort', onAbort);
     try { await ctx?.close(); } catch (_) {} // persistent profile: closing flushes the session to disk

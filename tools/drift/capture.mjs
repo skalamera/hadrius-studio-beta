@@ -22,6 +22,44 @@ export const REPO=resolve(dirname(fileURLToPath(import.meta.url)),'..','..');
 export const DEFAULT_PROFILE=join(REPO,'.browser-profile-drift');
 export const SESSION_OK=Object.freeze(['already_signed_in','signed_in']);
 export const VIEWPORT=Object.freeze({width:1600,height:900});
+// ---------- recorded geometry ----------
+// Each replay uses the browser window its video was recorded in. Extension recordings were made at the author's own
+// window size and pixel ratio (e.g. 1626x1137 CSS px at 1.33 = 2168x1516 frames); a 1600x900 replay of those differs in
+// every slide's size (viewport_changed, never repairable) and layout. Accepted only when the recorded frames prove it:
+// the most common target-hint viewport times the most common step dpr is the most common recorded frame size (±2 px).
+// Anything else replays at the default 1600x900 @1, as before. (Boxes in run.json stay CSS px: compare.mjs scales them
+// by deviceScaleFactor; the renderer scales hint boxes by frame width / hint viewport width.)
+export function recordedGeometry(script,{frameSize=null}={}){
+  const fallback=(reason)=>({viewport:{...VIEWPORT},deviceScaleFactor:1,source:'default',reason});
+  const count=new Map(),inc=(k,v)=>{const m=count.get(k)??new Map();m.set(v,(m.get(v)??0)+1);count.set(k,m);};
+  const mode=(k)=>[...(count.get(k)??[])].sort((a,b)=>b[1]-a[1])[0]?.[0]??null;
+  for(const st of script?.steps??[]){
+    const vp=st?.target?.hint?.viewport,w=Number(vp?.w??vp?.width),h=Number(vp?.h??vp?.height);
+    if(Number.isInteger(w)&&Number.isInteger(h)&&w>0&&h>0)inc('vp',`${w}x${h}`);
+    if(Number.isFinite(st?.dpr)&&st.dpr>0)inc('dpr',st.dpr);
+    if(frameSize&&st?.media?.pre){let f=null;try{f=frameSize(st.media.pre);}catch{}if(f?.width>0&&f?.height>0)inc('frame',`${f.width}x${f.height}`);}
+  }
+  const frame=mode('frame'),vp=mode('vp');
+  if(!frame)return fallback('no_recorded_frames');
+  const [fw,fh]=frame.split('x').map(Number);
+  if(fw===VIEWPORT.width&&fh===VIEWPORT.height)return fallback('recorded_at_default');
+  if(!vp)return fallback('no_recorded_viewport');
+  const [w,h]=vp.split('x').map(Number),dpr=mode('dpr')??1;
+  // Chrome's frame is round(CSS size x ratio). The extension stores the CSS width truncated (a 1621.5 px window is
+  // "1621"), so at 4/3 some recorded frames (2162x1516, 2054x1550) are no whole-pixel viewport's; a ratio within 0.005 of
+  // the recorded one that reproduces the exact frame keeps the same CSS layout and matches the recording pixel for pixel.
+  // A truncated size means the true one is in [n, n+1): one extra CSS px per axis is tried too (90%-zoom recordings).
+  let fit=null;
+  for(const [W,H] of [[w,h],[w+1,h],[w,h+1],[w+1,h+1]]){
+    const d=[dpr,fw/W,fh/H].find(c=>Number.isFinite(c)&&c>0&&Math.abs(c-dpr)<=0.005&&Math.round(W*c)===fw&&Math.round(H*c)===fh);
+    if(d!=null){fit={W,H,d};break;}}
+  if(!fit)return fallback(`unproven:${vp}@${dpr}!=${frame}`);
+  const adj=[fit.d!==dpr?`recorded ratio ${Math.round(dpr*1e5)/1e5}`:null,fit.W!==w||fit.H!==h?`recorded viewport ${vp}`:null].filter(Boolean).join(', ');
+  return {viewport:{width:fit.W,height:fit.H},deviceScaleFactor:fit.d,source:'recording',reason:`${fit.W}x${fit.H}@${Math.round(fit.d*1e5)/1e5}=${frame}${adj?` (${adj})`:''}`};
+}
+/** Frame size from a PNG header (no decode). */
+export function pngFrameSize(file){const b=readFileSync(file);
+  return b.length>=24&&b.readUInt32BE(0)===0x89504e47&&b.toString('ascii',12,16)==='IHDR'?{width:b.readUInt32BE(16),height:b.readUInt32BE(20)}:null;}
 export const LIMITS=Object.freeze({stepMs:60_000,totalMs:5*60_000,settleMs:1500,idleMs:15_000,manualLoginMs:10*60_000,loadingWaitMs:15_000});
 export const APP_BASE='https://app.hadrius.com';
 // Same regex as tools/ai-record.mjs (LOGIN_PATH_RE); duplicated because importing ai-record pulls in
@@ -467,7 +505,9 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
   profileDir=owner?null:profileDir??(T?tenantProfileDir(T.key,REPO):DEFAULT_PROFILE);expectedCompany=String(T?.companyId??expectedCompany??'');
   ensureSession=ensureSession??(T?.key==='academy'?ensureAcademySession:(o)=>ensureTenantSession({tenant:T?.key,...o}));
   const plan=mutationPlan(script);
-  const run={schema:2,script:script.name,scriptPath,recordingId:script.recording?.id??null,profile:owner?'owner':profileDir,sessionMode,startedAt:new Date().toISOString(),viewport:VIEWPORT,
+  const geometry=recordedGeometry(script,{frameSize:recordingsDir?(f)=>pngFrameSize(join(recordingsDir,f)):null});
+  const run={schema:2,script:script.name,scriptPath,recordingId:script.recording?.id??null,profile:owner?'owner':profileDir,sessionMode,startedAt:new Date().toISOString(),
+    viewport:geometry.viewport,deviceScaleFactor:geometry.deviceScaleFactor,geometry:{source:geometry.source,reason:geometry.reason},
     ...(T&&T.key!=='academy'?{tenantKey:T.key,expectedCompany}:{}),
     session:null,signedIn:null,manualSignIn:false,tenantVerified:false,status:'running',findings:[],mutationPlan:plan,mutationStop:null,steps:[],aborted:null,
     ...(rehearse?{rehearsal:{enabled:true,performed:[],writeBlocked:null,resumedAt:[]}}:{})};
@@ -489,7 +529,7 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
   const problems=preflight({profileDir,bridgeStatus,psOutput,owner});
   if(problems.length){run.status='preflight_failed';run.findings.push({kind:'preflight',problems});save();return run;}
   const {chromium}=chromiumOverride?{chromium:chromiumOverride}:await import('playwright');
-  const ctxOpts={viewport:VIEWPORT,acceptDownloads:false,serviceWorkers:'block'};
+  const ctxOpts={viewport:geometry.viewport,deviceScaleFactor:geometry.deviceScaleFactor,acceptDownloads:false,serviceWorkers:'block'};
   // Owner session: borrowed once per video (fresh short-lived tokens), carried only in memory.
   let ownerSession=null,ownerMod=null;
   if(owner){ownerMod=await import('./owner-session.mjs');
@@ -538,7 +578,7 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
   ctx=await launch(true);
   const overall=setTimeout(()=>{abortReason=abortReason??'overall_timeout';ctx.close().catch(()=>{});},limits.totalMs);
   let page=null;
-  try{await guard(ctx);if(fixture?.pageInit)await ctx.addInitScript(fixture.pageInit);page=ctx.pages()[0]||await ctx.newPage();await page.setViewportSize(VIEWPORT);
+  try{await guard(ctx);if(fixture?.pageInit)await ctx.addInitScript(fixture.pageInit);page=ctx.pages()[0]||await ctx.newPage();await page.setViewportSize(geometry.viewport);
     if(fixture)page.on('response',(r)=>{const q=r.request();if(['GET','HEAD','OPTIONS'].includes(q.method()))return;let u;try{u=new URL(q.url());}catch{return;}
       fixture.onResponse({method:q.method(),host:u.hostname,path:u.pathname,status:r.status(),json:()=>r.json()});});
     // "Leave page? Unsaved changes" (beforeunload) is accepted: leaving discards a rehearsed, never-saved form.
@@ -617,8 +657,10 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
         // Only NAME matches (never CSS-only ones: the recorded name is gone, which stays a finding).
         if(res?.status==='ambiguous'&&!['css','status_counter'].includes(res.method)&&res.matches.length>1){
           let recImg=null,todayImg=null;
-          if(recordingsDir&&step.media?.pre){try{recImg=lumaPlane(decodePng(readFileSync(join(recordingsDir,step.media.pre))));todayImg=lumaPlane(decodePng(readFileSync(join(outDir,rec.screenshot))));}catch(e){rec.target.notes.push(`disambiguation_images_unavailable: ${String(e?.message||e).slice(0,80)}`);}}
-          const t=step.target;const d=disambiguateTarget({matches:res.matches.map(i=>cands[i]),recordedRect:rec.target.recordedRect,recordedViewport:t.hint?.viewport??t.viewport??null,todayViewport:{w:VIEWPORT.width,h:VIEWPORT.height},recorded:recImg,today:todayImg});
+          // The visual comparison reads CSS-px boxes as image px, which holds only at pixel ratio 1; at other ratios the
+          // choice stays position-only (what these replays got before they matched the recording's size).
+          if(recordingsDir&&step.media?.pre&&geometry.deviceScaleFactor===1){try{recImg=lumaPlane(decodePng(readFileSync(join(recordingsDir,step.media.pre))));todayImg=lumaPlane(decodePng(readFileSync(join(outDir,rec.screenshot))));}catch(e){rec.target.notes.push(`disambiguation_images_unavailable: ${String(e?.message||e).slice(0,80)}`);}}
+          const t=step.target;const d=disambiguateTarget({matches:res.matches.map(i=>cands[i]),recordedRect:rec.target.recordedRect,recordedViewport:t.hint?.viewport??t.viewport??null,todayViewport:{w:geometry.viewport.width,h:geometry.viewport.height},recorded:recImg,today:todayImg});
           rec.target.disambiguation=d;
           if(d?.status==='resolved'){const ci=res.matches[d.chosen];res={status:'resolved',method:res.method,index:ci,candidate:cands[ci],matches:res.matches,notes:[...res.notes,`disambiguated:${d.method}:${d.reason}`]};today=res.candidate;
             Object.assign(rec.target,{status:'resolved',notes:res.notes,rect:today.bbox??null,delta:rectDelta(rec.target.recordedRect,today.bbox),resolved:today,ambiguousMatches:res.matches.length});}
@@ -759,12 +801,15 @@ export async function withAppPage({profileDir=null,startUrl,tenant=null,expected
 function arg(args,name){const i=args.indexOf(name);return i>=0?args[i+1]:undefined;}
 export async function main(args=process.argv.slice(2)){
   const scriptPath=arg(args,'--script'),profileDir=arg(args,'--profile'),outDir=arg(args,'--out');
-  if(!scriptPath||!outDir)throw new Error('usage: capture.mjs --script SCRIPT --out NEW_DIR [--tenant academy|sandbox] [--profile /abs/.browser-profile-drift[-sandbox]|.browser-profile-ai-N] [--session automation|owner] [--rehearse]');
+  if(!scriptPath||!outDir)throw new Error('usage: capture.mjs --script SCRIPT --out NEW_DIR [--tenant academy|sandbox] [--profile /abs/.browser-profile-drift[-sandbox]|.browser-profile-ai-N] [--session automation|owner] [--rehearse] [--recordings DIR]');
   if(!existsSync(dirname(resolve(outDir))))throw new Error('output parent missing');
   // Without --tenant the script's company_id decides; a script naming no company runs as Academy only with an explicit --tenant academy.
   let tenant=arg(args,'--tenant')??null;
   if(!tenant&&!profileDir){const d=detectScriptTenant(JSON.parse(readFileSync(resolve(scriptPath),'utf8')));if(d.status!=='ok')throw new Error(`tenant_${d.status}: ${d.reason} (pass --tenant)`);tenant=d.tenant;}
-  const run=await captureRun({scriptPath:resolve(scriptPath),profileDir:profileDir?resolve(profileDir):null,tenant,outDir:resolve(outDir),rehearse:args.includes('--rehearse'),session:arg(args,'--session')??'automation'});
+  // Recorded frames (as weekly.mjs passes them): target disambiguation and the replay's window size (recordedGeometry).
+  const recId=JSON.parse(readFileSync(resolve(scriptPath),'utf8')).recording?.id,recDir=arg(args,'--recordings')??(recId?join(REPO,'out','_recordings',recId):null);
+  const run=await captureRun({scriptPath:resolve(scriptPath),profileDir:profileDir?resolve(profileDir):null,tenant,outDir:resolve(outDir),rehearse:args.includes('--rehearse'),session:arg(args,'--session')??'automation',
+    recordingsDir:recDir&&existsSync(recDir)?recDir:null});
   console.log(JSON.stringify({status:run.status,session:run.session,signedIn:run.signedIn,tenantVerified:run.tenantVerified,aborted:run.aborted,mutationStop:run.mutationStop,rehearsal:run.rehearsal??null,findings:run.findings,steps:run.steps.map(s=>({index:s.index,screenshot:s.screenshot,url:s.todayUrl,target:s.target?.status,guard:s.mutationGuard?.status,rehearsed:s.rehearsal?.kind??null,error:s.error}))},null,2));
   return run;
 }

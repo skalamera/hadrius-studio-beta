@@ -259,15 +259,73 @@ function runClaudeCli(prompt, { maxTurns = 40, timeout = 600000, allowedTools = 
 }
 
 /**
- * Run `claude -p` and return the model's text. Shared by the scan and the AI recorder. Claude is the
- * only provider: when the CLI is missing or signed out this throws CLAUDE_NOT_CONNECTED_MSG /
- * CLAUDE_MISSING_MSG; any other failure keeps Claude's own error text.
- *
- * opts.onMeta is called with { model, turns, costUsd } for the run. `turns` is what makes grounding
- * auditable: Claude answering in a single turn never opened the repo.
+ * Shared model entry point for the Studio scan and AI recorder. Defaults to Claude for existing callers;
+ * `KBS_AI_PROVIDER=codex` selects the signed-in OpenAI Codex CLI. The Codex path is read-only, ephemeral,
+ * and exposes only the read-only codebase MCP for planning. `opts.onMeta` reports the actual model and usage.
  */
+const aiProvider = () => String(process.env.KBS_AI_PROVIDER || 'claude').toLowerCase();
+export const codexModel = (kind = 'plan') => process.env[`KBS_CODEX_${kind.toUpperCase()}_MODEL`] || process.env.KBS_CODEX_MODEL || 'gpt-6.1-sol';
+
+/** Run the same bridge prompt through the signed-in Codex CLI. Only the read-only Hadrius codebase MCP is
+ * exposed; all other MCP servers in the user's Codex config are explicitly disabled for this call. */
+function runCodexCli(prompt, { timeout = 600000, noTools = false, systemPrompt = null, jsonSchema = null, signal, onMeta } = {}) {
+  return new Promise((resolve, reject) => {
+    const cli = process.env.KBS_CODEX_CLI || 'codex';
+    // Call sites pass a Claude model name for compatibility; never forward it to Codex.
+    const selectedModel = codexModel(noTools ? 'decision' : 'plan');
+    let schemaPath = null;
+    const args = ['exec', '--json', '--ephemeral', '--ignore-user-config', '--sandbox', 'read-only', '--cd', REPO_ROOT,
+      '--skip-git-repo-check', '--model', selectedModel,
+      '--config', `model_reasoning_effort=${process.env.KBS_CODEX_REASONING_EFFORT || 'high'}`];
+    // Give planning calls only the read-only source MCP the Claude recorder was allowed to use.
+    // Decision calls get no MCP servers. Ignore the user's general Codex config so browser, Linear,
+    // Pylon and other account tools are not exposed to unattended recording.
+    if (!noTools) {
+      args.push('--config', `mcp_servers.hadrius-codebase.url=${JSON.stringify(codebaseMcpUrl())}`);
+      args.push('--config', 'mcp_servers.hadrius-codebase.enabled=true');
+      args.push('--config', 'mcp_servers.hadrius-codebase.enabled_tools=["search_code","read_file","file_tree","list_directory"]');
+    }
+    if (jsonSchema) {
+      const scratch = path.join(process.env.HOME || '', '.hermes', 'cache', 'scratch');
+      fs.mkdirSync(scratch, { recursive: true });
+      schemaPath = path.join(scratch, `codex-output-${process.pid}-${Date.now()}.json`);
+      fs.writeFileSync(schemaPath, typeof jsonSchema === 'string' ? jsonSchema : JSON.stringify(jsonSchema));
+      args.push('--output-schema', schemaPath);
+    }
+    const fullPrompt = systemPrompt ? [systemPrompt, prompt].join(String.fromCharCode(10, 10)) : prompt;
+    args.push(fullPrompt);
+    const env = { ...process.env };
+    for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']) delete env[k];
+    const child = execFile(cli, args, { maxBuffer: 1024 * 1024 * 40, timeout, killSignal: 'SIGKILL', detached: true, signal, env }, (err, stdout, stderr) => {
+      clearWatchdog();
+      if (schemaPath) fs.rmSync(schemaPath, { force: true });
+      if (err?.name === 'AbortError') return reject(new Error('cancelled'));
+      let answer = '';
+      let usage = null;
+      let turns = 0;
+      for (const line of String(stdout || '').split(String.fromCharCode(10))) {
+        if (!line.trim()) continue;
+        let event;
+        try { event = JSON.parse(line); } catch { continue; }
+        if (event.type === 'item.completed') {
+          const item = event.item || {};
+          if (item.type === 'agent_message' && item.text) answer = item.text;
+          if (item.type === 'mcp_tool_call') turns++;
+        } else if (event.type === 'turn.completed') usage = event.usage || null;
+      }
+      const errorText = String(stderr || err?.message || 'CLI failed').split(String.fromCharCode(10)).join(' ').split(String.fromCharCode(13)).join(' ');
+      if (err) return reject(new Error(`codex: ${errorText.slice(0, 500)}`));
+      if (!answer) return reject(new Error(`codex returned no final message${stderr ? `: ${errorText.slice(0, 300)}` : ''}`));
+      onMeta?.({ model: selectedModel, turns: turns + 1, costUsd: null, usage });
+      resolve(answer);
+    });
+    const clearWatchdog = killProcessGroupSoon(child, timeout, signal);
+    child.stdin?.end();
+  });
+}
+
 export async function runClaude(prompt, opts = {}) {
-  return runClaudeCli(prompt, opts);
+  return aiProvider() === 'codex' ? runCodexCli(prompt, opts) : runClaudeCli(prompt, opts);
 }
 
 /** Index of the bracket that closes the JSON object/array opening at s[start], or -1 if it never closes or a

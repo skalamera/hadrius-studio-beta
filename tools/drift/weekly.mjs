@@ -26,6 +26,7 @@ import {verifySemanticRepairAssets} from './semantic-repair-assets.mjs';
 import {verifyFlowEquivalenceAssets} from './flow-equivalence-assets.mjs';
 import {cachedJudge,createReviewStore,createReviewBudget,reviewerVersion,fileDigest,BUDGET_EXHAUSTED} from './review-cache.mjs';
 import {createGroundedReviewers} from './grounded-review-provider.mjs';
+import {shellState} from './shell-rollout.mjs';
 
 /** Initial detection is Codex by default, independently of the legacy Claude bridge settings.
  * CLI/API values override KBS_DRIFT_REVIEW_*; KBS_CODEX_BIN remains the shared offline binary override.
@@ -186,6 +187,8 @@ export async function defaultDeps({judge=true,maxModelCalls=null,reviewCache=tru
     bridgeStatus:async()=>{try{return await (await fetch('http://127.0.0.1:8787/render/status',{signal:AbortSignal.timeout(5000)})).json();}catch{return null;}},
     readScript:(name)=>{const p=join(REPO,'scripts',`${name}.script.json`);if(!existsSync(p))return null;return {path:p,script:JSON.parse(readFileSync(p,'utf8'))};},
     recordingsRoot:join(REPO,'out','_recordings'),
+    // Sidebar kind per recorded and today frame (local text recognition, no network); see shell-rollouts.json.
+    shellEvidence:async options=>(await import('./shell-rollout.mjs')).shellEvidence(options),
     // Unattended local repair is part of the normal weekly run, not a collection of operator commands.
     // --no-judge / --no-auto-repair disable it; no posting or publishing is enabled here.
     repairAutomation:autoRepair&&judge?async options=>(await import('./automation.mjs')).runRepairAutomation(options):null};
@@ -225,6 +228,16 @@ export async function runVideo(name,{outDir,deps,dryRun=false,profileDir=null,lo
     if(!existsSync(recordingsDir)){job.status='error';errors.push({stage:'compare',error:'recording directory missing'});return job;}
     const cmp=await time('compare',()=>deps.compare({runDir,recordingsDir}));
     job.evidence.compare=join(runDir,'compare.json');if(cmp?.contactSheet)job.evidence.contactSheet=join(runDir,cmp.contactSheet);
+    // App-shell rollout (shell-rollout.mjs): which slides were recorded with the old sidebar, and whether today's capture
+    // of the same step shows the new one. Recorded as evidence and as the video's state; a reader that cannot tell
+    // (OCR failed) says so and never counts as current. Selection and repair do not act on it yet.
+    let shellByStep=null;
+    if(deps.shellEvidence){
+      try{const shell=await time('shellEvidence',()=>deps.shellEvidence({script,tenant:ten.tenant,runDir,recordingsDir}));
+        job.shellRollout={status:shell.status,rollout:shell.rollout??null,...(shell.status==='ok'?{rolloutDigest:shell.rolloutDigest,before:shell.before,after:shell.after}:{}),...shellState(shell)};
+        if(shell.status==='ok')shellByStep=shell.byStep;}
+      catch(e){if(e?.code==='timeout')throw e;job.shellRollout={status:'error',state:'error',reason:String(e?.message||e).slice(0,300)};errors.push({stage:'shell_rollout',error:job.shellRollout.reason});}
+    }
     let releaseEvidence=null;
     if(deps.releaseEvidence){
       try{releaseEvidence=await time('releaseEvidence',()=>deps.releaseEvidence({script,tenant:ten.tenant,runDir,capturedAt:job.startedAt}));}
@@ -238,6 +251,7 @@ export async function runVideo(name,{outDir,deps,dryRun=false,profileDir=null,lo
       const st=script.steps.find(x=>x.index===s.index),captured=run.steps?.find(x=>x.index===s.index);
       return {index:s.index,action:s.action,verdict:s.verdict,
         reasons:s.reasons,metrics:s.metrics,chromeChanged:s.chromeChanged,target:s.target,guard:s.guard,judge:s.judge,uiReleaseEvidence:s.uiReleaseEvidence??null,evidence:s.evidence,
+        ...(shellByStep?{shellRollout:shellByStep[s.index]??null}:{}),
         uiContext:{route:captured?.todayUrl??s.uiReleaseEvidence?.routePath??st?.url??st?.route,slideText:slideText(st),visibleText:captured?.visibleText??null}};})});
     // Cross-page app-frame decisions require the whole run. Never create a candidate here.
     job.uiSelection={policy:SELECTION_POLICY,status:'pending',slides:[]};
@@ -335,6 +349,16 @@ function blockedJob(name,dir,tenant,block){mkdirSync(dir,{mode:0o700});
     summary:`not attempted: ${tenant} sign-in needs a human (${block.status} on ${block.video}); skipped to avoid an account lockout`,reasons:[],steps:[],
     errors:[{stage:'session',error:`tenant_session_blocked:${block.status}`,video:block.video}],timings:{total:0},startedAt:new Date().toISOString(),finishedAt:new Date().toISOString()};
   writeFileSync(join(dir,'job.json'),JSON.stringify(job,null,2)+'\n');return job;}
+// The operator's sign-in is gone or out of reach (Studio profile signed out, busy or missing; Chrome debugging
+// connection lost; tokens not refreshed): the next video would fail the same way within seconds, so one lost sign-in
+// used to mark every remaining video capture_failed. The run waits and tries the SAME video again instead; if the
+// sign-in stays away for sessionWaitMs the run stops with this and every later video untouched, and --resume continues
+// from here. The owner session never types credentials, so trying again cannot lock an account (unlike
+// SESSION_HARD_STOP). Not here: owner_tenant_not_accessible (this account cannot open that tenant; other tenants'
+// videos still run) and owner_session_unsafe_key (a safety refusal, not a lost sign-in).
+export const SESSION_LOST=Object.freeze(['owner_chrome_unreachable','owner_not_signed_in','owner_token_expiring','owner_token_unreadable','owner_profile_busy','owner_profile_unavailable','owner_profile_missing','owner_profile_lock_port_conflict','owner_session_failed']);
+export const sessionLost=(job)=>job?.captureStatus==='session_failed'&&SESSION_LOST.includes(job.session?.status);
+export const DEFAULT_SESSION_WAIT_MS=60*60_000,DEFAULT_SESSION_RETRY_MS=60_000;
 const FINAL_STATUSES=new Set(['ok','excluded','dry_run','script_not_found','capture_failed','aborted_mutating_request','timeout','error','tenant_unknown','tenant_conflict','tenant_unregistered']);
 const summaryRow=(name,job,out)=>({name,status:job.status,tenant:job.tenant?.key??null,tenantStatus:job.tenant?.status??null,verdict:job.verdict??null,complete:job.complete??null,summary:job.summary??null,candidatePath:job.candidatePath??null,
   mutationStop:job.mutationStop??null,needsFixtureSteps:(job.needsFixture??[]).map(x=>x.index),nonGetRequests:(job.nonGetRequests??[]).length,mutatingRequests:(job.mutatingRequests??[]).length,job:join(out,name,'job.json'),seconds:job.timings?.total!=null?Math.round(job.timings.total/1000):null,
@@ -344,8 +368,11 @@ const summaryRow=(name,job,out)=>({name,status:job.status,tenant:job.tenant?.key
  * resume:true continues an interrupted run in the SAME outDir: videos whose job.json has a final status are kept
  * as they are; an unfinished video's folder is moved aside (`<name>.interrupted-N`) and the video is run again.
  * exclusions: {rules:[{module, topicModule?}]} | legacy {modules:[...]} (default deps.exclusions = tools/drift/exclusions.json; injected test deps have none).
+ * sessionWaitMs / sessionRetryMs: how long a lost owner sign-in (SESSION_LOST) is waited out, and how often the same
+ * video is tried again. When it does not come back the run returns with summary.stopped set, no finishedAt and no
+ * selection (cross-page selection needs the whole batch): resume it once the sign-in is back.
  */
-export async function runWeekly({rehearse=true,session=null,names,outDir=join(SCRATCH,`weekly-${stamp()}`),dryRun=false,deps=null,judge=true,timeoutMs=DEFAULT_TIMEOUT_MS,profileDir=null,log=console.error,resume=false,exclusions=undefined,maxModelCalls=null,autoRepair=undefined,repairSettings={},reviewSettings={}}){
+export async function runWeekly({rehearse=true,session=null,names,outDir=join(SCRATCH,`weekly-${stamp()}`),dryRun=false,deps=null,judge=true,timeoutMs=DEFAULT_TIMEOUT_MS,profileDir=null,log=console.error,resume=false,exclusions=undefined,maxModelCalls=null,autoRepair=undefined,repairSettings={},reviewSettings={},sessionWaitMs=DEFAULT_SESSION_WAIT_MS,sessionRetryMs=DEFAULT_SESSION_RETRY_MS}){
   if(!names?.length)throw new Error('no_names');
   const out=resolve(outDir);const rel=relative(REPO,out);
   if(!rel.startsWith('..')&&!isAbsolute(rel))throw new Error('output_inside_repo');
@@ -368,12 +395,14 @@ export async function runWeekly({rehearse=true,session=null,names,outDir=join(SC
   const excl=exclusions!==undefined?exclusions:(deps.exclusions??null);
   const summary={schema:1,startedAt:prev?.startedAt??new Date().toISOString(),outDir:out,dryRun,names,captureSession,profile:captureSession==='owner'?'owner':profileDir??'per-tenant',bridgeAtStart:prev?.bridgeAtStart??(dryRun?null:await deps.bridgeStatus?.()??null),
     exclusions:hasRules(excl)?{rules:(excl.rules??parseExclusions(excl).rules).map(r=>({id:r.id,module:r.module,topicModule:r.topicModule??null,reason:r.reason??null})),reason:excl.reason??null,addedAt:excl.addedAt??null,addedBy:excl.addedBy??null}:null,videos:[],
-    ...(prev?{resumes:[...(prev.resumes??[]),{at:new Date().toISOString(),alreadyDone:0}]}:{})};
+    ...(prev?{resumes:[...(prev.resumes??[]),{at:new Date().toISOString(),alreadyDone:0}]}:{}),sessionWaits:[...(prev?.sessionWaits??[])]};
   const save=()=>writeFileSync(join(out,'summary.json'),JSON.stringify(summary,null,2)+'\n');
+  const sleep=deps.sleep??((ms)=>new Promise(r=>setTimeout(r,ms)));
   // Resume: keep finished videos (from their job.json, the source of truth), in the original order.
   const done=new Map(),jobs=new Map();
   if(prev)for(const name of names){const f=join(out,name,'job.json');let j=null;try{j=JSON.parse(readFileSync(f,'utf8'));}catch{}
-    if(j&&FINAL_STATUSES.has(j.status)&&j.finishedAt&&j.captureStatus!=='session_blocked')done.set(name,j);
+    // A video that only failed because the sign-in was lost was never checked: it runs again (like 'session_blocked').
+    if(j&&FINAL_STATUSES.has(j.status)&&j.finishedAt&&j.captureStatus!=='session_blocked'&&!sessionLost(j))done.set(name,j);
     else if(existsSync(join(out,name))){let k=1;while(existsSync(join(out,`${name}.interrupted-${k}`)))k++;renameSync(join(out,name),join(out,`${name}.interrupted-${k}`));log(`[weekly] ${name}: unfinished folder moved to ${name}.interrupted-${k}; running again`);}}
   if(prev)summary.resumes.at(-1).alreadyDone=done.size;
   // Tenant sign-in circuit breaker (also rebuilt from finished jobs on resume).
@@ -388,22 +417,45 @@ export async function runWeekly({rehearse=true,session=null,names,outDir=join(SC
     if(ex){job=excludedJob(name,join(out,name),ex);jobs.set(name,job);log(`[weekly] ${name}: excluded (${ex.rule})`);summary.videos.push(summaryRow(name,job,out));save();continue;}
     if(Object.keys(summary.tenantBlocked).length&&!dryRun){let t=null;try{const sc=(src??deps.readScript(name))?.script;t=sc?detectScriptTenant(sc).tenant:null;}catch{}
       if(t&&summary.tenantBlocked[t]){job=blockedJob(name,join(out,name),t,summary.tenantBlocked[t]);jobs.set(name,job);log(`[weekly] ${name}: ${job.summary}`);summary.videos.push(summaryRow(name,job,out));save();continue;}}
-    // Owner session: borrow/refresh the operator's Chrome sign-in BEFORE the per-video timeout starts (it may wait
-    // for the app to refresh short-lived tokens). A failure here is reported by the capture itself (session_failed).
-    if(deps.captureSession==='owner'&&!dryRun&&deps.ownerWarmup){try{const sc=(src??deps.readScript(name))?.script;const t=sc?detectScriptTenant(sc):null;
-      if(t?.status==='ok')await deps.ownerWarmup(t.tenant,(m)=>log(`[weekly] ${m}`));}catch(e){log(`[weekly] ${name}: owner session warm-up: ${e?.code||e?.message||e}`);}}
-    log(`[weekly] ${name}: start`);
-    const controller=new AbortController();
-    try{job=await withTimeout(runVideo(name,{outDir:out,deps,dryRun,profileDir,log,signal:controller.signal}),timeoutMs,name);}
-    catch(e){controller.abort();job={name,status:e?.code==='timeout'?'timeout':'error',candidatePath:null,errors:[{stage:'video',error:String(e?.message||e)}],finishedAt:new Date().toISOString()};
-      try{const f=join(out,name,'job.json');const prevJob=existsSync(f)?JSON.parse(readFileSync(f,'utf8')):{};writeFileSync(f,JSON.stringify({...prevJob,...job},null,2)+'\n');}catch{}}
+    // Owner session: borrow/refresh the operator's sign-in BEFORE the per-video timeout starts (it may wait for the
+    // app to refresh short-lived tokens). A lost sign-in (SESSION_LOST) is waited out here: this video is tried again
+    // every sessionRetryMs, and after sessionWaitMs the run stops with this and every later video untouched.
+    let away=null; // {video,status,detail,since,tries} while the sign-in is away
+    for(;;){
+      let lost=null;
+      if(deps.captureSession==='owner'&&!dryRun&&deps.ownerWarmup){try{const sc=(src??deps.readScript(name))?.script;const t=sc?detectScriptTenant(sc):null;
+        if(t?.status==='ok')await deps.ownerWarmup(t.tenant,(m)=>log(`[weekly] ${m}`));}catch(e){log(`[weekly] ${name}: owner session warm-up: ${e?.code||e?.message||e}`);
+        if(SESSION_LOST.includes(e?.code))lost={status:e.code,detail:e.detail??null};}}
+      if(!lost){
+        log(`[weekly] ${name}: start`);
+        const controller=new AbortController();
+        try{job=await withTimeout(runVideo(name,{outDir:out,deps,dryRun,profileDir,log,signal:controller.signal}),timeoutMs,name);}
+        catch(e){controller.abort();job={name,status:e?.code==='timeout'?'timeout':'error',candidatePath:null,errors:[{stage:'video',error:String(e?.message||e)}],finishedAt:new Date().toISOString()};
+          try{const f=join(out,name,'job.json');const prevJob=existsSync(f)?JSON.parse(readFileSync(f,'utf8')):{};writeFileSync(f,JSON.stringify({...prevJob,...job},null,2)+'\n');}catch{}}
+        if(sessionLost(job)){lost={status:job.session.status,detail:job.session.detail??null};
+          // The failed attempt stays as evidence, out of the way of the next try (and of a resume).
+          let k=1;while(existsSync(join(out,`${name}.session-lost-${k}`)))k++;renameSync(join(out,name),join(out,`${name}.session-lost-${k}`));job=null;}
+      }
+      if(!lost){if(away){summary.sessionWaits.push({...away,until:new Date().toISOString(),recovered:true});log(`[weekly] ${name}: sign-in is back after ${Math.round((Date.now()-Date.parse(away.since))/1000)} s; continuing`);}break;}
+      away={video:name,since:away?.since??new Date().toISOString(),tries:(away?.tries??0)+1,status:lost.status,detail:lost.detail};
+      const waited=Date.now()-Date.parse(away.since);
+      if(waited>=sessionWaitMs){
+        summary.sessionWaits.push({...away,until:new Date().toISOString(),recovered:false});
+        summary.stopped={reason:'session_lost',video:name,status:lost.status,detail:lost.detail,since:away.since,at:new Date().toISOString(),done:summary.videos.length,remaining:names.length-summary.videos.length};
+        log(`[weekly] stopped at ${name}: the sign-in did not come back within ${Math.round(sessionWaitMs/60_000)} min (${lost.status}${lost.detail?`: ${lost.detail}`:''}). ${summary.stopped.done} of ${names.length} videos are done; the other ${summary.stopped.remaining} were not touched. Continue with --resume ${out} once it is signed in.`);
+        break;}
+      log(`[weekly] ${name}: sign-in lost (${lost.status}${lost.detail?`: ${lost.detail}`:''}); trying again in ${Math.round(sessionRetryMs/1000)} s, giving up in ${Math.max(1,Math.round((sessionWaitMs-waited)/60_000))} min`);
+      save();await sleep(sessionRetryMs);
+    }
+    if(summary.stopped){save();break;}
     jobs.set(name,job);summary.videos.push(summaryRow(name,job,out));
     if(SESSION_HARD_STOP.includes(job.session?.status)&&job.tenant?.key&&!summary.tenantBlocked[job.tenant.key]){
       summary.tenantBlocked[job.tenant.key]={status:job.session.status,video:name,at:new Date().toISOString()};
       log(`[weekly] ${job.tenant.key} sign-in returned ${job.session.status}: no further ${job.tenant.key} video will try to sign in this run (lockout protection); needs a human`);}
-    save();log(`[weekly] ${name}: ${job.status} ${job.verdict??''}`);
+    save();log(`[weekly] ${name}: ${job.status} ${job.verdict??''}${job.shellRollout?.state?` | sidebar ${job.shellRollout.state}${job.shellRollout.old?` (${job.shellRollout.confirmed.length} of ${job.shellRollout.old} old-sidebar slides recaptured)`:''}`:''}`);
   }
-  if(!dryRun){
+  // A stopped run is not finalized: cross-page selection needs every video, so the resumed run does it.
+  if(!dryRun&&!summary.stopped){
     const selection=await finalizeWeeklySelection({jobs:[...jobs.values()],outDir:out,deps,log});
     summary.uiSelection={...selectionMarker(selection),path:join(out,'ui-selection.json')};
     summary.videos=summary.videos.map(row=>jobs.has(row.name)?summaryRow(row.name,jobs.get(row.name),out):row);
@@ -419,13 +471,19 @@ export async function runWeekly({rehearse=true,session=null,names,outDir=join(SC
       }
     }
   }
-  summary.finishedAt=new Date().toISOString();
+  if(!summary.stopped)summary.finishedAt=new Date().toISOString();
   if(deps.reviewProvider)summary.reviewProvider=deps.reviewProvider.status();
   summary.reviewPending=[...jobs.values()].filter(j=>j.status==='review_pending').map(j=>({name:j.name,reasons:j.reviewPending}));
   // Model reviews made / reused / deferred by the per-run budget (pending work is reported, never counted unchanged).
   if(deps.reviewBudget){summary.reviewUsage=structuredClone(deps.reviewBudget.usage);
     log(`[weekly] model reviews: ${summary.reviewUsage.calls} made, ${summary.reviewUsage.cacheHits} reused, ${summary.reviewUsage.budgetSkipped} deferred (cap ${summary.reviewUsage.maxCalls??'none'})`);}
   summary.counts=summary.videos.reduce((a,v)=>{const k=v.verdict??v.status;a[k]=(a[k]??0)+1;return a;},{});
+  // App-shell rollout worklist: per captured video, its old-sidebar slides and how many were recaptured (step indexes
+  // are in each job.json). A video that was not captured has no row: its sidebar was not checked.
+  const shellRows=[...jobs.values()].filter(j=>j.shellRollout);
+  if(shellRows.length)summary.shellRollout={counts:shellRows.reduce((a,j)=>{const k=j.shellRollout.state;a[k]=(a[k]??0)+1;return a;},{}),notChecked:summary.videos.length-shellRows.length,
+    videos:shellRows.map(j=>({name:j.name,state:j.shellRollout.state,old:j.shellRollout.old??0,recaptured:j.shellRollout.confirmed?.length??0,notCaptured:j.shellRollout.notCaptured?.length??0,unconfirmed:j.shellRollout.unconfirmed?.length??0,
+      ...(j.shellRollout.mixed?{mixed:true}:{}),...(j.shellRollout.notCaptured?.length&&j.mutationStop?{stoppedAt:j.mutationStop.index,stopReason:j.mutationStop.reason??null}:{})}))};
   summary.tenantCounts=summary.videos.reduce((a,v)=>{const k=v.tenant??v.tenantStatus??'n/a';a[k]=(a[k]??0)+1;return a;},{});
   summary.tenantSkipped=summary.videos.filter(v=>/^tenant_/.test(v.status)).map(v=>({name:v.name,status:v.status,summary:v.summary}));
   const exRows=summary.videos.filter(v=>v.status==='excluded');
@@ -436,8 +494,11 @@ export async function runWeekly({rehearse=true,session=null,names,outDir=join(SC
 
 function arg(args,name){const i=args.indexOf(name);return i>=0?args[i+1]:undefined;}
 export async function main(args=process.argv.slice(2)){
-  if(!args.includes('--once'))throw Object.assign(new Error('usage: weekly.mjs --once (--names A,B | --allowlist FILE) [--out NEW_DIR | --resume EXISTING_RUN_DIR] [--dry-run] [--no-judge] [--timeout-min N] [--max-model-calls N] [--no-rehearse] [--review-provider codex|claude] [--review-model MODEL] [--review-effort LEVEL] [--review-cache-dir DIR] [--codex-bin PATH] [--session automation|owner]'),{exit:64});
+  if(!args.includes('--once'))throw Object.assign(new Error('usage: weekly.mjs --once (--names A,B | --allowlist FILE) [--out NEW_DIR | --resume EXISTING_RUN_DIR] [--dry-run] [--no-judge] [--timeout-min N] [--session-wait-min N] [--max-model-calls N] [--no-rehearse] [--review-provider codex|claude] [--review-model MODEL] [--review-effort LEVEL] [--review-cache-dir DIR] [--codex-bin PATH] [--session automation|owner]'),{exit:64});
   const cap=arg(args,'--max-model-calls');
+  // How long a lost owner sign-in is waited out before the run stops, resumable (0 = stop at once).
+  const waitMin=arg(args,'--session-wait-min');
+  if(args.includes('--session-wait-min')&&!/^\d+$/.test(waitMin??''))throw Object.assign(new Error('--session-wait-min must be a whole number of minutes'),{exit:64});
   const reviewSettings={};
   for(const [flag,key]of [['--review-provider','provider'],['--review-model','model'],['--review-effort','effort'],['--review-cache-dir','cacheDir'],['--codex-bin','binary']]){
     if(args.includes(flag)){
@@ -459,11 +520,13 @@ export async function main(args=process.argv.slice(2)){
   let s;
   try{s=await runWeekly({names,outDir:resumeDir??arg(args,'--out')??join(SCRATCH,`weekly-${stamp()}`),resume:!!resumeDir,dryRun:args.includes('--dry-run'),judge:!args.includes('--no-judge'),reviewSettings,session,
     timeoutMs:arg(args,'--timeout-min')?Number(arg(args,'--timeout-min'))*60_000:DEFAULT_TIMEOUT_MS,maxModelCalls:cap!=null?Number(cap):null,rehearse:!args.includes('--no-rehearse'),
+    ...(waitMin!=null?{sessionWaitMs:Number(waitMin)*60_000}:{}),
     autoRepair:args.includes('--no-auto-repair')?false:undefined,repairSettings:{...(arg(args,'--codex-bin')?{binary:arg(args,'--codex-bin')}:{}),...(arg(args,'--repair-model')?{model:arg(args,'--repair-model')}:{}),...(arg(args,'--repair-effort')?{effort:arg(args,'--repair-effort')}:{})}});}
   // One Chrome debugging connection served every borrow of this run (one Allow prompt); release it so the run exits.
   // Unconditional: a resumed run takes its session from summary.json inside runWeekly, not from this CLI's --session.
   finally{await (await import('./owner-session.mjs')).releaseOwnerConnection().catch(()=>{});}
-  console.log(JSON.stringify({outDir:s.outDir,counts:s.counts,tenantCounts:s.tenantCounts,reviewUsage:s.reviewUsage??null,reviewProvider:s.reviewProvider??null,reviewPending:s.reviewPending,automation:s.automation??null,videos:s.videos.map(v=>({name:v.name,tenant:v.tenant,status:v.status,verdict:v.verdict,summary:v.summary,candidate:v.candidatePath}))},null,2));
+  console.log(JSON.stringify({outDir:s.outDir,stopped:s.stopped??null,counts:s.counts,tenantCounts:s.tenantCounts,reviewUsage:s.reviewUsage??null,reviewProvider:s.reviewProvider??null,reviewPending:s.reviewPending,automation:s.automation??null,videos:s.videos.map(v=>({name:v.name,tenant:v.tenant,status:v.status,verdict:v.verdict,summary:v.summary,candidate:v.candidatePath}))},null,2));
   return s;
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)main().catch(e=>{console.error(e.message);process.exitCode=e.exit??1;});
+// Exit 75 (temporary failure): the run stopped because the sign-in was lost and can be resumed.
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)main().then(s=>{if(s?.stopped)process.exitCode=75;}).catch(e=>{console.error(e.message);process.exitCode=e.exit??1;});

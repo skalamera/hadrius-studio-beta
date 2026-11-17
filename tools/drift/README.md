@@ -546,7 +546,26 @@ the remaining change is the redesigned Sandbox sidebar), configure-comment-templ
 Tests: `tests/drift/false-rerecord.test.mjs`.
 
 `weekly.mjs --once ... --resume <run dir>` continues an interrupted run: finished videos (final `job.json` status) are
-kept, an unfinished video's folder is moved to `<name>.interrupted-N` and re-run.
+kept, an unfinished video's folder is moved to `<name>.interrupted-N` and re-run. A video that failed only because the
+owner sign-in was lost (`captureStatus: session_failed` with a `SESSION_LOST` status) is not finished: it runs again.
+
+**Lost owner sign-in (`--session owner`).** When the Studio profile is signed out or busy, or the Chrome debugging
+connection drops, the run does not move on: it tries the same video again every minute (the failed attempt is kept as
+`<name>.session-lost-N`; nothing is started while the warm-up borrow still fails). If the sign-in is not back after
+`--session-wait-min N` (default 60; 0 = at once) the run stops: `summary.stopped` names the video and the reason, there
+is no `finishedAt` and no selection, later videos have no folder, and the exit code is 75. Nothing from a stopped run
+can be submitted (`weekly_run_incomplete`). Sign in again (`owner-profile.mjs --sign-in`), then `--resume <run dir>`.
+`summary.sessionWaits` lists every wait. Automation-account sign-ins are not retried this way (each try submits a
+password); their hard stops stay with `SESSION_HARD_STOP`.
+
+**App-shell rollout (sidebar).** `shell-rollouts.json` records an app-wide change of the sidebar that a company flag
+turned on (no release explains it). For every captured video the run reads the sidebar column of each recorded frame
+and of today's capture of the same step (`shell-rollout.mjs`, local text recognition) and stores the result per step
+(`job.steps[].shellRollout`) and per video (`job.shellRollout.state`, table in `summary.shellRollout`):
+`current`, `stale_replaceable` (every old-sidebar slide was recaptured with the new one), `stale_blocked` (an
+old-sidebar slide was not reached or today's frame does not show the new sidebar; replacing the others would mix both
+sidebars in one video), `unknown` (no sidebar readable in the recording), `error`. This is evidence and a worklist
+only: selection, repair and Slack posts do not act on it yet.
 
 ## Moved highlight (screen re-plan) + first/last slides (card crossfades), real pilot verified
 
@@ -608,7 +627,7 @@ bridge/extension/publisher; `assemble.py` unchanged.
 ## Weekly drift job: mutation guard, classification, runner (`classify.mjs`, `weekly.mjs`)
 
 ```sh
-node tools/drift/weekly.mjs --once --names A,B | --allowlist FILE [--out NEW_DIR] [--dry-run] [--no-judge] [--timeout-min 15]
+node tools/drift/weekly.mjs --once --names A,B | --allowlist FILE [--out NEW_DIR] [--dry-run] [--no-judge] [--timeout-min 15] [--session-wait-min 60]
 node tools/drift/classify.mjs --run RUN_DIR --script scripts/<name>.script.json --recordings out/_recordings/<id> [--no-judge]
 ```
 

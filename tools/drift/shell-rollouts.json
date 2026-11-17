@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "rollouts": [
+    {
+      "key": "agentic_sidebar",
+      "title": "Agentic sidebar (Ask Hadrius, Inbox, grouped program tabs)",
+      "before": "classic",
+      "after": "agentic",
+      "tenants": ["academy", "sandbox"],
+      "verifiedAt": "2026-11-10",
+      "decision": "Operator, 2026-11-10: every video is to show the new UI. A slide whose recording shows the classic sidebar is stale even when nothing it teaches changed, so a confirmed rollout selects every such slide; any that cannot be replaced holds the whole video for a re-record (no mixed old/new sidebars).",
+      "evidence": [
+        "Live replays as the owner, 2026-11-09/10: Academy 1150 renders the agentic sidebar on every admin page (Hadrius / Ask Hadrius / Inbox / PROGRAM / SYSTEM headings, user footer); Sandbox 1048 has rendered it since 2026-11-09.",
+        "Recorded frames (sidebar text survey of 197 videos, 2026-11-08): 41 Academy videos already show the agentic sidebar; 150 show the classic one (Announcements footer, top-level Templates/Vendors).",
+        "Frontend: the admin navbar switches to AgenticNavbar when the company has AGENTIC_SIDEBAR or AGENTIC_FUTURE (hadrius_frontend src/api/auth/get_module_permissions.ts useHasAgenticSidebar, src/app_shell/nav_bars/component_nav_bar.tsx). The read replica shows neither row for 1150/1048 (only INBOX: 1150 since 2026-11-03T00:16Z, 1048 since 2026-11-09T01:45Z), so the per-slide frames, not a flag date, are what confirm each change."
+      ]
+    }
+  ]
+}

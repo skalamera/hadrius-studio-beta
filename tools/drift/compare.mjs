@@ -148,6 +148,9 @@ export function contactSheet(rows,{f=0.5,gap=12,bar=14}={}){
 // Reads RUN_DIR/run.json (written by capture.mjs) and writes compare.json, diff-NN.png, contact-sheet.png.
 export function compareRun({runDir,recordingsDir,thresholds=DEFAULT_THRESHOLDS}){
   const run=JSON.parse(readFileSync(join(runDir,'run.json'),'utf8'));const steps=[],rows=[];
+  // run.json boxes are CSS px; frames are CSS px x deviceScaleFactor (replays at a recording's own pixel ratio).
+  const k=Number.isFinite(run.deviceScaleFactor)&&run.deviceScaleFactor>0?run.deviceScaleFactor:1;
+  const px=(r)=>r&&k!==1?{...r,x:r.x*k,y:r.y*k,w:r.w*k,h:r.h*k}:r,pxAll=(a)=>(a??[]).map(px);
   for(const s of run.steps){
     const entry={index:s.index,action:s.action,url:s.url,todayUrl:s.todayUrl??null,recordedMedia:s.recordedMedia??null,todayScreenshot:s.screenshot??null,
       mutationGuard:s.mutationGuard??null,prerequisiteUnverified:!!s.prerequisiteUnverified};
@@ -155,9 +158,9 @@ export function compareRun({runDir,recordingsDir,thresholds=DEFAULT_THRESHOLDS})
       entry.reason=s.mutationGuard?.reason??s.error??'no screenshot';steps.push(entry);continue;}
     const rec=decodePng(readFileSync(join(recordingsDir,s.recordedMedia))),today=decodePng(readFileSync(join(runDir,s.screenshot)));
     const target=s.target?{status:s.target.status,delta:s.target.delta??null}:null;
-    const cmp=compareImages(rec,today,{dynamicRects:s.dynamicRects??[],dataRects:s.dataRects??[],thresholds,target,cell:thresholds.cell});
+    const cmp=compareImages(rec,today,{dynamicRects:pxAll(s.dynamicRects),dataRects:pxAll(s.dataRects),thresholds,target,cell:thresholds.cell});
     const diffName=`diff-${String(s.index).padStart(2,'0')}.png`;
-    const diff=cmp.dimensionsMatch?renderDiff(today,cmp,{dynamicRects:s.dynamicRects??[],dataRects:s.dataRects??[],recordedTarget:s.target?.recordedRect??null,todayTarget:s.target?.rect??null}):blank(today.width,today.height,[255,0,0]);
+    const diff=cmp.dimensionsMatch?renderDiff(today,cmp,{dynamicRects:pxAll(s.dynamicRects),dataRects:pxAll(s.dataRects),recordedTarget:px(s.target?.recordedRect??null),todayTarget:px(s.target?.rect??null)}):blank(today.width,today.height,[255,0,0]);
     writeFileSync(join(runDir,diffName),encodePng(diff),{flag:'wx'});
     Object.assign(entry,{classification:cmp.classification,dimensions:{recorded:cmp.recorded,today:cmp.today,match:cmp.dimensionsMatch},changedPixels:cmp.changedPixels,diffFraction:cmp.diffFraction,diffFractionNonDynamic:cmp.diffFractionNonDynamic,dynamicChangedPixels:cmp.dynamicChangedPixels,ssim:cmp.ssim,ssimMasked:cmp.ssimMasked,regions:cmp.regions,dynamicRegions:s.dynamicRects??[],target:s.target??null,diff:diffName,
       ...(s.dataRects?{dataRegions:s.dataRects,dataChangedPixels:cmp.dataChangedPixels??0,diffFractionUi:cmp.diffFractionUi??cmp.diffFractionNonDynamic,ssimUi:cmp.ssimUi??cmp.ssimMasked,dataOnly:!!cmp.dataOnly}:{})});

@@ -271,8 +271,11 @@ export async function classifyRun({runDir,script,recordingsDir,judge=null,thresh
     // Only NAME matches are disambiguated: CSS-only matches mean the recorded name is gone (stays a finding).
     if(tgt?.status==='ambiguous'&&!['css','status_counter'].includes(tgt.method)&&(tgt.matches?.length??0)>1&&img&&recImgs.get(st.index)){
       const t=st.target??{};
-      disamb=disambiguateTarget({matches:tgt.matches,recordedRect:tgt.recordedRect??t.hint?.bbox??t.bbox??null,recordedViewport:t.hint?.viewport??t.viewport??null,todayViewport:{w:img.width,h:img.height},
-        recorded:lumaPlane(recImgs.get(st.index)),today:lumaPlane(img)});
+      // Boxes are CSS px: today's viewport is the run's CSS viewport, and the visual check (boxes read as image px) only
+      // runs at pixel ratio 1 (capture.mjs recordedGeometry).
+      const k=run.deviceScaleFactor??1,vp=run.viewport?.width>0?{w:run.viewport.width,h:run.viewport.height}:{w:img.width,h:img.height};
+      disamb=disambiguateTarget({matches:tgt.matches,recordedRect:tgt.recordedRect??t.hint?.bbox??t.bbox??null,recordedViewport:t.hint?.viewport??t.viewport??null,todayViewport:vp,
+        recorded:k===1?lumaPlane(recImgs.get(st.index)):null,today:k===1?lumaPlane(img):null});
       if(disamb?.status==='resolved'){const ch=tgt.matches[disamb.chosen];const delta=tgt.recordedRect&&ch?.bbox?{dx:ch.bbox.x-tgt.recordedRect.x,dy:ch.bbox.y-tgt.recordedRect.y,dw:ch.bbox.w-tgt.recordedRect.w,dh:ch.bbox.h-tgt.recordedRect.h}:null;
         if(delta)delta.max=Math.max(...Object.values(delta).map(Math.abs));
         tgt={...tgt,status:'resolved',resolved:ch,rect:ch?.bbox??null,delta,disambiguation:disamb,offlineDisambiguation:true};

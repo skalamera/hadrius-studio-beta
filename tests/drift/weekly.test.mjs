@@ -258,6 +258,117 @@ test('resume re-finalizes the whole batch and retires candidates made obsolete b
   assert.ok(existsSync(join(out,names[0],'candidate-manifest.json.superseded-1')));
 });
 
+// ---------- lost owner sign-in (SESSION_LOST): wait and try the same video again, or stop resumable ----------
+// Owner-session deps whose capture reports a lost sign-in for the first `fails` attempts at `victim`.
+function losingDeps(fx,{victim,fails=Infinity,status='owner_not_signed_in',calls=[],verdicts={}}={}){
+  const deps=fakeDeps(fx,{calls,verdicts}),cap=deps.capture;let n=0;
+  deps.captureSession='owner';
+  deps.capture=async(a)=>{const name=a.scriptPath.split('/').pop().replace('.script.json','');
+    if(name===victim&&n++<fails){calls.push(['lost',name]);return {status:'session_failed',session:{status,detail:'the Studio profile is not signed in to Hadrius'},findings:[],steps:[]};}
+    return cap(a);};
+  return deps;
+}
+test('a lost owner sign-in is waited out: the same video runs again once it is back, and no video is marked failed', async () => {
+  const fx=fixture(),calls=[],out=join(fx.root,'lost-recover'),logs=[];
+  const s=await runWeekly({names:['Vid-A','Vid-B','Vid-Archive'],outDir:out,deps:losingDeps(fx,{victim:'Vid-B',fails:2,calls}),sessionRetryMs:1,sessionWaitMs:60_000,log:m=>logs.push(m)});
+  assert.equal(s.stopped,undefined);assert.ok(s.finishedAt);assert.ok(s.uiSelection);
+  assert.deepEqual(s.videos.map(v=>[v.name,v.status]),[['Vid-A','ok'],['Vid-B','ok'],['Vid-Archive','ok']]);
+  assert.equal(calls.filter(c=>c[0]==='lost').length,2);
+  assert.deepEqual(calls.filter(c=>c[0]==='capture').map(c=>c[1].split('/').pop()),['Vid-A.script.json','Vid-B.script.json','Vid-Archive.script.json']);
+  for(const k of [1,2])assert.equal(JSON.parse(readFileSync(join(out,`Vid-B.session-lost-${k}`,'job.json'),'utf8')).captureStatus,'session_failed','failed attempts stay as evidence');
+  assert.equal(JSON.parse(readFileSync(join(out,'Vid-B','job.json'),'utf8')).status,'ok');
+  assert.equal(s.sessionWaits.length,1);
+  assert.deepEqual([s.sessionWaits[0].video,s.sessionWaits[0].status,s.sessionWaits[0].tries,s.sessionWaits[0].recovered],['Vid-B','owner_not_signed_in',2,true]);
+  assert.ok(logs.some(m=>/Vid-B: sign-in lost \(owner_not_signed_in/.test(m))&&logs.some(m=>/Vid-B: sign-in is back/.test(m)));
+});
+test('a sign-in that stays away stops the run: later videos are untouched, nothing is finalized or offered, and resume continues there', async () => {
+  const fx=fixture(),calls=[],out=join(fx.root,'lost-stop'),logs=[],names=['Vid-A','Vid-B','Vid-Archive'];
+  const s=await runWeekly({names,outDir:out,deps:losingDeps(fx,{victim:'Vid-B',calls,verdicts:{'Vid-A':'slide_update'}}),sessionRetryMs:1,sessionWaitMs:25,log:m=>logs.push(m)});
+  assert.deepEqual([s.stopped.reason,s.stopped.video,s.stopped.status,s.stopped.done,s.stopped.remaining],['session_lost','Vid-B','owner_not_signed_in',1,2]);
+  assert.equal(s.finishedAt,undefined);assert.equal(s.uiSelection,undefined,'a partial batch is never finalized');
+  assert.deepEqual(s.videos.map(v=>v.name),['Vid-A']);
+  assert.equal(existsSync(join(out,'Vid-B')),false);assert.equal(existsSync(join(out,'Vid-Archive')),false,'later videos were not attempted');
+  assert.ok(calls.filter(c=>c[0]==='lost').length>=2,'the same video was tried again while waiting');
+  assert.ok(logs.some(m=>m.includes('stopped at Vid-B')&&m.includes(`--resume ${out}`)));
+  const saved=JSON.parse(readFileSync(join(out,'summary.json'),'utf8'));
+  assert.equal(saved.stopped.video,'Vid-B');assert.equal(saved.sessionWaits.at(-1).recovered,false);
+  // Vid-A has a confirmed change, but nothing from a run that did not finish is offered for approval.
+  const io={readJson:p=>existsSync(p)?JSON.parse(readFileSync(p,'utf8')):null,readScript:n=>fx.scripts[n],readAssembly:()=>null};
+  const rows=prepareSubmissions({summary:saved,runDir:out,io,requireCertifiedPreview:false});
+  assert.deepEqual(rows.map(r=>[r.name,r.decision,r.reason]),[['Vid-A','skip','weekly_run_incomplete']]);
+  // Signed in again: the resumed run keeps Vid-A, runs the other two and finalizes the whole batch.
+  calls.length=0;const healthy=fakeDeps(fx,{calls,verdicts:{'Vid-A':'slide_update'}});healthy.captureSession='owner';
+  const resumed=await runWeekly({names,outDir:out,deps:healthy,resume:true,log:()=>{}});
+  assert.equal(resumed.stopped,undefined);assert.ok(resumed.finishedAt);assert.ok(resumed.uiSelection);
+  assert.deepEqual(calls.filter(c=>c[0]==='capture').map(c=>c[1].split('/').pop()),['Vid-B.script.json','Vid-Archive.script.json']);
+  assert.deepEqual(resumed.videos.map(v=>[v.name,v.status]),names.map(n=>[n,'ok']));
+  assert.equal(resumed.resumes.at(-1).alreadyDone,1);
+});
+test('a sign-in lost at the warm-up is retried without starting the video; --session-wait-min 0 stops at the first loss', async () => {
+  const fx=fixture(),calls=[],out=join(fx.root,'lost-warmup');let n=0;
+  const deps=fakeDeps(fx,{calls});deps.captureSession='owner';
+  deps.ownerWarmup=async()=>{if(n++<3)throw Object.assign(new Error('refused'),{code:'owner_chrome_unreachable',detail:'Chrome did not answer the debugging connection'});return {status:'owner_session'};};
+  const s=await runWeekly({names:['Vid-A','Vid-B'],outDir:out,deps,sessionRetryMs:1,sessionWaitMs:60_000,log:()=>{}});
+  assert.ok(s.videos.every(v=>v.status==='ok'));assert.equal(s.videos.length,2);
+  assert.deepEqual([s.sessionWaits[0].tries,s.sessionWaits[0].status,s.sessionWaits[0].recovered],[3,'owner_chrome_unreachable',true]);
+  assert.deepEqual(readdirSync(out).filter(f=>f.includes('session-lost')),[],'no attempt was started while the sign-in was away');
+  assert.equal(calls.filter(c=>c[0]==='capture').length,2);
+  const calls0=[],out0=join(fx.root,'lost-no-wait');
+  const s0=await runWeekly({names:['Vid-A','Vid-B'],outDir:out0,deps:losingDeps(fx,{victim:'Vid-A',calls:calls0}),sessionRetryMs:1,sessionWaitMs:0,log:()=>{}});
+  assert.equal(s0.stopped.video,'Vid-A');assert.equal(calls0.filter(c=>c[0]==='lost').length,1);assert.deepEqual(s0.videos,[]);
+  await assert.rejects(main(['--once','--names','Vid-A','--session-wait-min','soon']),/whole number of minutes/);
+});
+test('session failures that are about one tenant, not the sign-in, still fail that video only', async () => {
+  const fx=fixture(),calls=[],out=join(fx.root,'lost-tenant');
+  const s=await runWeekly({names:['Vid-A','Vid-B'],outDir:out,deps:losingDeps(fx,{victim:'Vid-A',status:'owner_tenant_not_accessible',calls}),sessionRetryMs:1,sessionWaitMs:60_000,log:()=>{}});
+  assert.equal(s.stopped,undefined);assert.deepEqual(s.videos.map(v=>v.status),['capture_failed','ok']);
+  assert.equal(calls.filter(c=>c[0]==='lost').length,1);assert.deepEqual(s.sessionWaits,[]);
+});
+test('resume runs a video again when an earlier run marked it failed only because the sign-in was lost', async () => {
+  const fx=fixture(),calls=[],out=join(fx.root,'lost-legacy');mkdirSync(join(out,'Vid-A'),{recursive:true});mkdirSync(join(out,'Vid-B'));
+  const at='2026-11-12T12:16:26.000Z',tenant={key:'academy',status:'ok'};
+  writeFileSync(join(out,'Vid-A','job.json'),JSON.stringify({schema:1,name:'Vid-A',status:'capture_failed',captureStatus:'session_failed',session:{status:'owner_chrome_unreachable'},tenant,finishedAt:at}));
+  // A capture that failed for its own reasons stays final.
+  writeFileSync(join(out,'Vid-B','job.json'),JSON.stringify({schema:1,name:'Vid-B',status:'capture_failed',captureStatus:'aborted',session:{status:'owner_session'},tenant,finishedAt:at}));
+  writeFileSync(join(out,'summary.json'),JSON.stringify({schema:1,startedAt:at,captureSession:'owner',names:['Vid-A','Vid-B'],videos:[],finishedAt:at}));
+  const deps=fakeDeps(fx,{calls});
+  const s=await runWeekly({names:['Vid-A','Vid-B'],outDir:out,deps,resume:true,log:()=>{}});
+  assert.deepEqual(calls.filter(c=>c[0]==='capture').map(c=>c[1].split('/').pop()),['Vid-A.script.json']);
+  assert.deepEqual(s.videos.map(v=>[v.name,v.status]),[['Vid-A','ok'],['Vid-B','capture_failed']]);
+  assert.equal(JSON.parse(readFileSync(join(out,'Vid-A.interrupted-1','job.json'),'utf8')).session.status,'owner_chrome_unreachable');
+  assert.equal(s.captureSession,'owner');assert.equal(s.resumes.at(-1).alreadyDone,1);
+});
+
+// ---------- app-shell rollout evidence in the run (shell-rollout.mjs) ----------
+test('runWeekly records each captured video\'s sidebar state: recaptured, blocked behind a stop, or unreadable', async () => {
+  const fx=fixture(),out=join(fx.root,'shell'),deps=fakeDeps(fx),logs=[],seen=[];
+  const slide=(recordedShell,todayShell,captured=true)=>({method:'sidebar-text-ocr-v1',rollout:'agentic_sidebar',recordedShell,todayShell,captured,confirmed:recordedShell==='classic'&&todayShell==='agentic'});
+  deps.shellEvidence=async({script,tenant,runDir,recordingsDir})=>{seen.push([script.name,tenant,existsSync(join(runDir,'compare.json')),recordingsDir]);
+    if(script.name==='Vid-B')throw new Error('text recognition failed');
+    const byStep=script.name==='Vid-Archive'?{0:slide('classic','agentic'),1:slide('classic',null,false)}:{0:slide('classic','agentic'),1:slide('classic','agentic')};
+    return {status:'ok',rollout:'agentic_sidebar',rolloutDigest:'d'.repeat(64),before:'classic',after:'agentic',byStep};};
+  const s=await runWeekly({names:['Vid-A','Vid-B','Vid-Archive','Vid-Crash'],outDir:out,deps,log:m=>logs.push(m)});
+  assert.deepEqual(seen.map(x=>[x[0],x[1],x[2]]),[['Vid-A','academy',true],['Vid-B','academy',true],['Vid-Archive','academy',true]],'read after the comparison, for captured videos only');
+  const job=n=>JSON.parse(readFileSync(join(out,n,'job.json'),'utf8'));
+  assert.equal(job('Vid-A').shellRollout.state,'stale_replaceable');assert.deepEqual(job('Vid-A').steps.map(x=>x.shellRollout.confirmed),[true,true]);
+  assert.equal(job('Vid-A').shellRollout.rolloutDigest,'d'.repeat(64));
+  // A reader that failed is an error on that video, never "current"; the video's own result stands.
+  assert.equal(job('Vid-B').status,'ok');assert.equal(job('Vid-B').shellRollout.state,'error');assert.equal(job('Vid-B').steps[0].shellRollout,undefined);
+  assert.ok(job('Vid-B').errors.some(e=>e.stage==='shell_rollout'));
+  assert.deepEqual(job('Vid-Archive').shellRollout.notCaptured,[1]);
+  assert.deepEqual(s.shellRollout.counts,{stale_replaceable:1,error:1,stale_blocked:1});assert.equal(s.shellRollout.notChecked,1,'the crashed video was not checked');
+  assert.deepEqual(s.shellRollout.videos.find(v=>v.name==='Vid-Archive'),{name:'Vid-Archive',state:'stale_blocked',old:2,recaptured:1,notCaptured:1,unconfirmed:0,stoppedAt:1,stopReason:'name_matches:archive'});
+  assert.ok(logs.some(m=>m.includes('Vid-Archive: ok')&&m.includes('sidebar stale_blocked (1 of 2 old-sidebar slides recaptured)')));
+  // Evidence only: it changes no verdict and selects nothing.
+  assert.deepEqual(s.videos.filter(v=>v.status==='ok').map(v=>v.verdict),['unchanged','unchanged','unchanged']);assert.ok(s.videos.every(v=>!v.candidatePath));
+});
+test('runWeekly without a sidebar reader adds nothing to jobs or the summary', async () => {
+  const fx=fixture(),out=join(fx.root,'no-shell');
+  const s=await runWeekly({names:['Vid-A'],outDir:out,deps:fakeDeps(fx),log:()=>{}});
+  const j=JSON.parse(readFileSync(join(out,'Vid-A','job.json'),'utf8'));
+  assert.equal(j.shellRollout,undefined);assert.ok(j.steps.every(x=>!('shellRollout' in x)));assert.equal(s.shellRollout,undefined);
+});
+
 test('detection provider config defaults to Codex, isolates Claude settings, and allows explicit Claude opt-in', async () => {
   assert.deepEqual(detectionReviewSettings({},{}),{provider:'codex',model:'gpt-6.1-sol',effort:'medium'});
   const env={KBS_DECISION_MODEL:'claude-opus-5-5',KBS_DECISION_EFFORT:'max',KBS_CODEX_BIN:'/offline/codex'};
@@ -294,7 +405,9 @@ async function detectionFixture(t,{maxModelCalls=null,reviewCache=true,run=null,
       return {stdout:'',stderr:`model: ${model}\n`};
     })})}});
   const fake=fakeDeps(fx);
-  Object.assign(deps,{readScript:fake.readScript,capture:fake.capture,recordingsRoot:fx.rec,bridgeStatus:async()=>null,exclusions:null,
+  // The sidebar reader runs local text recognition on real frames: never on these synthetic ones.
+  assert.equal(typeof deps.shellEvidence,'function','the normal run reads the sidebar of every captured video');
+  Object.assign(deps,{readScript:fake.readScript,capture:fake.capture,recordingsRoot:fx.rec,bridgeStatus:async()=>null,exclusions:null,shellEvidence:null,
     compare:async({runDir})=>{writeFileSync(join(runDir,'compare.json'),JSON.stringify({steps:[{index:0,classification:'screenshot_changed',todayScreenshot:'step-00-today.png',dimensions:{match:true},diffFractionNonDynamic:0.01,ssimMasked:0.97,regions:[]}]}));return {};},
     releaseEvidence:async()=>({summary:{status:'ok'},byStep:{0:candidateRelease()},excerpt:()=>'-"Create rule"\n+"New rule"',
       filesTouched:()=>candidateRelease().screenFiles,uiStringsAt:sha=>new Set(sha==='b'.repeat(40)?['new rule']:['create rule']),

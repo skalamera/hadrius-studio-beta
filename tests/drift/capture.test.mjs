@@ -7,6 +7,7 @@ import {deflateSync} from 'node:zlib';
 import {
   classifyRequest, resolveTarget, rectDelta, preflight, companyIdOf, signedInFromProbe, normalizeName, isProjectDetailHref, dynamicTextKind,
   classifyStepMutation, mutatingWord, mutatingWords, rehearsalFor, unnamedCssTargetOk, KNOWN_READ_POSTS, mutationPlan, DEFAULT_PROFILE, isDriftProfile, captureRun, createRequestGuard, fixtureEvidence, recordRefsFromUrl,
+  recordedGeometry, pngFrameSize, VIEWPORT,
 } from '../../tools/drift/capture.mjs';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {join,basename} from 'node:path';
@@ -666,5 +667,56 @@ test('captureRun --rehearse: an unnamed draft-page click found by position is pe
     assert.equal(run.steps[1].performed,'click');
     assert.deepEqual(fc.actions.filter(a=>a[0]==='click').map(a=>a[1]),['Question type','Preview']);
     assert.equal(run.mutationStop,null);
+  }finally{globalThis.fetch=origFetch;}
+});
+
+// ---------- recorded geometry (replays at the recording's own window size and pixel ratio) ----------
+const EXT_DPR=1.3333333730697632; // as stored by the extension (float32)
+const extStep=(i,vp={w:1626,h:1137})=>({index:i,action:'click',dpr:EXT_DPR,media:{pre:`f${i}.png`},target:{name:'X',hint:{bbox:{x:1,y:1,w:5,h:5},viewport:vp}}});
+test('recordedGeometry: an extension recording replays at its own CSS viewport and pixel ratio, proven by its frames', () => {
+  const script={steps:[{index:0,action:'navigate',media:{pre:'f0.png'}},extStep(1),extStep(2),extStep(3,{w:1200,h:800})]};
+  const g=recordedGeometry(script,{frameSize:()=>({width:2168,height:1516})});
+  assert.equal(g.source,'recording');assert.deepEqual(g.viewport,{width:1626,height:1137});assert.equal(g.deviceScaleFactor,EXT_DPR);
+  // Frames already at the default size: unchanged behaviour.
+  assert.deepEqual(recordedGeometry({steps:[extStep(1,{w:1600,h:900})]},{frameSize:()=>({width:1600,height:900})}),
+    {viewport:{...VIEWPORT},deviceScaleFactor:1,source:'default',reason:'recorded_at_default'});
+  // A truncated CSS width (1621.5 px window stored as 1621): the ratio is fine-tuned so Chrome's round(w x ratio) is the
+  // recorded frame exactly (2162, not 2161), with the same CSS viewport.
+  const t=recordedGeometry({steps:[extStep(1,{w:1621,h:1137}),extStep(2,{w:1621,h:1137})]},{frameSize:()=>({width:2162,height:1516})});
+  assert.equal(t.source,'recording');assert.deepEqual(t.viewport,{width:1621,height:1137});
+  assert.equal(Math.round(1621*t.deviceScaleFactor),2162);assert.equal(Math.round(1137*t.deviceScaleFactor),1516);assert.ok(Math.abs(t.deviceScaleFactor-EXT_DPR)<=0.005);
+  // 90% browser zoom with a truncated CSS height (1338.9 stored as 1338): one extra CSS px reproduces 1821x1205 at 0.9.
+  const z={steps:[{...extStep(1,{w:2023,h:1338}),dpr:0.9}]};
+  const zg=recordedGeometry(z,{frameSize:()=>({width:1821,height:1205})});
+  assert.deepEqual([zg.source,zg.viewport,zg.deviceScaleFactor],['recording',{width:2023,height:1339},0.9]);
+  // Hints that do not multiply out to the frames (beyond a sub-pixel ratio adjustment) are not trusted.
+  const bad=recordedGeometry(script,{frameSize:()=>({width:2054,height:1550})});
+  assert.equal(bad.source,'default');assert.match(bad.reason,/^unproven:/);assert.deepEqual(bad.viewport,{...VIEWPORT});
+  // No frames to prove it (recordingsDir unavailable): default.
+  assert.equal(recordedGeometry(script).reason,'no_recorded_frames');
+  // Frames but no hint viewport at all.
+  assert.equal(recordedGeometry({steps:[{index:0,action:'navigate',media:{pre:'a.png'}}]},{frameSize:()=>({width:2168,height:1516})}).reason,'no_recorded_viewport');
+});
+test('captureRun: launches the replay at the recorded geometry and records it in run.json', async () => {
+  const dir=mkdtempSync(join(tmpdir(),'drift-cap-geo-'));const prof=join(dir,'.browser-profile-drift');mkdirSync(prof);const recDir=join(dir,'rec');mkdirSync(recDir);
+  const L=`${APP}/testing-program/policies?company_id=1150`;
+  const frame=encodePng({width:2168,height:1516,data:new Uint8Array(2168*1516*4)});
+  for(const f of ['f0.png','f1.png'])writeFileSync(join(recDir,f),frame);
+  assert.deepEqual(pngFrameSize(join(recDir,'f0.png')),{width:2168,height:1516});
+  const script={name:'geo',environment:{startUrl:L},recording:{id:'r'},steps:[{index:0,action:'navigate',url:L,value:L,route:'/testing-program/policies?company_id=1150',media:{pre:'f0.png'}},
+    {...extStep(1),url:L,route:'/testing-program/policies?company_id=1150',target:{role:'button',tag:'button',name:'Open details',hint:{bbox:{x:1,y:1,w:5,h:5},viewport:{w:1626,h:1137}}}}]};
+  const sp=join(dir,'s.json');writeFileSync(sp,JSON.stringify(script));
+  const fc=fakeChromium({[L]:{candidates:[{role:'button',tag:'button',name:'Open details'}]}});
+  const launches=[],sizes=[];const launch=fc.launchPersistentContext;
+  fc.launchPersistentContext=async(d,opts)=>{launches.push(opts);const ctx=await launch(d,opts);const p=ctx.pages()[0];const sv=p.setViewportSize;p.setViewportSize=async(v)=>{sizes.push(v);return sv(v);};return ctx;};
+  const origFetch=globalThis.fetch;globalThis.fetch=async()=>({json:async()=>({running:false})});
+  try{
+    const run=await captureRun({scriptPath:sp,profileDir:prof,outDir:join(dir,'run'),recordingsDir:recDir,log:()=>{},chromium:fc,ensureSession:async()=>({status:'already_signed_in',companyIds:[1150]}),limits:{stepMs:5000,totalMs:30000,settleMs:0,idleMs:0,manualLoginMs:0}});
+    assert.ok(launches.length>=2);
+    for(const o of launches){assert.deepEqual(o.viewport,{width:1626,height:1137});assert.equal(o.deviceScaleFactor,EXT_DPR);}
+    assert.deepEqual(sizes,[{width:1626,height:1137}]);
+    const saved=JSON.parse(readFileSync(join(dir,'run','run.json'),'utf8'));
+    assert.deepEqual(saved.viewport,{width:1626,height:1137});assert.equal(saved.deviceScaleFactor,EXT_DPR);assert.equal(saved.geometry.source,'recording');
+    assert.equal(run.status,'captured');
   }finally{globalThis.fetch=origFetch;}
 });
