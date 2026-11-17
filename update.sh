@@ -49,14 +49,6 @@ if ! command -v git >/dev/null; then
 fi
 echo "✓ git $(git --version | awk '{print $3}') is ready."
 
-# 1. Safety net: back up the whole folder before touching anything, in case this
-# is a zip install with local edits (e.g. data/manual-links.json) that were
-# never pushed anywhere. Skips the big reinstallable directories to stay small.
-BACKUP="../hadrius-studio-beta-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
-echo "Backing up current folder to $BACKUP (in case anything needs to be recovered)..."
-tar --exclude='./node_modules' --exclude='./.venv' --exclude='./out' --exclude='./.git' --exclude='./Hadrius Studio Promo.mp4' -czf "$BACKUP" . 2>/dev/null || true
-echo "✓ Backup saved."
-
 # 2. Pull the latest code — or, if this folder came from the distributed zip and
 # has no git history yet, convert it into a real clone of the repo first.
 if [[ -d .git ]]; then
