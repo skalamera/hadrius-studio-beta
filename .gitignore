@@ -35,3 +35,8 @@ dist/
 
 # Bare frontend mirror for drift release attribution (tools/drift/frontend-git.mjs)
 .drift-cache/
+
+# Local distribution collateral, not application source
+/Hadrius Studio Install Guide - Extension Previously Installed (One-Pager).pdf
+/Hadrius Studio Install Guide - Fresh Installation (One-Pager).pdf
+/Hadrius Studio Promo.mp4
