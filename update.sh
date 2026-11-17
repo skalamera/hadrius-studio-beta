@@ -54,7 +54,7 @@ echo "✓ git $(git --version | awk '{print $3}') is ready."
 # never pushed anywhere. Skips the big reinstallable directories to stay small.
 BACKUP="../hadrius-studio-beta-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
 echo "Backing up current folder to $BACKUP (in case anything needs to be recovered)..."
-tar --exclude='./node_modules' --exclude='./.venv' --exclude='./out' --exclude='./.git' -czf "$BACKUP" . 2>/dev/null || true
+tar --exclude='./node_modules' --exclude='./.venv' --exclude='./out' --exclude='./.git' --exclude='./Hadrius Studio Promo.mp4' -czf "$BACKUP" . 2>/dev/null || true
 echo "✓ Backup saved."
 
 # 2. Pull the latest code — or, if this folder came from the distributed zip and
