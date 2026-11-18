@@ -29,32 +29,46 @@ export const VIEWPORT=Object.freeze({width:1600,height:900});
 // the most common target-hint viewport times the most common step dpr is the most common recorded frame size (±2 px).
 // Anything else replays at the default 1600x900 @1, as before. (Boxes in run.json stay CSS px: compare.mjs scales them
 // by deviceScaleFactor; the renderer scales hint boxes by frame width / hint viewport width.)
+// The AI recorder (tools/ai-record.mjs) stores the window as target.viewport and no pixel ratio. Its frames are always
+// 1600x900, so the frame size alone says nothing: a recorder profile whose browser zoom is 80% lays the page out
+// 2000x1125 CSS px wide and records that in 1600x900 frames. Replayed at 1600x900 @1 every slide of such a video
+// differs in scale and layout and reads as a redesign. With no recorded ratio, the one ratio that turns the recorded
+// window into the recorded frame on both axes is used (2000x1125 @0.8 = 1600x900), on the same proof as above.
+export function recordedStepViewport(step){
+  const vp=step?.target?.hint?.viewport??step?.target?.viewport,w=Number(vp?.w??vp?.width),h=Number(vp?.h??vp?.height);
+  return Number.isInteger(w)&&Number.isInteger(h)&&w>0&&h>0?{w,h}:null;
+}
 export function recordedGeometry(script,{frameSize=null}={}){
   const fallback=(reason)=>({viewport:{...VIEWPORT},deviceScaleFactor:1,source:'default',reason});
   const count=new Map(),inc=(k,v)=>{const m=count.get(k)??new Map();m.set(v,(m.get(v)??0)+1);count.set(k,m);};
   const mode=(k)=>[...(count.get(k)??[])].sort((a,b)=>b[1]-a[1])[0]?.[0]??null;
   for(const st of script?.steps??[]){
-    const vp=st?.target?.hint?.viewport,w=Number(vp?.w??vp?.width),h=Number(vp?.h??vp?.height);
-    if(Number.isInteger(w)&&Number.isInteger(h)&&w>0&&h>0)inc('vp',`${w}x${h}`);
-    if(Number.isFinite(st?.dpr)&&st.dpr>0)inc('dpr',st.dpr);
+    const sv=recordedStepViewport(st),key=sv?`${sv.w}x${sv.h}`:null;
+    if(key)inc('vp',key);
+    // A ratio belongs to the window it was recorded with (a video can hold slides from two recording sessions).
+    if(Number.isFinite(st?.dpr)&&st.dpr>0){inc('dpr',st.dpr);inc(`dpr@${key??'-'}`,st.dpr);}
     if(frameSize&&st?.media?.pre){let f=null;try{f=frameSize(st.media.pre);}catch{}if(f?.width>0&&f?.height>0)inc('frame',`${f.width}x${f.height}`);}
   }
   const frame=mode('frame'),vp=mode('vp');
   if(!frame)return fallback('no_recorded_frames');
   const [fw,fh]=frame.split('x').map(Number);
-  if(fw===VIEWPORT.width&&fh===VIEWPORT.height)return fallback('recorded_at_default');
-  if(!vp)return fallback('no_recorded_viewport');
-  const [w,h]=vp.split('x').map(Number),dpr=mode('dpr')??1;
+  const atDefault=fw===VIEWPORT.width&&fh===VIEWPORT.height;
+  if(!vp)return fallback(atDefault?'recorded_at_default':'no_recorded_viewport');
+  const [w,h]=vp.split('x').map(Number);
+  if(atDefault&&w===VIEWPORT.width&&h===VIEWPORT.height)return fallback('recorded_at_default');
+  // Recorded ratio: from the slides with this window, else from slides with no window of their own. A ratio recorded
+  // with another window says nothing about this one. null = none recorded (AI recorder): the frames alone decide it.
+  const dpr=mode(`dpr@${vp}`)??mode('dpr@-');
   // Chrome's frame is round(CSS size x ratio). The extension stores the CSS width truncated (a 1621.5 px window is
   // "1621"), so at 4/3 some recorded frames (2162x1516, 2054x1550) are no whole-pixel viewport's; a ratio within 0.005 of
   // the recorded one that reproduces the exact frame keeps the same CSS layout and matches the recording pixel for pixel.
   // A truncated size means the true one is in [n, n+1): one extra CSS px per axis is tried too (90%-zoom recordings).
   let fit=null;
   for(const [W,H] of [[w,h],[w+1,h],[w,h+1],[w+1,h+1]]){
-    const d=[dpr,fw/W,fh/H].find(c=>Number.isFinite(c)&&c>0&&Math.abs(c-dpr)<=0.005&&Math.round(W*c)===fw&&Math.round(H*c)===fh);
+    const d=[dpr,fw/W,fh/H].find(c=>Number.isFinite(c)&&c>0&&(dpr==null||Math.abs(c-dpr)<=0.005)&&Math.round(W*c)===fw&&Math.round(H*c)===fh);
     if(d!=null){fit={W,H,d};break;}}
-  if(!fit)return fallback(`unproven:${vp}@${dpr}!=${frame}`);
-  const adj=[fit.d!==dpr?`recorded ratio ${Math.round(dpr*1e5)/1e5}`:null,fit.W!==w||fit.H!==h?`recorded viewport ${vp}`:null].filter(Boolean).join(', ');
+  if(!fit)return fallback(`unproven:${vp}@${dpr??'?'}!=${frame}`);
+  const adj=[dpr==null?'ratio from the frames':fit.d!==dpr?`recorded ratio ${Math.round(dpr*1e5)/1e5}`:null,fit.W!==w||fit.H!==h?`recorded viewport ${vp}`:null].filter(Boolean).join(', ');
   return {viewport:{width:fit.W,height:fit.H},deviceScaleFactor:fit.d,source:'recording',reason:`${fit.W}x${fit.H}@${Math.round(fit.d*1e5)/1e5}=${frame}${adj?` (${adj})`:''}`};
 }
 /** Frame size from a PNG header (no decode). */
@@ -89,7 +103,10 @@ const READ_PATH_RE=/(^|[/_-])(search|list|query|filter|count|lookup|batch-get|ge
 // - POST /api/company/<id>/disclosures/audience/compute/ -> disclosures/views_audience.py post_compute_disclosure_audience
 //   (@no_audit_trail, @non_mutating, validated_api read_only=True; hadrius_backend main 743bef3a70, 2026-11-08): the assign
 //   wizard / reviewer picker audience preview.
+// - POST /api/company/<id>/certifications/audience/compute/ -> certifications/views.py post_compute_audience (@no_audit_trail,
+//   @non_mutating, validated_api read_only=True; hadrius_backend, verified 2026-11-18): the campaign builder's audience count.
 export const KNOWN_READ_POSTS=Object.freeze([/^\/api\/company\/\d+\/library\/audience\/compute\/?$/,/^\/api\/company\/\d+\/disclosures\/audience\/compute\/?$/,
+  /^\/api\/company\/\d+\/certifications\/audience\/compute\/?$/,
   /^\/api\/company\/\d+\/comms-review\/search\/email\/(messages|conversations)\/?$/]);
 // Sign-in only: users/views.py post_sign_in_lookup reads for a registered address (writes a TriedEmail row only for
 // unknown addresses), so it passes only while signing in, never during a replay.
@@ -588,6 +605,13 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
     const settle=async()=>{await page.waitForLoadState('networkidle',{timeout:limits.idleMs}).catch(()=>{});await page.waitForTimeout(limits.settleMs);};
     const shoot=async(i,rec)=>{const name=`step-${String(i).padStart(2,'0')}-today.png`;await page.screenshot({path:join(outDir,name),timeout:10000});rec.screenshot=name;
       rec.dynamicRects=await page.evaluate(`(${DYNAMIC_FN})(${JSON.stringify(DYNAMIC_SOURCES)})`).catch(()=>[]);rec.todayUrl=page.url();
+      // Recorded address the app now redirects to today's page (same page, new URL; classify.mjs then reports no route
+      // change). Resolved with a read-only GET that follows the app's own redirects.
+      if(rec.url&&pathOf(rec.url)!==pathOf(rec.todayUrl)){const go=(u)=>page.evaluate((x)=>fetch(x,{credentials:'include',redirect:'follow'}).then(r=>r.url).catch(()=>null),u).catch(()=>null);
+        const [to,here]=await Promise.all([go(rec.url),go(rec.todayUrl)]);
+        // Either side may be the old alias (see flowCheck below).
+        if(to&&(pathOf(to)===pathOf(rec.todayUrl)||(here&&pathOf(to)===pathOf(here))))rec.recordedUrlRedirectsTo=here??to;
+        else if(here&&pathOf(here)===pathOf(rec.url))rec.recordedUrlRedirectsTo=here;}
       rec.dataRects=await page.evaluate(`(${DATA_FN})()`).catch(()=>[]);rec.title=await page.title().catch(()=>null);
       rec.idText=await page.evaluate(`(${ID_TEXT_FN})()`).catch(()=>[]);
       // Grounding for the narration judge (classify.mjs): what is actually rendered as text right now.
@@ -630,7 +654,10 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
           // Some scripts start on a URL without ?company_id=. Each automation account is scoped to its own
           // company only, so a session scoped to exactly the expected company (plus the tenant's name
           // visible on the page) verifies the tenant just as well.
-          const sessionOnly=owner?String(p.lastCompanyId??'')===expectedCompany:Array.isArray(sess)&&sess.length===1&&String(sess[0])===String(expectedCompany);const nameOk=tenantNameVisible(p,T.key);
+          const sessionOnly=owner?String(p.lastCompanyId??'')===expectedCompany:Array.isArray(sess)&&sess.length===1&&String(sess[0])===String(expectedCompany);let nameOk=tenantNameVisible(p,T.key);
+          // The company name renders after the shell loads (a cold first page can probe before it): settle and re-probe
+          // for a bounded time before failing closed. The URL/session checks above are not relaxed.
+          for(let w=0;!nameOk&&w<limits.loadingWaitMs/1000;w++){await page.waitForTimeout(1000);const q=await probe(page).catch(()=>null);if(q){Object.assign(p,q);nameOk=tenantNameVisible(q,T.key);}}
           run.tenant={urlCompanyId:cid,academyVisible:p.academy,...(T.key!=='academy'?{tenant:T.key,tenantName:T.name,tenantNameVisible:nameOk}:{}),session:sess,viaSession:cid==null&&sessionOnly};run.tenantVerified=(cid===expectedCompany||(cid==null&&sessionOnly))&&nameOk;
           if(!run.tenantVerified){rec.error='tenant_mismatch';throw new Error('tenant_mismatch');}}
         await settle();checkAbort();
@@ -737,8 +764,20 @@ export async function captureRun({scriptPath,profileDir=null,outDir,base=APP_BAS
           rec.closedRecord=await page.evaluate(`(${closedRecordWitness.toString()})()`).catch(()=>({verified:false,reason:'record_state_witness_failed'}));
           if(rec.closedRecord?.verified!==true){failReadPrerequisite(rec,'closed_record_state_not_verified');return;}
         }
-        if(next?.url&&next.url!==step.url&&pathOf(page.url())!==pathOf(next.url))run.findings.push({step:rec.index,kind:'click_destination_differs',expected:next.url,actual:page.url()});
-        if(next?.url&&next.url===step.url&&pathOf(page.url())!==pathOf(step.url))run.findings.push({step:rec.index,kind:'click_navigated_unexpectedly',expected:step.url,actual:page.url()});
+        // A recorded URL the app now redirects (next.config.js redirects(), e.g. /account/settings/templates/new ->
+        // /templates/new) is the same page under a new address, not a changed flow. Client-side navigation applies the
+        // redirect at an unpredictable moment, so the same replay landed on either path. The recorded URL is resolved
+        // with a read-only GET (it follows the app's own redirects); a match is kept as a note, never as a flow change.
+        const resolve=async(u)=>page.evaluate((x)=>fetch(x,{credentials:'include',redirect:'follow'}).then(r=>r.url).catch(()=>null),u).catch(()=>null);
+        // Either side may be the old alias: a recording made after the move expects /templates/new while a client-side
+        // navigation can still show /account/settings/templates/new before the redirect applies. Both are resolved.
+        const lands=async(url)=>{const here=page.url();if(pathOf(here)===pathOf(url))return true;
+          const [a,b]=await Promise.all([resolve(url),resolve(here)]);
+          return (!!a&&pathOf(a)===pathOf(here))||(!!b&&pathOf(b)===pathOf(url))||(!!a&&!!b&&pathOf(a)===pathOf(b));};
+        const flowCheck=async(kind,expected)=>{if(await lands(expected))run.findings.push({step:rec.index,kind:'click_destination_redirected',expected,actual:page.url()});
+          else run.findings.push({step:rec.index,kind,expected,actual:page.url()});};
+        if(next?.url&&next.url!==step.url&&pathOf(page.url())!==pathOf(next.url))await flowCheck('click_destination_differs',next.url);
+        if(next?.url&&next.url===step.url&&pathOf(page.url())!==pathOf(step.url))await flowCheck('click_navigated_unexpectedly',step.url);
         checkAbort();await fixtureDone();
       })(),limits.stepMs,`step${step.index}`);}
       catch(e){rec.error=rec.error??e.message;if(closedCounterTarget(step.target,step.url)||(closedFilterVerified&&step.target?.role==='link'))failReadPrerequisite(rec,'closed_filter_or_donor_capture_failed');if(/aborted|tenant|signed_out|overall/.test(e.message)||syncAbort()){run.aborted=abortReason??e.message;break;}}

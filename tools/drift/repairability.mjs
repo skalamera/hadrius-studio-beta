@@ -66,10 +66,12 @@ const WHY_UNVERIFIED = {
   record_not_visible: 'the automation account cannot see the recorded record', data_missing: 'recorded data is missing today',
   target_unverified: 'the recorded click target could not be confirmed', redesign_not_confirmed: 'screenshot changed but no release-verified change',
   redesign_unreviewed: 'screenshot changed but was not reviewed', no_release_touched_screen: 'screenshot changed with no release touching this screen',
+  recorded_window_differs: 'this slide was recorded in another window size or zoom than the rest of the video, so it cannot be compared',
 };
 const codesOf = (s) => (s?.reasons || []).map((r) => r.code);
-// A kept slide can only be replaced when today's capture of it is a real, loaded, verified page.
-const UNHEALTHY = new Set(['needs_fixture', 'not_captured', 'empty_state', 'page_not_loaded', 'page_error', 'record_not_visible', 'data_missing', 'target_unverified']);
+// A kept slide can only be replaced when today's capture of it is a real, loaded, verified page. A slide recorded in
+// another window than the replay was never compared with today's capture, so it is not replaced either.
+const UNHEALTHY = new Set(['needs_fixture', 'not_captured', 'empty_state', 'page_not_loaded', 'page_error', 'record_not_visible', 'data_missing', 'target_unverified', 'recorded_window_differs']);
 const quote = (t) => `“${String(t ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)}”`;
 // The label a viewer would now look for in vain: the old text of a renamed or removed element.
 const staleLabel = (c) => (c.kind === 'renamed' || c.kind === 'removed') && c.before ? c.before : null;

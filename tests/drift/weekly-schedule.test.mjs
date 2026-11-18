@@ -121,12 +121,13 @@ test('plist: renders a valid launchd agent that only curls the local bridge, dry
   assert.throws(() => renderPlist({ template: '{{NOPE}}' }), /unknown_placeholder/);
   if (process.platform === 'darwin') { const f = join(tmp(), 'p.plist'); writeFileSync(f, x); execFileSync('/usr/bin/plutil', ['-lint', f]); }
 });
-test('allowlist.json: Academy (company 1150) walkthroughs + Sandbox list, no internal records; readers get academy+sandbox only', () => {
+test('allowlist.json: Academy (company 1150) walkthroughs + Sandbox list, no internal records; readers get academy only', () => {
   const text = readFileSync(new URL('../../tools/drift/allowlist.json', import.meta.url), 'utf8');
   const o = JSON.parse(text); const list = o.academy;
   assert.ok(list.length >= 41); assert.equal(list.length, o.counts.academy); assert.ok(list.every((x) => x.company_id === '1150' && !x.name.startsWith('_studio')));
   assert.equal(new Set(list.map((x) => x.name)).size, list.length);
   const names = readAllowlist(new URL('../../tools/drift/allowlist.json', import.meta.url));
-  assert.equal(names.length, o.academy.length + o.sandbox.length);
+  assert.deepEqual(names, o.academy.map((x) => x.name));
+  assert.ok(!o.sandbox.some((x) => names.includes(x.name)), 'Sandbox videos are recreated in Academy, never replayed');
   assert.ok(!o.unknown.some((x) => names.includes(x.name)), 'unknown-tenant scripts are never run');
 });

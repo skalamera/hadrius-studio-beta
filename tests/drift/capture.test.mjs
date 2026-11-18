@@ -7,7 +7,7 @@ import {deflateSync} from 'node:zlib';
 import {
   classifyRequest, resolveTarget, rectDelta, preflight, companyIdOf, signedInFromProbe, normalizeName, isProjectDetailHref, dynamicTextKind,
   classifyStepMutation, mutatingWord, mutatingWords, rehearsalFor, unnamedCssTargetOk, KNOWN_READ_POSTS, mutationPlan, DEFAULT_PROFILE, isDriftProfile, captureRun, createRequestGuard, fixtureEvidence, recordRefsFromUrl,
-  recordedGeometry, pngFrameSize, VIEWPORT,
+  recordedGeometry, recordedStepViewport, pngFrameSize, VIEWPORT,
 } from '../../tools/drift/capture.mjs';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {join,basename} from 'node:path';
@@ -696,6 +696,32 @@ test('recordedGeometry: an extension recording replays at its own CSS viewport a
   assert.equal(recordedGeometry(script).reason,'no_recorded_frames');
   // Frames but no hint viewport at all.
   assert.equal(recordedGeometry({steps:[{index:0,action:'navigate',media:{pre:'a.png'}}]},{frameSize:()=>({width:2168,height:1516})}).reason,'no_recorded_viewport');
+});
+// The AI recorder stores the window as target.viewport and no pixel ratio; its frames are always 1600x900.
+const aiStep=(i,vp={w:2000,h:1125})=>({index:i,action:'click',media:{pre:`f${i}.png`},target:{name:'X',bbox:{x:1,y:1,w:5,h:5},viewport:vp}});
+test('recordedGeometry: an AI recording made in a zoomed profile replays at its own window, the ratio proven by its frames', () => {
+  const at=(width,height)=>()=>({width,height});
+  // 80% browser zoom: a 2000x1125 layout in 1600x900 frames. At 1600x900 @1 every slide would differ in scale.
+  const z=recordedGeometry({steps:[{index:0,action:'navigate',media:{pre:'f0.png'}},aiStep(1),aiStep(2)]},{frameSize:at(1600,900)});
+  assert.deepEqual([z.source,z.viewport,z.deviceScaleFactor],['recording',{width:2000,height:1125},0.8]);assert.match(z.reason,/^2000x1125@0\.8=1600x900 \(ratio from the frames\)$/);
+  assert.deepEqual(recordedStepViewport(aiStep(1)),{w:2000,h:1125});assert.equal(recordedStepViewport({index:0,action:'navigate'}),null);
+  // 100% zoom, or no window recorded: the default, as before.
+  assert.equal(recordedGeometry({steps:[aiStep(1,{w:1600,h:900})]},{frameSize:at(1600,900)}).reason,'recorded_at_default');
+  assert.equal(recordedGeometry({steps:[{index:0,action:'navigate',media:{pre:'f0.png'}}]},{frameSize:at(1600,900)}).reason,'recorded_at_default');
+  // A window the frames do not prove on both axes is not trusted.
+  const bad=recordedGeometry({steps:[aiStep(1,{w:2000,h:1000})]},{frameSize:at(1600,900)});
+  assert.equal(bad.source,'default');assert.equal(bad.reason,'unproven:2000x1000@?!=1600x900');assert.deepEqual(bad.viewport,{...VIEWPORT});
+  // The most common window decides; a re-shot slide's hint describes its own frame and wins over target.viewport.
+  const reshot={index:3,action:'click',media:{pre:'f3.png'},target:{name:'X',viewport:{w:2000,h:1125},hint:{bbox:{x:1,y:1,w:5,h:5},viewport:{w:1600,h:900}}}};
+  assert.deepEqual(recordedStepViewport(reshot),{w:1600,h:900});
+  assert.deepEqual(recordedGeometry({steps:[aiStep(1),aiStep(2),reshot]},{frameSize:at(1600,900)}).viewport,{width:2000,height:1125});
+  assert.equal(recordedGeometry({steps:[aiStep(1),reshot,{...reshot,index:4}]},{frameSize:at(1600,900)}).reason,'recorded_at_default');
+  // A ratio recorded with another window (an extension slide inside an AI video) does not veto this window's ratio.
+  assert.equal(recordedGeometry({steps:[aiStep(1),aiStep(2),aiStep(3),extStep(4)]},{frameSize:at(1600,900)}).deviceScaleFactor,0.8);
+  // An extension recording that lost its stored ratio is proven by its frames the same way.
+  const noDpr=recordedGeometry({steps:[1,2].map((i)=>{const s=extStep(i);delete s.dpr;return s;})},{frameSize:at(2168,1516)});
+  assert.equal(noDpr.source,'recording');assert.deepEqual(noDpr.viewport,{width:1626,height:1137});
+  assert.equal(Math.round(1626*noDpr.deviceScaleFactor),2168);assert.equal(Math.round(1137*noDpr.deviceScaleFactor),1516);
 });
 test('captureRun: launches the replay at the recorded geometry and records it in run.json', async () => {
   const dir=mkdtempSync(join(tmpdir(),'drift-cap-geo-'));const prof=join(dir,'.browser-profile-drift');mkdirSync(prof);const recDir=join(dir,'rec');mkdirSync(recDir);

@@ -13,7 +13,10 @@ import { verifySemanticRepairAssets } from './semantic-repair-assets.mjs';
 
 export const AUTOMATIC_NARRATION_QA_POLICY = 'automatic-narration-qa-v1';
 // JS ports below are valid ONLY for these complete source bytes. Changes require explicit review.
-const PINS = { 'tts.py': '4e9874f7f9c77637ad460be825ffd820e5b612e9f5794fb9b2279ce6354cabc7',
+// tts.py re-pinned 2026-11-17 after the Elena default / same-voice retry / NARRATION_STRICT change: the ported
+// pieces (normalize_pronunciation, _key, ELEVEN_MODEL) were compared against the previous pin's source and are
+// identical; only ELEVEN_VOICE's default and Narrator.speak's retry and strict handling differ.
+const PINS = { 'tts.py': '2929242f8d79cc3af09fa4ab77999992439ce32ec9a91edd0493328e059b3d62',
   'assemble.py': '53c47b764204a3de78101efc320c14140159b71a042a99d302ab5da5bd945c6e' };
 const obj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const hash = v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);

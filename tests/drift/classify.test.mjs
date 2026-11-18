@@ -246,6 +246,60 @@ test('classifyRun asks the redesign judge only for release candidates and stores
   assert.equal(r.verdict, 'full_rerecord');
 });
 
+test('a slide recorded in another window than the replay is unverified: no drift verdict, no model review', () => {
+  const differs={recordedWindowDiffers:true,recordedWindow:'1600x900',replayWindow:'2000x1125 @0.8'};
+  // Every pixel differs in scale: without the rule this is a redesign candidate with a narration review.
+  const loud={compareClass:'screenshot_changed',metrics:{diff:0.4,ssimMasked:0.5,coverage:0.97},chromeChanged:true,chromeFraction:0.9,uiReleaseEvidence};
+  assert.equal(classifyStepSignals(sig(loud)).verdict,'full_rerecord');
+  const r=classifyStepSignals(sig({...loud,...differs}));
+  assert.equal(r.verdict,'unverified');assert.deepEqual(r.reasons.map((x)=>x.code),['recorded_window_differs']);
+  assert.match(r.reasons[0].detail,/recorded in a 1600x900 window; the replay ran at 2000x1125 @0\.8/);
+  assert.equal(r.needsJudge,false);assert.equal(r.needsRedesignJudge,false);
+  // Also when the click target looks moved or missing (boxes and layout are not comparable either), or the frame size differs.
+  for(const o of [{action:'click',targetStatus:'resolved',targetMethod:'role_name',compareClass:'target_geometry_changed',targetDeltaMax:120},
+    {action:'click',targetStatus:'missing',compareClass:'target_missing'},{compareClass:'screenshot_changed',dimensionsMatch:false}])
+    assert.deepEqual(classifyStepSignals(sig({...o,...differs})).reasons.map((x)=>x.code),['recorded_window_differs']);
+  // An identical picture is simply unchanged; a changed address or flow is evidence in any window.
+  assert.equal(classifyStepSignals(sig(differs)).verdict,'unchanged');
+  assert.equal(classifyStepSignals(sig({...differs,compareClass:'screenshot_changed',routeChanged:true,recordedPath:'/a',todayPath:'/b'})).verdict,'full_rerecord');
+  assert.equal(classifyStepSignals(sig({...differs,compareClass:'screenshot_changed',flowChanged:true})).verdict,'full_rerecord');
+  // More specific holds keep their own reason.
+  assert.equal(classifyStepSignals(sig({...loud,...differs,errorState:'Project not found'})).reasons[0].code,'page_error');
+  assert.equal(classifyStepSignals(sig({...differs,hasScreenshot:false,guardStatus:'needs_fixture'})).reasons[0].code,'needs_fixture');
+});
+test('classifyRun: slides re-shot at 100% inside a video recorded at 80% zoom are held, the other slides are compared as usual', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cls-window-'));
+  const url = 'https://app.hadrius.com/rules';
+  const cmpStep = (index, o = {}) => ({ index, classification: 'screenshot_changed', todayScreenshot: `t${index}.png`, dimensions: { match: true, recorded: { w: 1600, h: 900 }, today: { w: 1600, h: 900 } }, diffFractionNonDynamic: 0.4, ssimMasked: 0.5, regions: [], ...o });
+  const write = (run, steps) => { writeFileSync(join(dir, 'run.json'), JSON.stringify({ status: 'captured', ...run, steps: steps.map((s) => ({ index: s.index, todayUrl: url, visibleText: 'Trading Rules' })) }));
+    writeFileSync(join(dir, 'compare.json'), JSON.stringify({ steps })); };
+  const script = { name: 'Vid', title: 'Vid', steps: [
+    { index: 0, action: 'navigate', narration: '', url, media: { pre: 'r0.png' } },
+    { index: 1, action: 'click', narration: '', url, media: { pre: 'r1.png' }, target: { name: 'New rule', viewport: { w: 2000, h: 1125 } } },   // AI recorder, 80% zoom
+    { index: 2, action: 'click', narration: '', url, media: { pre: 'r2.png' }, target: { name: 'Save', hint: { bbox: { x: 1, y: 1, w: 5, h: 5 }, viewport: { w: 1600, h: 900 } } } }, // re-shot at 100%
+    { index: 3, action: 'click', narration: '', url, media: { pre: 'r3.png' }, target: { name: 'Next', hint: { bbox: { x: 1, y: 1, w: 5, h: 5 }, viewport: { w: 1999, h: 1125 } } } }] }; // truncated size: same window
+  const calls = [];
+  const releaseEvidence = { summary: { status: 'ok' }, byStep: { 0: candidateRelease(), 1: candidateRelease(), 2: candidateRelease(), 3: candidateRelease() },
+    excerpt: () => '', filesTouched: () => [], diffLabels: () => ({ added: [], removed: [] }), uiStringsAt: () => new Set() };
+  const redesignJudge = async (input) => { calls.push(input.stepNumber); return parseRedesignJudge({ redesigned: false, reason: 'same', changes: [] }); };
+  write({ viewport: { width: 2000, height: 1125 }, deviceScaleFactor: 0.8, geometry: { source: 'recording', reason: '2000x1125@0.8=1600x900 (ratio from the frames)' } }, [0, 1, 2, 3].map((i) => cmpStep(i)));
+  const r = await classifyRun({ runDir: dir, script, recordingsDir: join(dir, 'rec'), releaseEvidence, redesignJudge, write: false });
+  assert.deepEqual(r.steps[2].reasons.map((x) => x.code), ['recorded_window_differs']);
+  assert.match(r.steps[2].reasons[0].detail, /recorded in a 1600x900 window; the replay ran at 2000x1125 @0\.8/);
+  for (const i of [0, 1, 3]) assert.ok(!r.steps[i].reasons.some((x) => x.code === 'recorded_window_differs'), `slide ${i + 1} is in the replay's window`);
+  assert.deepEqual(r.unverifiedSteps.includes(2), true); assert.match(r.summary, /recorded_window_differs/);
+  assert.ok(calls.length > 0 && !calls.includes(3), `the held slide is never sent to the redesign review (asked for slides ${calls.join(', ')})`);
+  // A recorded frame of another size in the video's own proven window is the same case; in an unproven window the old verdict stays.
+  const odd = [cmpStep(0, { classification: 'unchanged', diffFractionNonDynamic: 0, ssimMasked: 1 }), cmpStep(1, { dimensions: { match: false, recorded: { w: 1929, h: 1219 }, today: { w: 1600, h: 900 } } })];
+  const two = { ...script, steps: script.steps.slice(0, 2).map((s) => ({ ...s, target: undefined })) };
+  write({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: 1, geometry: { source: 'default', reason: 'recorded_at_default' } }, odd);
+  const held = await classifyRun({ runDir: dir, script: two, recordingsDir: join(dir, 'rec'), write: false });
+  assert.deepEqual(held.steps[1].reasons.map((x) => x.code), ['recorded_window_differs']); assert.match(held.steps[1].reasons[0].detail, /1929x1219 px window/); assert.equal(held.verdict, 'unchanged');
+  write({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: 1, geometry: { source: 'default', reason: 'unproven:1763x1230@1!=1929x1219' } }, odd);
+  const loud = await classifyRun({ runDir: dir, script: two, recordingsDir: join(dir, 'rec'), write: false });
+  assert.ok(loud.steps[1].reasons.some((x) => x.code === 'viewport_changed')); assert.equal(loud.verdict, 'full_rerecord');
+});
+
 // CRIT-18: capture.mjs acts on a never-named target by position on a verified draft-only page and tags it
 // 'unnamed_css_on_draft_page'; classify must not turn that into target_renamed / narration_review.
 test('classifyRun: an unnamed_css_on_draft_page target is not "renamed"; an untagged CSS-only target still is', async () => {

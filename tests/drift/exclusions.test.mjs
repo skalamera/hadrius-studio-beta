@@ -22,9 +22,9 @@ const REPO = new URL('../../', import.meta.url).pathname;
 const RULE = 'module:Employee Training+topic:Marketing';
 const EX = parseExclusions({ rules: [{ module: 'Employee Training', topicModule: 'Marketing', reason: 'Marketing-Review Employee Training videos handled by someone else (temporary)' }], addedAt: '2026-10-30', addedBy: 't' });
 const LEGACY = parseExclusions({ modules: ['Marketing'], reason: 'legacy' });
-const sc = (name, { module, url = 'https://app.hadrius.com/testing-program/x?company_id=1048' } = {}) => ({ name, title: name, ...(module !== undefined ? { module } : {}), recording: { id: `rec-${name}` }, environment: { startUrl: url },
+const sc = (name, { module, url = 'https://app.hadrius.com/testing-program/x?company_id=1150' } = {}) => ({ name, title: name, ...(module !== undefined ? { module } : {}), recording: { id: `rec-${name}` }, environment: { startUrl: url },
   steps: [{ index: 0, action: 'navigate', url, media: { pre: 's0.png' }, narration: 'n' }] });
-const MKT = 'https://app.hadrius.com/marketing/projects?company_id=1048';
+const MKT = 'https://app.hadrius.com/marketing/projects?company_id=1150';
 
 test('exclusions.json: the shipped config excludes only Marketing-Review Employee Training videos (Marketing is included)', () => {
   const e = loadExclusions(EXCLUSIONS_PATH);
@@ -116,15 +116,19 @@ test('runWeekly --resume: finished videos are kept, an unfinished one is moved a
   assert.equal(s.videos.length, 3); assert.equal(s.resumes.length, 1); assert.equal(s.resumes[0].alreadyDone, 2);
 });
 
-test('runWeekly: a sign-in that needs a human (invalid_credentials) stops further sign-ins for that tenant only, also across --resume', async () => {
+test('runWeekly: a sign-in that needs a human (invalid_credentials) stops further sign-ins for that tenant, also across --resume; a Sandbox video is never opened', async () => {
   const f = fx(); const ACA = 'https://app.hadrius.com/testing-program/x?company_id=1150';
   f.scripts.A1 = sc('A1', { url: ACA }); f.scripts.A2 = sc('A2', { url: ACA }); f.scripts.A3 = sc('A3', { url: ACA });
+  // Sandbox videos are recreated in Academy and never replayed: skipped for that reason, not because of Academy's block.
+  f.scripts.Keep = sc('Keep', { url: 'https://app.hadrius.com/testing-program/x?company_id=1048' });
   f.deps.capture = async ({ scriptPath, outDir }) => { const n = scriptPath.split('/').pop().replace('.script.json', ''); f.calls.push(n); mkdirSync(outDir);
     return n === 'A1' ? { status: 'session_failed', session: { status: 'invalid_credentials' }, steps: [] } : { status: 'session_failed', session: { status: 'unexpected' }, steps: [] }; };
   const out = join(f.root, 'out');
   const s = await runWeekly({ names: ['A1', 'Keep', 'A2'], outDir: out, deps: f.deps, log: () => {} });
-  assert.deepEqual(f.calls, ['A1', 'Keep'], 'A2 never tries to sign in');
-  assert.deepEqual(s.tenantBlocked.academy.status, 'invalid_credentials');
+  assert.deepEqual(f.calls, ['A1'], 'A2 never tries to sign in; the Sandbox video is never opened');
+  assert.deepEqual(s.tenantBlocked.academy.status, 'invalid_credentials'); assert.deepEqual(Object.keys(s.tenantBlocked), ['academy']);
+  assert.equal(s.videos.find((v) => v.name === 'Keep').status, 'tenant_not_replayed');
+  assert.deepEqual(s.tenantSkipped.map((x) => x.name), ['Keep']);
   const a2 = JSON.parse(readFileSync(join(out, 'A2', 'job.json'), 'utf8')); assert.equal(a2.captureStatus, 'session_blocked'); assert.match(a2.errors[0].error, /tenant_session_blocked:invalid_credentials/);
   f.calls.length = 0;
   const r = await runWeekly({ names: ['A1', 'Keep', 'A2', 'A3'], outDir: out, deps: f.deps, resume: true, log: () => {} });
@@ -210,7 +214,7 @@ test('executor: an APPROVED job for an excluded video is not executed, stays app
 });
 
 // ---------- real allowlist (read-only; skipped when scripts are not on this machine) ----------
-test('real scripts: the rule matches Reviewing-AI-Flags-on-a-Project-Submission; the Academy + Sandbox allowlist keeps everything else', { skip: !existsSync(join(REPO, 'scripts', 'Reviewing-AI-Flags-on-a-Project-Submission.script.json')) }, () => {
+test('real scripts: the rule matches Reviewing-AI-Flags-on-a-Project-Submission; the allowlist keeps everything else', { skip: !existsSync(join(REPO, 'scripts', 'Reviewing-AI-Flags-on-a-Project-Submission.script.json')) }, () => {
   const ex = loadExclusions(); const read = repoScriptReader(REPO);
   assert.equal(exclusionFor(read('Reviewing-AI-Flags-on-a-Project-Submission'), ex)?.rule, RULE);
   const names = parseNames({ allowlistText: readFileSync(join(REPO, 'tools', 'drift', 'allowlist.json'), 'utf8') });

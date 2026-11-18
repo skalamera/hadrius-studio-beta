@@ -1,6 +1,8 @@
-// Weekly read-only drift job: for each listed walkthrough, find its tenant from the script's company_id (Academy 1150 /
-// Sandbox 1048, tenants.mjs; no or conflicting company => skipped as tenant_unknown/tenant_conflict, never guessed),
-// ensure that tenant's automation session, recapture read-only
+// Weekly read-only drift job: for each listed walkthrough, find its tenant from the script's company_id (tenants.mjs;
+// no or conflicting company => skipped as tenant_unknown/tenant_conflict, never guessed). Only Hadrius Academy (1150)
+// is replayed: a Sandbox (1048) script is skipped as tenant_not_replayed (operator decision 2026-11-16: Sandbox videos
+// are recreated in Academy, Sandbox is never replayed or written to). Then ensure that tenant's session, recapture
+// read-only
 // (mutation guard), compare, classify, and for slide_update / moved_highlight / narration_review build a
 // LOCAL candidate (candidate.mjs, stable-ID scratch copy). Never writes scripts/ or out/<name>/, never
 // uploads, never publishes. Concurrency 1; one video's failure never stops the run.
@@ -18,7 +20,7 @@ import {pathToFileURL} from 'node:url';
 import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {REPO,DEFAULT_PROFILE,mutationPlan,LIMITS} from './capture.mjs';
-import {detectScriptTenant,tenantProfileDir,getTenant,TENANT_KEYS} from './tenants.mjs';
+import {detectScriptTenant,tenantProfileDir,getTenant,REPLAY_TENANT_KEYS,tenantReplayed} from './tenants.mjs';
 import {identify,digest,bytesDigest} from './contracts.mjs';
 import {SELECTION_POLICY,selectWeeklyJobs,selectedJob,slideText,selectionMarker} from './ui-selection.mjs';
 import {loadExclusions,exclusionFor,hasRules,parseExclusions} from './exclusions.mjs';
@@ -53,14 +55,14 @@ const NAME_RE=/^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 export const stamp=(d=new Date())=>d.toISOString().replace(/[-:]/g,'').replace('T','-').slice(0,15);
 
 /** Names from --names and/or an allowlist file (JSON array, one name per line with # comments, or the per-tenant
- *  object {academy:[...], sandbox:[...], unknown:[...]} from tenants.mjs, of which only registered tenants are run;
- *  `tenants` narrows that to some of them). */
+ *  object {academy:[...], sandbox:[...], unknown:[...]} from tenants.mjs, of which only the replayed tenants are run
+ *  (REPLAY_TENANT_KEYS: academy); `tenants` names the lists to read instead (reports and tests). */
 export function parseNames({names=null,allowlistText=null,tenants=null}={}){
   const out=[];
   if(names)out.push(...String(names).split(',').map(s=>s.trim()).filter(Boolean));
   if(allowlistText!=null){const t=String(allowlistText).trim();
     const pick=(a)=>a.map(x=>typeof x==='string'?x:x?.name).filter(Boolean);
-    if(t.startsWith('{')){const o=JSON.parse(t);const keys=tenants??TENANT_KEYS;for(const k of keys){getTenant(k);if(o[k]!=null&&!Array.isArray(o[k]))throw new Error(`allowlist_${k}_not_array`);out.push(...pick(o[k]??[]));}}
+    if(t.startsWith('{')){const o=JSON.parse(t);const keys=tenants??REPLAY_TENANT_KEYS;for(const k of keys){getTenant(k);if(o[k]!=null&&!Array.isArray(o[k]))throw new Error(`allowlist_${k}_not_array`);out.push(...pick(o[k]??[]));}}
     else if(t.startsWith('[')){const a=JSON.parse(t);if(!Array.isArray(a))throw new Error('allowlist_not_array');out.push(...pick(a));}
     else out.push(...t.split('\n').map(l=>l.replace(/#.*/,'').trim()).filter(Boolean));}
   const uniq=[...new Set(out)];
@@ -207,6 +209,9 @@ export async function runVideo(name,{outDir,deps,dryRun=false,profileDir=null,lo
     // Tenant from the script's own company_id(s); never guessed. Unknown/conflicting/unregistered => skipped and reported.
     const ten=detectScriptTenant(script);job.tenant={key:ten.tenant,status:ten.status,companyIds:ten.companyIds,reason:ten.reason,...(ten.tenant?{name:getTenant(ten.tenant).name}:{})};
     if(ten.status!=='ok'){job.status=`tenant_${ten.status}`;job.summary=`skipped: ${ten.reason}`;errors.push({stage:'tenant',error:ten.reason});return job;}
+    // A tenant that is not replayed (Sandbox): nothing is opened there, whichever way the name reached this run
+    // (--names, an old allowlist, the PR queue). The video is listed with the other tenant skips.
+    if(!tenantReplayed(ten.tenant)){job.status='tenant_not_replayed';job.summary=`skipped: ${getTenant(ten.tenant).name} videos are recreated in Hadrius Academy and never replayed`;errors.push({stage:'tenant',error:'tenant_not_replayed'});return job;}
     const ownerSession=deps.captureSession==='owner';
     const videoProfile=ownerSession?null:profileDir??tenantProfileDir(ten.tenant,REPO);job.profile=ownerSession?'owner':videoProfile;job.captureSession=ownerSession?'owner':'automation';
     if(dryRun){job.status='dry_run';job.summary=`would recapture ${script.steps.length} steps; guard would stop at ${job.mutationPlan.find(p=>p.mutating)?`step ${job.mutationPlan.find(p=>p.mutating).index} (${job.mutationPlan.find(p=>p.mutating).reason})`:'no step'}`;return job;}
@@ -358,8 +363,12 @@ function blockedJob(name,dir,tenant,block){mkdirSync(dir,{mode:0o700});
 // videos still run) and owner_session_unsafe_key (a safety refusal, not a lost sign-in).
 export const SESSION_LOST=Object.freeze(['owner_chrome_unreachable','owner_not_signed_in','owner_token_expiring','owner_token_unreadable','owner_profile_busy','owner_profile_unavailable','owner_profile_missing','owner_profile_lock_port_conflict','owner_session_failed']);
 export const sessionLost=(job)=>job?.captureStatus==='session_failed'&&SESSION_LOST.includes(job.session?.status);
+// The Mac lost its network (DNS/Wi-Fi drop overnight): every video in that window fails at page.goto. That says nothing
+// about the video, so it is waited out and retried like a lost sign-in instead of being recorded as an error.
+const NET_DOWN_RE=/net::ERR_(NAME_NOT_RESOLVED|INTERNET_DISCONNECTED|NETWORK_CHANGED|NETWORK_IO_SUSPENDED|ADDRESS_UNREACHABLE|CONNECTION_TIMED_OUT|NAME_RESOLUTION_FAILED)\b/;
+export const networkLost=(job)=>{const t=JSON.stringify(job?.errors??[]);const m=NET_DOWN_RE.exec(t);return m?m[0]:null;};
 export const DEFAULT_SESSION_WAIT_MS=60*60_000,DEFAULT_SESSION_RETRY_MS=60_000;
-const FINAL_STATUSES=new Set(['ok','excluded','dry_run','script_not_found','capture_failed','aborted_mutating_request','timeout','error','tenant_unknown','tenant_conflict','tenant_unregistered']);
+const FINAL_STATUSES=new Set(['ok','excluded','dry_run','script_not_found','capture_failed','aborted_mutating_request','timeout','error','tenant_unknown','tenant_conflict','tenant_unregistered','tenant_not_replayed']);
 const summaryRow=(name,job,out)=>({name,status:job.status,tenant:job.tenant?.key??null,tenantStatus:job.tenant?.status??null,verdict:job.verdict??null,complete:job.complete??null,summary:job.summary??null,candidatePath:job.candidatePath??null,
   mutationStop:job.mutationStop??null,needsFixtureSteps:(job.needsFixture??[]).map(x=>x.index),nonGetRequests:(job.nonGetRequests??[]).length,mutatingRequests:(job.mutatingRequests??[]).length,job:join(out,name,'job.json'),seconds:job.timings?.total!=null?Math.round(job.timings.total/1000):null,
   ...(job.exclusion?{exclusion:{rule:job.exclusion.rule,module:job.exclusion.module,moduleSource:job.exclusion.moduleSource,topicModule:job.exclusion.topicModule??null}}:{})});
@@ -424,17 +433,19 @@ export async function runWeekly({rehearse=true,session=null,names,outDir=join(SC
     for(;;){
       let lost=null;
       if(deps.captureSession==='owner'&&!dryRun&&deps.ownerWarmup){try{const sc=(src??deps.readScript(name))?.script;const t=sc?detectScriptTenant(sc):null;
-        if(t?.status==='ok')await deps.ownerWarmup(t.tenant,(m)=>log(`[weekly] ${m}`));}catch(e){log(`[weekly] ${name}: owner session warm-up: ${e?.code||e?.message||e}`);
+        if(t?.status==='ok'&&tenantReplayed(t.tenant))await deps.ownerWarmup(t.tenant,(m)=>log(`[weekly] ${m}`));}catch(e){log(`[weekly] ${name}: owner session warm-up: ${e?.code||e?.message||e}`);
         if(SESSION_LOST.includes(e?.code))lost={status:e.code,detail:e.detail??null};}}
       if(!lost){
         log(`[weekly] ${name}: start`);
         const controller=new AbortController();
-        try{job=await withTimeout(runVideo(name,{outDir:out,deps,dryRun,profileDir,log,signal:controller.signal}),timeoutMs,name);}
+        // The capture is bounded at timeoutMs-1 min (captureLimits.totalMs); model reviews of a long video (e.g. 39 slides)
+        // run after it and need their own time, so a judged video gets a second budget instead of timing out after capture.
+        try{job=await withTimeout(runVideo(name,{outDir:out,deps,dryRun,profileDir,log,signal:controller.signal}),judge?2*timeoutMs:timeoutMs,name);}
         catch(e){controller.abort();job={name,status:e?.code==='timeout'?'timeout':'error',candidatePath:null,errors:[{stage:'video',error:String(e?.message||e)}],finishedAt:new Date().toISOString()};
           try{const f=join(out,name,'job.json');const prevJob=existsSync(f)?JSON.parse(readFileSync(f,'utf8')):{};writeFileSync(f,JSON.stringify({...prevJob,...job},null,2)+'\n');}catch{}}
-        if(sessionLost(job)){lost={status:job.session.status,detail:job.session.detail??null};
+        if(sessionLost(job)||networkLost(job)){lost=sessionLost(job)?{status:job.session.status,detail:job.session.detail??null}:{status:'network_unreachable',detail:networkLost(job)};
           // The failed attempt stays as evidence, out of the way of the next try (and of a resume).
-          let k=1;while(existsSync(join(out,`${name}.session-lost-${k}`)))k++;renameSync(join(out,name),join(out,`${name}.session-lost-${k}`));job=null;}
+          let k=1;while(existsSync(join(out,`${name}.session-lost-${k}`)))k++;if(existsSync(join(out,name)))renameSync(join(out,name),join(out,`${name}.session-lost-${k}`));job=null;}
       }
       if(!lost){if(away){summary.sessionWaits.push({...away,until:new Date().toISOString(),recovered:true});log(`[weekly] ${name}: sign-in is back after ${Math.round((Date.now()-Date.parse(away.since))/1000)} s; continuing`);}break;}
       away={video:name,since:away?.since??new Date().toISOString(),tries:(away?.tries??0)+1,status:lost.status,detail:lost.detail};

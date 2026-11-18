@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {join,basename} from 'node:path';
 import {tmpdir} from 'node:os';
-import {TENANTS,getTenant,tenantForCompanyId,tenantForProfile,tenantProfileDir,tenantStartUrl,scriptCompanyIds,detectScriptTenant,buildAllowlist} from '../../tools/drift/tenants.mjs';
+import {TENANTS,REPLAY_TENANT_KEYS,tenantReplayed,getTenant,tenantForCompanyId,tenantForProfile,tenantProfileDir,tenantStartUrl,scriptCompanyIds,detectScriptTenant,buildAllowlist} from '../../tools/drift/tenants.mjs';
 import {captureRun,withAppPage,resolveRunTenant,isDriftProfile,preflight,tenantNameVisible} from '../../tools/drift/capture.mjs';
 import {validateSpec,createFixtureSession} from '../../tools/drift/fixtures.mjs';
 import {tenantLoginConfig,ACCOUNT,SERVICE,EXPECTED_COMPANY_ID,DEFAULT_START_URL,DEFAULT_PROFILE_DIR,redact} from '../../tools/drift/academy-login.mjs';
@@ -23,6 +23,13 @@ test('registry: academy + sandbox entries, lookups, never guesses unknown keys',
   assert.equal(tenantForProfile('/r/.browser-profile-drift-sandbox').key,'sandbox');assert.equal(tenantForProfile('/r/.browser-profile-drift').key,'academy');assert.equal(tenantForProfile('/r/.browser-profile-ai-2'),null);
   assert.equal(basename(tenantProfileDir('sandbox')),'.browser-profile-drift-sandbox');
   assert.equal(tenantStartUrl('sandbox'),`${APP}/marketing/projects?company_id=1048`);
+});
+test('only Hadrius Academy is replayed; Sandbox stays registered (recognised, reported) but is never replayed', () => {
+  assert.deepEqual(REPLAY_TENANT_KEYS,['academy']);
+  assert.equal(tenantReplayed('academy'),true);assert.equal(tenantReplayed('sandbox'),false);
+  assert.throws(()=>tenantReplayed('prod'),/unknown_tenant/);
+  // still detected as Sandbox, so it is listed as a lesson to recreate rather than as an unknown company
+  assert.equal(detectScriptTenant(S([`${APP}/a?company_id=1048`])).tenant,'sandbox');
 });
 test('academy-login keeps its Academy exports; per-tenant login config; every account is redacted', () => {
   assert.equal(ACCOUNT,'stephen+hstudio@hadrius.com');assert.equal(SERVICE,'hadrius-studio-academy');assert.equal(EXPECTED_COMPANY_ID,1150);

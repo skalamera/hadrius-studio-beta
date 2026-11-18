@@ -15,7 +15,7 @@ const setupCodes = new Set(['baseline_missing', 'baseline_unverified', 'input_mi
   'missing_identified_script', 'script_needs_stable_step_ids', 'identity_missing', 'identity_conflict', 'provider_unavailable', 'provider_auth_required',
   'tenant_unknown', 'tenant_conflict', 'tenant_unregistered', 'tenant_mismatch', 'blocked_account_visibility']);
 const evidenceCodes = new Set(['needs_fixture', 'not_captured', 'no_replacement_screenshot', 'empty_state', 'page_not_loaded', 'page_error',
-  'record_not_visible', 'data_missing', 'target_unverified', 'target_missing', 'target_ambiguous', 'target_renamed', 'review_pending',
+  'record_not_visible', 'data_missing', 'target_unverified', 'target_missing', 'target_ambiguous', 'target_renamed', 'review_pending', 'recorded_window_differs',
   'model_unavailable', 'model_review_missing', 'budget_exhausted', 'narration_unchecked', 'linked_slide_unproven', 'kept_slide_shows_changed_element']);
 
 function boundProof(step, scriptStep, changes, name) {

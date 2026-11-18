@@ -137,6 +137,12 @@ export function classifyStepSignals(sig,T=THRESHOLDS){
   // automation account cannot see (empty state where the target was), leaves the step unverified.
   if(sig.errorState)return {verdict:'unverified',reasons:[{verdict:'unverified',code:'page_error',detail:`page shows an error ("${sig.errorState}"): record likely not visible to the capture account`}],needsJudge:false};
   if(sig.pageState==='loading')return {verdict:'unverified',reasons:[{verdict:'unverified',code:'page_not_loaded',detail:'page still showed only a loading indicator (record may not be visible to the capture account)'},...reasons.filter(r=>r.verdict!=='full_rerecord')],needsJudge:false};
+  // A slide recorded in another window than the one this replay ran in (the video holds slides from two recording
+  // sessions, e.g. slides re-shot at 100% inside a video recorded at 80% browser zoom): scale and layout differ in every
+  // pixel, so neither the picture, the highlight box nor which controls fit on screen can be compared. That describes
+  // the recording, not the product: no drift, no model review. A changed route or flow is still evidence (below).
+  if(sig.recordedWindowDiffers&&sig.compareClass!=='unchanged'&&!sig.routeChanged&&!sig.flowChanged)
+    return {verdict:'unverified',reasons:[{verdict:'unverified',code:'recorded_window_differs',detail:`slide recorded in a ${sig.recordedWindow??'different'} window; the replay ran at ${sig.replayWindow??'the video\'s main window'} like most of this video, so the two pictures differ in scale and cannot be compared`}],needsJudge:false,needsRedesignJudge:false};
   const visual=sig.compareClass==='screenshot_changed'||sig.compareClass==='target_geometry_changed'||sig.compareClass==='target_missing';
   // Empty or zero-result pages are data/state, never redesign evidence: the slide stays unverified.
   if(sig.emptyState&&visual)return {verdict:'unverified',reasons:[{verdict:'unverified',code:'empty_state',detail:`page shows an empty state ("${sig.emptyState}"); missing or empty records are data, not a UI redesign`}],needsJudge:false,needsRedesignJudge:false};
@@ -283,13 +289,23 @@ export async function classifyRun({runDir,script,recordingsDir,judge=null,thresh
     }
     const flow=findings.find(f=>f.step===st.index&&/click_destination_differs|click_navigated_unexpectedly/.test(f.kind));
     const recPath=pathOf(st.url),todayPath=pathOf(c.todayUrl??r.todayUrl);
+    // The window this slide was recorded in against the replay's. Either its own recorded CSS window differs (capture.mjs
+    // recordedStepViewport; the replay's may be 1 px larger per axis, a truncated recorded size), or its recorded frame
+    // has another size although the replay ran in the video's own proven window (the most common one, recordedGeometry).
+    const rw=st.target?.hint?.viewport??st.target?.viewport??null,rww=Number(rw?.w??rw?.width),rwh=Number(rw?.h??rw?.height);
+    const cssDiffers=run.viewport?.width>0&&run.viewport?.height>0&&rww>0&&rwh>0&&(Math.abs(rww-run.viewport.width)>1||Math.abs(rwh-run.viewport.height)>1);
+    const frameDiffers=c.dimensions?.match===false&&(run.geometry?.source==='recording'||run.geometry?.reason==='recorded_at_default');
+    const windowDiffers=cssDiffers||frameDiffers;
     const sig={index:st.index,action:st.action,narration:st.narration??'',hasScreenshot:!!(c.todayScreenshot&&c.classification!=='not_captured'&&c.classification!=='needs_fixture'),
       compareClass,dimensionsMatch:c.dimensions?.match!==false,guardStatus:r.mutationGuard?.status??null,guardReason:r.mutationGuard?.reason??null,error:r.error??c.reason??null,
+      recordedWindowDiffers:windowDiffers,recordedWindow:cssDiffers?`${rww}x${rwh}`:frameDiffers?`${c.dimensions.recorded?.w}x${c.dimensions.recorded?.h} px`:null,
+      replayWindow:windowDiffers&&run.viewport?.width>0?`${run.viewport.width}x${run.viewport.height}${(run.deviceScaleFactor??1)!==1?` @${Math.round(run.deviceScaleFactor*1e3)/1e3}`:''}`:null,
       prerequisiteUnverified:!!r.prerequisiteUnverified,prerequisiteReason:r.readGuard?.reason??r.prerequisiteFailure?.reason??null,
       targetStatus:tgt?.status??null,targetMethod:tgt?.method??null,targetNotes:tgt?.notes??null,targetName:st.target?.name??null,todayTargetName:tgt?.resolved?.name??null,targetMatches:tgt?.matches?.length??null,targetDeltaMax:tgt?.delta?.max??null,
       disambiguation:disamb,targetIsRecord:!!(tgt?.resolved?.recordHint&&(tgt.resolved.recordHint.id||tgt.resolved.recordHint.label)),
       dataOnly:!!c.dataOnly,dataChangedPixels:c.dataChangedPixels??null,
-      routeChanged:!!(recPath&&todayPath&&recPath!==todayPath),recordedPath:recPath,todayPath,flowChanged:!!flow,flowDetail:flow?`${flow.kind}: expected ${flow.expected} got ${flow.actual}`:null,
+      // A recorded URL that redirects to today's page (capture.mjs recordedUrlRedirectsTo) is the same route.
+      routeChanged:!!(recPath&&todayPath&&recPath!==todayPath&&![todayPath,recPath].includes(pathOf(r.recordedUrlRedirectsTo))),recordedPath:recPath,todayPath,flowChanged:!!flow,flowDetail:flow?`${flow.kind}: expected ${flow.expected} got ${flow.actual}`:null,
       metrics:{diff:c.diffFractionNonDynamic??null,ssimMasked:c.ssimMasked??null,coverage:img?Math.round(regionCoverage(c.regions,img.width,img.height)*1e4)/1e4:null,
         ...(c.diffFractionUi!=null?{diffUi:c.diffFractionUi,ssimUi:c.ssimUi??null,coverageUi:img?Math.round(regionCoverage((c.regions||[]).filter(x=>!x.data),img.width,img.height)*1e4)/1e4:null,dataChangedPixels:c.dataChangedPixels??0}:{})},
       chromeChanged:!!chrome.perStep?.[st.index]?.changed,chromeFraction:chrome.perStep?.[st.index]?.fraction??0,judge:null,

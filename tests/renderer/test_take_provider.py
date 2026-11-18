@@ -15,6 +15,8 @@ from renderer import take_provider as tp
 REPO = Path(__file__).resolve().parents[2]
 VOICE_ID = 'ZoiZ8fuDWInAcwPXaVeq'
 OTHER_ID = 'CvD6hF1BJzAFN428j1cO'
+# Elena: every published video is narrated in this voice since 2026-11-17 (the pilot was re-voiced with the rest).
+PUBLISHED_VOICE_ID = 'vTckqxNLVCsRq5sZsOrw'
 
 FAKE_TTS = r'''
 import json, os, shutil, sys
@@ -143,7 +145,7 @@ class PortGolden(unittest.TestCase):
         s = json.loads((REPO / 'scripts' / 'How-to-Find-a-Project-ID.script.json').read_bytes())
         check = tp.verify_baseline_takes(a, s['voice'])
         self.assertTrue(check['ok'], check)
-        self.assertEqual(s['voice'], f'el:{VOICE_ID}')
+        self.assertEqual(s['voice'], f'el:{PUBLISHED_VOICE_ID}')
 
 
 if __name__ == '__main__':

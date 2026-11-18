@@ -84,7 +84,8 @@ test('CRIT-17: a resumed owner run (no --session) releases the CDP connection an
     // The subprocess finds "Chrome" through a DevToolsActivePort under a throwaway HOME: the stand-in, never the real one.
     const portDir = path.join(home, 'Library', 'Application Support', 'Google', 'Chrome');
     fs.mkdirSync(portDir, { recursive: true }); fs.writeFileSync(path.join(portDir, 'DevToolsActivePort'), `${op.port}\n${op.wsPath}\n`);
-    const name = 'How-to-archive-a-policy';
+    // An Academy video: only Academy is replayed, so a Sandbox one is skipped before any borrow (tenant_not_replayed).
+    const name = 'How-to-View-Flags';
     fs.mkdirSync(run, { recursive: true });
     fs.writeFileSync(path.join(run, 'summary.json'), JSON.stringify({ schema: 1, startedAt: new Date().toISOString(), outDir: run, dryRun: false, names: [name], captureSession: 'owner', videos: [] }));
     const env = { PATH: process.env.PATH, HOME: home, TMPDIR: os.tmpdir(), DRIFT_OWNER_SOURCE: 'chrome',

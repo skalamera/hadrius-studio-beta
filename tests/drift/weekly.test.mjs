@@ -148,27 +148,39 @@ test('runWeekly: dry run touches no browser and reports the static guard plan; r
   await assert.rejects(runWeekly({names:['Vid-A'],outDir:new URL('../../out/weekly-test-should-not-exist',import.meta.url).pathname,deps:fakeDeps(fx),log:()=>{}}),/output_inside_repo/);
 });
 
-test('parseNames: per-tenant allowlist object runs academy + sandbox, never unknown/conflict', () => {
+test('parseNames: per-tenant allowlist object runs academy only (Sandbox is never replayed), never unknown/conflict', () => {
   const o=JSON.stringify({schema:2,academy:[{name:'A1'}],sandbox:[{name:'S1'},'S2'],unknown:[{name:'U1'}],conflict:[{name:'C1'}]});
-  assert.deepEqual(parseNames({allowlistText:o}),['A1','S1','S2']);
+  assert.deepEqual(parseNames({allowlistText:o}),['A1']);
+  // An explicit list of tenants reads those lists (reports); it does not make a Sandbox video replayable (runVideo).
   assert.deepEqual(parseNames({allowlistText:o,tenants:['sandbox']}),['S1','S2']);
+  assert.deepEqual(parseNames({allowlistText:o,tenants:['academy','sandbox']}),['A1','S1','S2']);
   assert.throws(()=>parseNames({allowlistText:o,tenants:['nope']}),/unknown_tenant/);
 });
-test('runWeekly: tenant per video from the script; Sandbox uses its own profile; unknown/conflict skipped, never captured', async () => {
+test('runWeekly: tenant per video from the script; a Sandbox video is skipped as tenant_not_replayed; unknown/conflict skipped; none of them captured', async () => {
   const fx=fixture();const calls=[];
   const mk=(name,url)=>{const s=structuredClone(fx.scripts['Vid-B']);s.name=name;s.environment.startUrl=url;s.steps.forEach(st=>{st.url=url;});return s;};
   fx.scripts['Sbx']=mk('Sbx','https://app.hadrius.com/marketing/export?company_id=1048');
   fx.scripts['NoCo']=mk('NoCo','https://app.hadrius.com/marketing/export');
   fx.scripts['Both']=mk('Both','https://app.hadrius.com/a?company_id=1150');fx.scripts['Both'].steps[1].url='https://app.hadrius.com/a?company_id=1048';
   fx.scripts['Other']=mk('Other','https://app.hadrius.com/a?company_id=777');
-  const s=await runWeekly({names:['Vid-B','Sbx','NoCo','Both','Other'],outDir:join(fx.root,'o5'),deps:fakeDeps(fx,{calls}),log:()=>{}});
+  const warmed=[];const deps=fakeDeps(fx,{calls});deps.ownerWarmup=async(t)=>{warmed.push(t);};
+  const s=await runWeekly({names:['Vid-B','Sbx','NoCo','Both','Other'],outDir:join(fx.root,'o5'),deps,log:()=>{}});
   const by=Object.fromEntries(s.videos.map(v=>[v.name,v]));
   const caps=calls.filter(c=>c[0]==='capture');
-  assert.deepEqual(caps.map(c=>[c[1].split('/').pop(),c[2],c[3].split('/').pop()]),[['Vid-B.script.json','academy','.browser-profile-drift'],['Sbx.script.json','sandbox','.browser-profile-drift-sandbox']]);
+  assert.deepEqual(caps.map(c=>[c[1].split('/').pop(),c[2],c[3].split('/').pop()]),[['Vid-B.script.json','academy','.browser-profile-drift']]);
   assert.equal(by.Sbx.tenant,'sandbox');assert.equal(by['Vid-B'].tenant,'academy');
+  assert.equal(by.Sbx.status,'tenant_not_replayed');assert.match(by.Sbx.summary,/Hadrius Sandbox videos are recreated in Hadrius Academy/);
   assert.equal(by.NoCo.status,'tenant_unknown');assert.equal(by.Both.status,'tenant_conflict');assert.equal(by.Other.status,'tenant_unregistered');
-  assert.deepEqual(s.tenantSkipped.map(x=>x.name),['NoCo','Both','Other']);
+  assert.deepEqual(s.tenantSkipped.map(x=>x.name),['Sbx','NoCo','Both','Other']);
   const job=JSON.parse(readFileSync(join(fx.root,'o5','Both','job.json'),'utf8'));assert.deepEqual(job.tenant.companyIds,['1048','1150']);
+  // As the owner: no sign-in is borrowed for a Sandbox video either, and a resume keeps it skipped.
+  const calls2=[];const deps2=fakeDeps(fx,{calls:calls2});deps2.ownerWarmup=async(t)=>{warmed.push(t);};
+  const o6=join(fx.root,'o6');
+  await runWeekly({names:['Sbx','Vid-B'],outDir:o6,session:'owner',deps:deps2,log:()=>{}});
+  assert.deepEqual(warmed,['academy']);
+  const r=await runWeekly({names:['Sbx','Vid-B'],outDir:o6,session:'owner',deps:deps2,resume:true,log:()=>{}});
+  assert.equal(r.videos.find(v=>v.name==='Sbx').status,'tenant_not_replayed');assert.equal(r.resumes[0].alreadyDone,2);
+  assert.equal(calls2.filter(c=>c[0]==='capture').length,1);
 });
 
 test('runWeekly: release provider gets the capture time; classify gets the redesign judge', async () => {
@@ -488,4 +500,13 @@ test('defaultDeps Codex claims cannot bypass deterministic commit-diff or UI-onl
   assert.ok(job.steps[0].uiReleaseEvidence.redesign.rejected[0].why.includes('not_in_commit_diff'));
   assert.equal(calls.length,1,'unconfirmed page does not trigger weekly narration');
   assert.equal(job.steps[0].uiReleaseEvidence.redesign.raw.provider,'codex-cli');
+});
+
+test('networkLost: an overnight DNS/Wi-Fi drop is waited out like a lost sign-in, other errors are not', async () => {
+  const { networkLost } = await import('../../tools/drift/weekly.mjs');
+  assert.equal(networkLost({ errors: [{ stage: 'video', error: 'page.goto: net::ERR_NAME_NOT_RESOLVED at https://app.hadrius.com/branches' }] }), 'net::ERR_NAME_NOT_RESOLVED');
+  assert.equal(networkLost({ errors: [{ stage: 'video', error: 'net::ERR_INTERNET_DISCONNECTED' }] }), 'net::ERR_INTERNET_DISCONNECTED');
+  assert.equal(networkLost({ errors: [{ stage: 'video', error: "ENOENT: no such file or directory, open 'x.png'" }] }), null);
+  assert.equal(networkLost({ errors: [{ stage: 'capture', error: 'network_guard: POST api.hadrius.com/x (unclassified_app_post)' }] }), null);
+  assert.equal(networkLost(null), null);
 });
